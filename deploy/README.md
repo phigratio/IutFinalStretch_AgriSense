@@ -18,8 +18,11 @@ Server facts verified during deployment prep:
   - backend: `127.0.0.1:8093`
   - Grafana: `127.0.0.1:8094`
   - frontend: `127.0.0.1:8095`
+  - Temporal UI: `127.0.0.1:8084`
+  - Prometheus: `127.0.0.1:8087`
+  - Tempo: `127.0.0.1:8088`
 
-The VPS overlay publishes only those loopback ports. Postgres, mem0, Neo4j, Temporal, Prometheus, Loki, Tempo, and OTel Collector remain private inside Docker.
+The VPS overlay publishes only those selected UI/API ports. Postgres, mem0, Neo4j, Temporal gRPC, Loki, and OTel Collector remain private inside Docker.
 
 ## Manual VPS Deploy
 
@@ -108,6 +111,9 @@ VPS_DEPLOY_BRANCH=rag-mem0
 VPS_APP_PORT=8093
 VPS_FRONTEND_PORT=8095
 VPS_GRAFANA_PORT=8094
+VPS_TEMPORAL_UI_PORT=8084
+VPS_PROMETHEUS_PORT=8087
+VPS_TEMPO_PORT=8088
 POSTGRES_DB=iut_ict_fest
 POSTGRES_USER=iut_ict_fest
 GRAFANA_ADMIN_USER=admin
@@ -124,6 +130,9 @@ From the VPS:
 curl -fsS http://127.0.0.1:8093/health
 curl -fsS http://127.0.0.1:8095/
 curl -fsS http://127.0.0.1:8094/grafana/api/health
+curl -fsS http://127.0.0.1:8084/
+curl -fsS http://127.0.0.1:8087/-/healthy
+curl -fsS http://127.0.0.1:8088/ready
 docker compose -f docker-compose.yml -f docker-compose.vps-nginx.yml ps
 ```
 
@@ -133,4 +142,14 @@ From outside, after DNS and Nginx are configured:
 curl -I https://YOUR_DOMAIN/health
 curl -I https://YOUR_DOMAIN/
 curl -I https://YOUR_DOMAIN/grafana/api/health
+```
+
+For direct IP:port hosting, use the public ports directly:
+
+```bash
+curl -I http://YOUR_SERVER_IP:8095/
+curl -I http://YOUR_SERVER_IP:8094/
+curl -I http://YOUR_SERVER_IP:8084/
+curl -I http://YOUR_SERVER_IP:8087/
+curl -I http://YOUR_SERVER_IP:8088/
 ```
