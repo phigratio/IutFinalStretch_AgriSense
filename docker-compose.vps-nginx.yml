@@ -67,7 +67,7 @@ services:
   temporal-ui:
     restart: unless-stopped
     ports: !override
-      - "${VPS_TEMPORAL_UI_BIND:-127.0.0.1}:${VPS_TEMPORAL_UI_PORT:-8084}:8080"
+      - "${VPS_TEMPORAL_UI_BIND:-0.0.0.0}:${VPS_TEMPORAL_UI_PORT:-8084}:8080"
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CORS_ORIGINS: ${TEMPORAL_CORS_ORIGINS:-https://${PUBLIC_HOST}}
@@ -98,7 +98,7 @@ services:
   prometheus:
     restart: unless-stopped
     ports: !override
-      - "${VPS_PROMETHEUS_BIND:-127.0.0.1}:${VPS_PROMETHEUS_PORT:-8087}:9090"
+      - "${VPS_PROMETHEUS_BIND:-0.0.0.0}:${VPS_PROMETHEUS_PORT:-8087}:9090"
 
   loki:
     restart: unless-stopped
@@ -107,7 +107,7 @@ services:
   tempo:
     restart: unless-stopped
     ports: !override
-      - "${VPS_TEMPO_BIND:-127.0.0.1}:${VPS_TEMPO_PORT:-8088}:3200"
+      - "${VPS_TEMPO_BIND:-0.0.0.0}:${VPS_TEMPO_PORT:-8088}:3200"
 
   otel-collector:
     restart: unless-stopped
