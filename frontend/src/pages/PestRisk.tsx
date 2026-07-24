@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import PageMeta from "../components/common/PageMeta.js";
+import FarmWeatherMap from "../components/common/FarmWeatherMap.js";
 import {
   assessPestRisk,
   listPestAssessments,
@@ -27,6 +28,7 @@ export default function PestRiskPage() {
   const [daysAfterSowing, setDaysAfterSowing] = useState(params.get("daysAfterSowing") ?? "35");
   const [areaAcres, setAreaAcres] = useState(params.get("areaAcres") ?? "2");
   const [locationText, setLocationText] = useState(params.get("locationText") ?? "Gazipur");
+  const [geoPoint, setGeoPoint] = useState<{ latitude: number; longitude: number } | null>(null);
   const [result, setResult] = useState<PestRiskResult | null>(null);
   const [history, setHistory] = useState<PestAssessmentRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -59,6 +61,8 @@ export default function PestRiskPage() {
         daysAfterSowing: numeric(daysAfterSowing),
         areaAcres: numeric(areaAcres),
         locationText,
+        latitude: geoPoint?.latitude,
+        longitude: geoPoint?.longitude,
         farmId,
         planId,
         save: true,
@@ -71,6 +75,25 @@ export default function PestRiskPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function useDeviceLocation() {
+    if (!navigator.geolocation) {
+      setError("Device geolocation is not available in this browser.");
+      return;
+    }
+    setError(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setGeoPoint({
+          latitude: roundCoord(position.coords.latitude),
+          longitude: roundCoord(position.coords.longitude),
+        });
+        setLocationText((current) => current.trim() || "Device location");
+      },
+      (err) => setError(err.message || "Could not read device location."),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 },
+    );
   }
 
   return (
@@ -127,6 +150,13 @@ export default function PestRiskPage() {
               <Field label="Location">
                 <input value={locationText} onChange={(event) => setLocationText(event.target.value)} className={inputClass} />
               </Field>
+              <button
+                type="button"
+                onClick={useDeviceLocation}
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-200"
+              >
+                {geoPoint ? `GPS ${geoPoint.latitude.toFixed(3)}, ${geoPoint.longitude.toFixed(3)}` : "Use Device GPS"}
+              </button>
             </div>
             <button type="submit" disabled={loading} className="mt-4 h-10 w-full rounded-lg bg-gray-900 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60 dark:bg-white dark:text-gray-900">
               {loading ? "Checking..." : "Assess"}
@@ -192,6 +222,16 @@ function WeatherDrivers({ result }: { result: PestRiskResult | null }) {
           <Metric label="Wetness proxy" value={features.wetnessProxy} />
           <Metric label="Alerts" value={result?.alertsCreated ?? 0} />
           <Metric label="Provider" value={result?.weather.provider ?? "n/a"} />
+        </div>
+      )}
+      {result?.weather && (
+        <div className="mt-4">
+          <FarmWeatherMap
+            title="Risk Location Map"
+            weather={result.weather}
+            cropLabel={result.assessment.cropLabel}
+            riskLabel={`${result.assessment.highestSeverity} risk`}
+          />
         </div>
       )}
     </section>
@@ -342,6 +382,10 @@ function numeric(value: string): number | undefined {
 
 function shortId(value: string): string {
   return value.slice(0, 8);
+}
+
+function roundCoord(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
 }
 
 function formatMoney(value: number): string {

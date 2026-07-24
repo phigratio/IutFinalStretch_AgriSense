@@ -21,6 +21,8 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
           channel: req.body.channel ?? "web",
           preferredLanguage: req.body.preferredLanguage,
           selectedCrop: req.body.selectedCrop,
+          latitude: numberBody(req.body.latitude),
+          longitude: numberBody(req.body.longitude),
           useMemory: req.body.useMemory,
           acceptedOutcomeIds: req.body.acceptedOutcomeIds,
           ignoredOutcomeIds: req.body.ignoredOutcomeIds,
@@ -47,6 +49,8 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
           channel: req.body.channel ?? "web",
           preferredLanguage: req.body.preferredLanguage,
           selectedCrop: req.body.selectedCrop,
+          latitude: numberBody(req.body.latitude),
+          longitude: numberBody(req.body.longitude),
           useMemory: req.body.useMemory,
           acceptedOutcomeIds: req.body.acceptedOutcomeIds,
           ignoredOutcomeIds: req.body.ignoredOutcomeIds,
@@ -73,6 +77,8 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
           channel: req.body.channel ?? "web",
           preferredLanguage: req.body.preferredLanguage,
           selectedCrop: req.body.selectedCrop,
+          latitude: numberBody(req.body.latitude),
+          longitude: numberBody(req.body.longitude),
           useMemory: req.body.useMemory,
           acceptedOutcomeIds: req.body.acceptedOutcomeIds,
           ignoredOutcomeIds: req.body.ignoredOutcomeIds,
@@ -157,5 +163,11 @@ function stringQuery(value: unknown): string | undefined {
 function numberQuery(value: unknown): number | undefined {
   if (typeof value !== "string") return undefined;
   const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function numberBody(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }

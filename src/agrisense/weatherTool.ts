@@ -66,7 +66,23 @@ interface ForecastResponse {
 }
 
 export async function getWeatherForecast(locationText: string): Promise<WeatherForecast> {
-  const result = await geocodeBangladeshFirst(locationText);
+  return getWeatherForecastForLocation({ locationText });
+}
+
+export async function getWeatherForecastForLocation(input: {
+  locationText: string;
+  latitude?: number;
+  longitude?: number;
+}): Promise<WeatherForecast> {
+  const result = isCoordinate(input.latitude) && isCoordinate(input.longitude)
+    ? {
+        name: input.locationText.trim() || "Device location",
+        country: "Bangladesh",
+        country_code: "BD",
+        latitude: input.latitude,
+        longitude: input.longitude,
+      }
+    : await geocodeBangladeshFirst(input.locationText);
 
   const forecastUrl = new URL("https://api.open-meteo.com/v1/forecast");
   forecastUrl.searchParams.set("latitude", String(result.latitude));
@@ -100,6 +116,10 @@ export async function getWeatherForecast(locationText: string): Promise<WeatherF
     })),
     raw: { geocode: result, forecast },
   };
+}
+
+function isCoordinate(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 async function fetchJson<T>(url: URL): Promise<T> {

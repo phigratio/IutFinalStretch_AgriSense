@@ -13,18 +13,18 @@ import { getDefaultMemoryOutcomeService, type MemoryOutcome, type MemoryOutcomeS
 import { buildSeasonPlan, rankCrops, selectCrop } from "./planningEngine.js";
 import { simulateScenario, type ScenarioBaseline } from "./scenarioEngine.js";
 import { getDefaultAgriSenseStore, type AgriSenseStore } from "./agrisenseStore.js";
-import { getWeatherForecast, mockWeatherForecast } from "./weatherTool.js";
+import { getWeatherForecastForLocation, mockWeatherForecast } from "./weatherTool.js";
 import { type AgriSenseMessageResult, type MemoryLookupResult, type ScenarioDeltas, type ScenarioSimulationResult, type WeatherForecast } from "./types.js";
 
 export interface WeatherProvider {
-  get(locationText: string): Promise<WeatherForecast>;
+  get(input: { locationText: string; latitude?: number; longitude?: number }): Promise<WeatherForecast>;
 }
 
 type WorkflowStage = NonNullable<IntakeRequest["workflowStage"]>;
 
 export class OpenMeteoWeatherProvider implements WeatherProvider {
-  async get(locationText: string): Promise<WeatherForecast> {
-    return getWeatherForecast(locationText);
+  async get(input: { locationText: string; latitude?: number; longitude?: number }): Promise<WeatherForecast> {
+    return getWeatherForecastForLocation(input);
   }
 }
 
@@ -178,13 +178,17 @@ export class AgriSenseService {
     const weatherStarted = Date.now();
     let weather: WeatherForecast;
     try {
-      weather = await this.weatherProvider.get(intake.profile.locationText!);
+      weather = await this.weatherProvider.get({
+        locationText: intake.profile.locationText!,
+        latitude: intake.profile.latitude,
+        longitude: intake.profile.longitude,
+      });
     } catch (error) {
       weather = mockWeatherForecast(intake.profile.locationText!);
       const weatherErrorTrace = await this.trace(intake.sessionId, trace, {
         kind: "error",
         toolName: "weather.fetch",
-        parameters: { locationText: intake.profile.locationText, triggerReason },
+        parameters: { locationText: intake.profile.locationText, latitude: intake.profile.latitude, longitude: intake.profile.longitude, triggerReason },
         rawResponse: { fallback: weather },
         status: "error",
         errorMessage: (error as Error).message,
@@ -197,7 +201,7 @@ export class AgriSenseService {
     const weatherTrace = await this.trace(intake.sessionId, trace, {
       kind: "tool",
       toolName: "weather.fetch",
-      parameters: { locationText: intake.profile.locationText, triggerReason },
+      parameters: { locationText: intake.profile.locationText, latitude: intake.profile.latitude, longitude: intake.profile.longitude, triggerReason },
       rawResponse: weather,
       status: "success",
       latencyMs: Date.now() - weatherStarted,

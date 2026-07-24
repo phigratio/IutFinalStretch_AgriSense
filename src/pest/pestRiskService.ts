@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { config } from "../config.js";
-import { getWeatherForecast, mockWeatherForecast } from "../agrisense/weatherTool.js";
 import { deliverPendingAlerts } from "../notifications/smsDispatcher.js";
+import { getWeatherForecastForLocation, mockWeatherForecast } from "../agrisense/weatherTool.js";
 import type { IntakeTraceEvent, IntakeProfile } from "../agent/intakeSchema.js";
 import type { WeatherForecast } from "../agrisense/types.js";
 import {
@@ -16,7 +16,7 @@ import {
 import type { CropId } from "../data/crops.js";
 
 export interface PestWeatherProvider {
-  get(locationText: string): Promise<WeatherForecast>;
+  get(input: { locationText: string; latitude?: number; longitude?: number }): Promise<WeatherForecast>;
 }
 
 export interface PestRiskAssessInput {
@@ -26,6 +26,8 @@ export interface PestRiskAssessInput {
   daysAfterSowing?: number;
   areaAcres?: number;
   locationText?: string;
+  latitude?: number;
+  longitude?: number;
   farmerId?: string;
   farmId?: string;
   sessionId?: string;
@@ -43,6 +45,8 @@ export interface PestContext {
   targetSeason?: string;
   currentCrop?: string;
   locationText?: string;
+  latitude?: number;
+  longitude?: number;
   areaAcres?: number;
   sowDate?: string;
 }
@@ -96,8 +100,8 @@ export interface PestRiskStore {
 }
 
 export class OpenMeteoPestWeatherProvider implements PestWeatherProvider {
-  async get(locationText: string): Promise<WeatherForecast> {
-    return getWeatherForecast(locationText);
+  async get(input: { locationText: string; latitude?: number; longitude?: number }): Promise<WeatherForecast> {
+    return getWeatherForecastForLocation(input);
   }
 }
 
@@ -194,6 +198,8 @@ export class PostgresPestRiskStore implements PestRiskStore {
       currentCrop: row?.current_crop ?? undefined,
       targetSeason: row?.target_season ?? undefined,
       locationText: input.locationText ?? row?.location_text ?? undefined,
+      latitude: input.latitude,
+      longitude: input.longitude,
       areaAcres: input.areaAcres ?? toNumber(row?.size_acres),
       sowDate: row?.sow_date ? row.sow_date.toISOString().slice(0, 10) : undefined,
     };
@@ -313,8 +319,8 @@ export class PestRiskService {
     const weatherStarted = Date.now();
     let weather: WeatherForecast;
     try {
-      weather = await this.weatherProvider.get(locationText);
-      trace.push(traceEvent("pest.weather.fetch", { locationText }, weather, Date.now() - weatherStarted));
+      weather = await this.weatherProvider.get({ locationText, latitude: context.latitude, longitude: context.longitude });
+      trace.push(traceEvent("pest.weather.fetch", { locationText, latitude: context.latitude, longitude: context.longitude }, weather, Date.now() - weatherStarted));
     } catch (error) {
       weather = mockWeatherForecast(locationText);
       trace.push(traceEvent(

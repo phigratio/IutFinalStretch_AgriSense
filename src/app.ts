@@ -15,6 +15,7 @@ import { marketplaceRouter } from "./routes/marketplace.js";
 import { financeRouter } from "./routes/finance.js";
 import { contextRouter } from "./routes/context.js";
 import { pestRiskRouter } from "./routes/pestRisk.js";
+import { voiceRouter } from "./routes/voice.js";
 // NOTE: parallel Tier 0 implementation (navid) — mounted under /api/tier0 to avoid
 // colliding with agrisenseRouter/agentIntakeRouter. Team to pick one before submission.
 import { agentRouter } from "./routes/agent.js";
@@ -65,6 +66,7 @@ export function createApp(): Application {
   app.use("/api/marketplace", marketplaceRouter);
   app.use("/api/finance", financeRouter);
   app.use("/api/pest-risk", pestRiskRouter);
+  app.use("/api/voice", voiceRouter);
   // bdapps CaaS checkout + receipt readback (payments/service.ts).
   app.use("/api/payments", paymentsRouter);
   // BDApps channel-activation status (can we reach this farmer via BDApps?).

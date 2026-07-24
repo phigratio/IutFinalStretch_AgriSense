@@ -81,6 +81,11 @@ export class IntakeService {
     }
 
     patch.preferredLanguage = normalizeLanguage(patch.preferredLanguage) ?? detectedLanguage;
+    if (isCoordinate(request.latitude) && isCoordinate(request.longitude)) {
+      patch.latitude = request.latitude;
+      patch.longitude = request.longitude;
+      patch.locationText ??= profile.locationText ?? "Device location";
+    }
 
     const merged = mergeProfilePatch(profile, patch);
     await this.trace(profile.sessionId!, trace, {
@@ -217,3 +222,7 @@ export class IntakeService {
 }
 
 export const intakeService = new IntakeService();
+
+function isCoordinate(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}

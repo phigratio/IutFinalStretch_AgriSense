@@ -34,6 +34,8 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_CALLBACK_URL: https://${PUBLIC_HOST}/auth/google/callback
       FRONTEND_AUTH_SUCCESS_URL: ${FRONTEND_AUTH_SUCCESS_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env}
+      OPENAI_STT_MODEL: ${OPENAI_STT_MODEL:-whisper-1}
       MEM0_API_URL: http://mem0-api:8000
       MEM0_API_KEY: ${MEM0_API_KEY:?Set MEM0_API_KEY in .env}
       RAG_EMBEDDING_DIMENSIONS: ${RAG_EMBEDDING_DIMENSIONS:-1536}
@@ -71,6 +73,11 @@ services:
       JWT_SECRET: ${MEM0_JWT_SECRET:?Set MEM0_JWT_SECRET in .env}
       ADMIN_API_KEY: ${MEM0_API_KEY:?Set MEM0_API_KEY in .env}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env}
+
+  temporal-worker:
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env}
+      OPENAI_STT_MODEL: ${OPENAI_STT_MODEL:-whisper-1}
 
   mem0-neo4j:
     restart: unless-stopped

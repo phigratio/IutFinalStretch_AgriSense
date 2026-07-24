@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import PageMeta from "../components/common/PageMeta.js";
+import FarmWeatherMap from "../components/common/FarmWeatherMap.js";
 import {
   getAgriSenseContext,
   getAgriSenseMemory,
@@ -18,8 +19,9 @@ import {
   type TraceEvent,
   type WorkflowStage,
 } from "../api/agrisense.js";
+import { transcribeVoice } from "../api/voice.js";
 import { useAuth } from "../context/AuthContext.js";
-import { ArrowUpIcon, BoxIcon, CalendarIcon, SearchIcon } from "../icons/index.js";
+import { ArrowUpIcon, BoxIcon, CalendarIcon, MicIcon, SearchIcon, StopIcon } from "../icons/index.js";
 
 interface ChatMessage {
   role: "farmer" | "agent";
@@ -28,6 +30,7 @@ interface ChatMessage {
 
 type Language = "en" | "bn" | "banglish";
 type ViewStage = WorkflowStage | "context" | "scheduler" | "scenario" | "trace";
+type VoiceStatus = "idle" | "recording" | "transcribing";
 
 const starterMessages = [
   "I have 2 acres in Gazipur, what should I plant?",
@@ -91,9 +94,15 @@ export default function AgriSense() {
   const [contextBundle, setContextBundle] = useState<ContextBundle | null>(null);
   const [scenarioResult, setScenarioResult] = useState<ScenarioSimulationResult | null>(null);
   const [ignoredOutcomeIds, setIgnoredOutcomeIds] = useState<string[]>([]);
+  const [geoPoint, setGeoPoint] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
+  const [voiceTranscript, setVoiceTranscript] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimeoutRef = useRef<number | undefined>(undefined);
 
   const activePlan = result?.seasonPlan;
   const profile = result?.farmProfile;
@@ -143,6 +152,13 @@ export default function AgriSense() {
     };
   }, [user?.id, farmerId, farmId, sessionId, language, useMemory, ignoredOutcomeIds]);
 
+  useEffect(() => {
+    return () => {
+      if (recordingTimeoutRef.current) window.clearTimeout(recordingTimeoutRef.current);
+      mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
+
   async function submitMessage(
     messageText = input,
     workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" || activeStage === "scheduler" || activeStage === "scenario" ? "full" : activeStage,
@@ -169,6 +185,8 @@ export default function AgriSense() {
         ignoredOutcomeIds,
         workflowStage,
         triggerReason: workflowStage === "weather" ? "weather_refreshed" : workflowStage === "full" ? "user_requested_replan" : undefined,
+        latitude: geoPoint?.latitude,
+        longitude: geoPoint?.longitude,
       });
 
       setSessionId(response.sessionId);
@@ -202,6 +220,105 @@ export default function AgriSense() {
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     void submitMessage();
+  }
+
+  function useDeviceLocation() {
+    if (!navigator.geolocation) {
+      setError("Device geolocation is not available in this browser.");
+      return;
+    }
+    setError(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => setGeoPoint({
+        latitude: roundCoord(position.coords.latitude),
+        longitude: roundCoord(position.coords.longitude),
+      }),
+      (err) => setError(err.message || "Could not read device location."),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 },
+    );
+  }
+
+  async function startVoiceRecording() {
+    if (voiceStatus !== "idle" || loading) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("Voice recording is not supported in this browser.");
+      return;
+    }
+
+    setError(null);
+    setVoiceTranscript(null);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
+      const recorder = new MediaRecorder(stream, { mimeType });
+      audioChunksRef.current = [];
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        setError("Voice recording failed. Please try again or type the message.");
+        setVoiceStatus("idle");
+        stream.getTracks().forEach((track) => track.stop());
+      };
+      recorder.onstop = () => {
+        if (recordingTimeoutRef.current) {
+          window.clearTimeout(recordingTimeoutRef.current);
+          recordingTimeoutRef.current = undefined;
+        }
+        stream.getTracks().forEach((track) => track.stop());
+        void transcribeRecordedAudio();
+      };
+
+      recorder.start();
+      setVoiceStatus("recording");
+      recordingTimeoutRef.current = window.setTimeout(() => {
+        if (mediaRecorderRef.current?.state === "recording") {
+          mediaRecorderRef.current.stop();
+        }
+      }, 60_000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Microphone permission was denied.");
+      setVoiceStatus("idle");
+    }
+  }
+
+  function stopVoiceRecording() {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+  }
+
+  async function transcribeRecordedAudio() {
+    const audio = new Blob(audioChunksRef.current, { type: "audio/webm" });
+    audioChunksRef.current = [];
+    mediaRecorderRef.current = null;
+    if (!audio.size) {
+      setVoiceStatus("idle");
+      setError("No voice audio was recorded.");
+      return;
+    }
+
+    setVoiceStatus("transcribing");
+    try {
+      const response = await transcribeVoice({
+        audio,
+        language,
+        sessionId,
+        farmerId,
+        farmId,
+      });
+      setInput(response.transcript);
+      setVoiceTranscript(response.transcript);
+      setTrace((current) => [...current, ...response.trace]);
+      inputRef.current?.focus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Voice transcription failed.");
+    } finally {
+      setVoiceStatus("idle");
+    }
   }
 
   function selectStage(stage: ViewStage) {
@@ -313,6 +430,13 @@ export default function AgriSense() {
               {starter}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={useDeviceLocation}
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-200"
+          >
+            {geoPoint ? `GPS ${geoPoint.latitude.toFixed(3)}, ${geoPoint.longitude.toFixed(3)}` : "Use Device GPS"}
+          </button>
         </div>
       </div>
 
@@ -364,13 +488,32 @@ export default function AgriSense() {
                 className="h-11 min-w-0 flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-100"
               />
               <button
+                type="button"
+                disabled={loading || voiceStatus === "transcribing"}
+                onClick={voiceStatus === "recording" ? stopVoiceRecording : () => void startVoiceRecording()}
+                aria-label={voiceStatus === "recording" ? "Stop recording" : "Record voice"}
+                title={voiceStatus === "recording" ? "Stop recording" : "Record voice"}
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border disabled:opacity-60 ${
+                  voiceStatus === "recording"
+                    ? "border-error-500 bg-error-50 text-error-600 dark:bg-error-500/10"
+                    : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-white dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-100"
+                }`}
+              >
+                {voiceStatus === "recording" ? <StopIcon width={18} height={18} /> : <MicIcon width={18} height={18} />}
+              </button>
+              <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || voiceStatus === "recording" || voiceStatus === "transcribing"}
                 aria-label="Send message"
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-60"
               >
                 <ArrowUpIcon width={18} height={18} />
               </button>
+            </div>
+            <div className="mt-2 min-h-5 text-xs text-gray-500 dark:text-gray-400">
+              {voiceStatus === "recording" && "Recording voice... stop when done. Max 60 seconds."}
+              {voiceStatus === "transcribing" && "Transcribing with OpenAI Whisper..."}
+              {voiceStatus === "idle" && voiceTranscript && `Transcript ready: ${voiceTranscript}`}
             </div>
           </form>
         </section>
@@ -819,16 +962,19 @@ function ContextPanel({ context }: { context: ContextBundle | null }) {
       </div>
 
       {profile && (
-        <div className="mt-4 rounded-lg border border-gray-200 p-3 dark:border-gray-800">
-          <p className="text-xs font-semibold text-gray-900 dark:text-white">Profile Snapshot</p>
-          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
-            <Metric label="Location" value={profile.locationText ?? "n/a"} />
-            <Metric label="Soil" value={profile.soilType ?? "n/a"} />
-            <Metric label="Water" value={profile.waterAvailability ?? "n/a"} />
-            <Metric label="Size" value={profile.sizeAcres ? `${profile.sizeAcres} acres` : "n/a"} />
-            <Metric label="Budget" value={profile.budgetBdt ? formatMoney(profile.budgetBdt) : "n/a"} />
-            <Metric label="Season" value={profile.targetSeason ?? "n/a"} />
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+            <p className="text-xs font-semibold text-gray-900 dark:text-white">Profile Snapshot</p>
+            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
+              <Metric label="Location" value={profile.locationText ?? "n/a"} />
+              <Metric label="Soil" value={profile.soilType ?? "n/a"} />
+              <Metric label="Water" value={profile.waterAvailability ?? "n/a"} />
+              <Metric label="Size" value={profile.sizeAcres ? `${profile.sizeAcres} acres` : "n/a"} />
+              <Metric label="Budget" value={profile.budgetBdt ? formatMoney(profile.budgetBdt) : "n/a"} />
+              <Metric label="Season" value={profile.targetSeason ?? "n/a"} />
+            </div>
           </div>
+          <FarmWeatherMap title="Profile Location" profile={profile} className="p-3" />
         </div>
       )}
 
@@ -963,6 +1109,11 @@ function ProfilePanel({ profile, missingFields }: { profile?: IntakeProfile; mis
           ))}
         </div>
       )}
+      {profile && (profile.latitude !== undefined || profile.longitude !== undefined) && (
+        <div className="mt-4">
+          <FarmWeatherMap title="Saved Farm Location" profile={profile} />
+        </div>
+      )}
     </section>
   );
 }
@@ -1005,6 +1156,14 @@ function WeatherPanel({ result }: { result: AgriSenseMessageResult | null }) {
         <Metric label="Soil moisture" value={first?.soilMoisture0To9cm ? `${first.soilMoisture0To9cm}` : "n/a"} />
       </div>
       <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">{weather.locationText}</p>
+      <div className="mt-4">
+        <FarmWeatherMap
+          title="Weather Map"
+          profile={result?.farmProfile}
+          weather={weather}
+          cropLabel={result?.seasonPlan?.crop ?? result?.farmProfile.currentCrop}
+        />
+      </div>
     </section>
   );
 }
@@ -1382,6 +1541,10 @@ function formatDate(value: string): string {
 
 function shortId(value: string): string {
   return value.slice(0, 8);
+}
+
+function roundCoord(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
 }
 
 function normalizeStage(value: string | null): ViewStage {
