@@ -386,6 +386,8 @@ model KbDocument {
   cropId     String?  @map("crop_id")
   mem0Ids    String[] @default([]) @map("mem0_ids")
   dataOrigin String   @map("data_origin")
+  verificationStatus String @default("unverified") @map("verification_status")
+  retrievedAt DateTime? @map("retrieved_at") @db.Timestamptz(6)
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@unique([tenantId, docKey])

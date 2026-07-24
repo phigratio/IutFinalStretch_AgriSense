@@ -37,6 +37,8 @@ export interface KbChunkMeta {
   sourceUrl?: string;
   page?: string;
   dataOrigin: string; // real | manual | mock
+  verificationStatus: "verified" | "cross_checked" | "unverified";
+  retrievedAt?: string;
 }
 
 export interface KbHit {
@@ -48,6 +50,7 @@ export interface KbHit {
   source?: string;
   page?: string;
   citation: string;
+  verificationStatus: KbChunkMeta["verificationStatus"];
 }
 
 const TENANT_BOOST = 0.1;
@@ -86,6 +89,8 @@ export async function addChunk(
     cropId: meta.cropId,
     mem0Ids: ids,
     dataOrigin: meta.dataOrigin,
+    verificationStatus: meta.verificationStatus,
+    retrievedAt: meta.retrievedAt,
   });
   return result;
 }
@@ -125,6 +130,8 @@ export interface SearchKbOptions {
   tenantId?: string;
   cropId?: string;
   limit?: number;
+  /** Admin/debug search may include newly ingested unverified documents; farmer-facing search must leave this false. */
+  includeUnverified?: boolean;
 }
 
 /**
@@ -161,6 +168,7 @@ export async function searchKB(
     ...hub.filter((h) => !h.metadata.docKey || !tenantDocKeys.has(h.metadata.docKey)),
   ]
     .filter((h) => h.metadata.dataOrigin !== "mock")
+    .filter((h) => opts.includeUnverified || h.metadata.verificationStatus === "verified" || h.metadata.verificationStatus === "cross_checked")
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
 
@@ -173,5 +181,6 @@ export async function searchKB(
     source: h.metadata.source,
     page: h.metadata.page,
     citation: citationOf(h.metadata),
+    verificationStatus: h.metadata.verificationStatus,
   }));
 }

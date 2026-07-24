@@ -20,6 +20,10 @@ function arg(name: string, fallback?: string): string | undefined {
   return i >= 0 ? process.argv[i + 1] : fallback;
 }
 
+function headerValue(text: string, name: string): string | undefined {
+  return text.match(new RegExp(`^${name}:\\s*(.+)$`, "mi"))?.[1]?.trim();
+}
+
 async function main(): Promise<void> {
   const file = arg("file");
   const docKey = arg("docKey");
@@ -37,6 +41,10 @@ async function main(): Promise<void> {
   }
 
   const text = readFileSync(file, "utf8");
+  const verificationStatus = (arg("verification", headerValue(text, "verification_status") ?? "unverified")) as KbChunkMeta["verificationStatus"];
+  if (!["verified", "cross_checked", "unverified"].includes(verificationStatus)) {
+    throw new Error(`Invalid verification status: ${verificationStatus}`);
+  }
   const chunks = chunkText(text, {
     targetTokens: Number(arg("target", "500")),
     overlapTokens: Number(arg("overlap", "50")),
@@ -53,6 +61,8 @@ async function main(): Promise<void> {
     sourceUrl: arg("url"),
     page: arg("page"),
     dataOrigin: arg("dataOrigin", scope === "hub" ? "manual" : "manual")!,
+    verificationStatus,
+    retrievedAt: arg("retrievedAt", headerValue(text, "retrieved_date")),
   };
 
   let ok = 0;

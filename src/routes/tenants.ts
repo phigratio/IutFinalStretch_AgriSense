@@ -99,7 +99,7 @@ tenantsRouter.post("/:tid/kb/docs", async (req, res, next) => {
     const { tenantStore } = getKbRuntime(); await assertTenantWriteAccess(tenantStore, userId, req.params.tid);
     const { text, docKey, docType = "advisory", cropId, source, sourceUrl, page } = req.body ?? {};
     if (!text || !docKey || !source) { res.status(400).json({ error: "text, docKey and source are required" }); return; }
-    const meta: KbChunkMeta = { scope: "tenant", tenantId: req.params.tid, docKey, docType, cropId, source, sourceUrl, page, dataOrigin: "manual" };
+    const meta: KbChunkMeta = { scope: "tenant", tenantId: req.params.tid, docKey, docType, cropId, source, sourceUrl, page, dataOrigin: "manual", verificationStatus: "unverified", retrievedAt: new Date().toISOString() };
     await addChunk(text, meta); res.status(201).json({ ok: true, docKey });
   } catch (err) { if (err instanceof TenantAccessError) res.status(403).json({ error: err.message }); else next(err); }
 });

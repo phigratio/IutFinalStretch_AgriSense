@@ -26,9 +26,9 @@ hubRouter.post("/prices/refresh", async (req, res, next) => {
 hubRouter.post("/kb/ingest", async (req, res, next) => {
   try {
     await requireHub(req);
-    const { text, docKey, docType = "practice", cropId, source, sourceUrl, page, dataOrigin = "manual" } = req.body ?? {};
+    const { text, docKey, docType = "practice", cropId, source, sourceUrl, page, dataOrigin = "manual", verificationStatus = "unverified" } = req.body ?? {};
     if (!text || !docKey || !source) { res.status(400).json({ error: "text, docKey and source are required" }); return; }
-    const meta: KbChunkMeta = { scope: "hub", docKey, docType, cropId, source, sourceUrl, page, dataOrigin };
+    const meta: KbChunkMeta = { scope: "hub", docKey, docType, cropId, source, sourceUrl, page, dataOrigin, verificationStatus, retrievedAt: new Date().toISOString() };
     await addChunk(text, meta); res.status(201).json({ ok: true, docKey });
   } catch (err) { if (err instanceof TenantAccessError) res.status(req.header("x-user-id") ? 403 : 401).json({ error: err.message }); else next(err); }
 });

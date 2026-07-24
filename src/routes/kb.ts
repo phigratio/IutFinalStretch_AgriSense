@@ -29,12 +29,13 @@ kbRouter.get("/search", async (req, res, next) => {
     const tenantId = req.query.tenantId
       ? String(req.query.tenantId)
       : district ? await tenantStore.resolveTenantIdForDistrict(district) : HUB;
-    if (tenantId !== HUB && req.query.tenantId) {
+    const includeUnverified = req.query.includeUnverified === "true";
+    if (req.query.tenantId || includeUnverified) {
       const userId = req.header("x-user-id");
       if (!userId) { res.status(401).json({ error: "x-user-id header required" }); return; }
       await assertTenantAccess(tenantStore, userId, tenantId);
     }
-    const hits = await searchKB(query, { tenantId, cropId: req.query.cropId ? String(req.query.cropId) : undefined });
+    const hits = await searchKB(query, { tenantId, cropId: req.query.cropId ? String(req.query.cropId) : undefined, includeUnverified });
     res.json({ tenantId, hits, citations: [...new Set(hits.map((h) => h.citation))] });
   } catch (err) {
     if (err instanceof TenantAccessError) { res.status(403).json({ error: err.message }); return; }
