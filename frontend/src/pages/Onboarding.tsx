@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.js";
 import {
   getOnboardingMe,
@@ -54,6 +55,9 @@ export default function Onboarding() {
       setBusy(false);
     }
   }
+
+  // Admins belong on the dashboard, not the farmer onboarding.
+  if (user?.role === "admin") return <Navigate to="/" replace />;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950" style={{ fontFamily: "'Noto Sans Bengali', 'Hind Siliguri', system-ui, sans-serif" }}>
