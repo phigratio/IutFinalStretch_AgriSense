@@ -1,0 +1,108 @@
+# VPS overlay for hosts where system Nginx already owns ports 80/443.
+#
+# Public traffic should terminate in host Nginx, then proxy to these loopback
+# ports:
+#   frontend: http://127.0.0.1:8095
+#   backend:  http://127.0.0.1:8093
+#   grafana:  http://127.0.0.1:8094
+#
+# Do not combine this file with docker-compose.prod.yml; prod.yml starts Caddy.
+services:
+  app:
+    restart: unless-stopped
+    ports: !override
+      - "${VPS_APP_BIND:-127.0.0.1}:${VPS_APP_PORT:-8093}:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?Set AUTH_TOKEN_SECRET in .env}
+      AUTH_TOKEN_TTL_SECONDS: ${AUTH_TOKEN_TTL_SECONDS:-3600}
+      COOKIE_SECURE: "true"
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-https://${PUBLIC_HOST}/auth/google/callback}
+      FRONTEND_AUTH_SUCCESS_URL: ${FRONTEND_AUTH_SUCCESS_URL:-https://${PUBLIC_HOST}/}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env}
+      OPENAI_INTAKE_MODEL: ${OPENAI_INTAKE_MODEL:-gpt-4.1-mini}
+      MEM0_API_URL: http://mem0-api:8000
+      MEM0_API_KEY: ${MEM0_API_KEY:?Set MEM0_API_KEY in .env}
+      MEM0_PERSISTENCE_ENABLED: ${MEM0_PERSISTENCE_ENABLED:-true}
+      RAG_EMBEDDING_DIMENSIONS: ${RAG_EMBEDDING_DIMENSIONS:-1536}
+
+  frontend:
+    restart: unless-stopped
+    ports: !override
+      - "${VPS_FRONTEND_BIND:-127.0.0.1}:${VPS_FRONTEND_PORT:-8095}:80"
+
+  postgres:
+    restart: unless-stopped
+    ports: !override []
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+
+  mem0-api:
+    restart: unless-stopped
+    ports: !override []
+    environment:
+      AUTH_DISABLED: ${MEM0_AUTH_DISABLED:-false}
+      JWT_SECRET: ${MEM0_JWT_SECRET:?Set MEM0_JWT_SECRET in .env}
+      ADMIN_API_KEY: ${MEM0_API_KEY:?Set MEM0_API_KEY in .env}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env}
+
+  mem0-neo4j:
+    restart: unless-stopped
+
+  temporal-postgres:
+    restart: unless-stopped
+
+  temporal:
+    restart: unless-stopped
+    ports: !override []
+
+  temporal-ui:
+    restart: unless-stopped
+    ports: !override []
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: https://${PUBLIC_HOST}
+
+  temporal-worker:
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env}
+      MEM0_API_URL: http://mem0-api:8000
+      MEM0_API_KEY: ${MEM0_API_KEY:?Set MEM0_API_KEY in .env}
+      MEM0_PERSISTENCE_ENABLED: ${MEM0_PERSISTENCE_ENABLED:-true}
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_TASK_QUEUE: ${TEMPORAL_TASK_QUEUE:-agrisense-cron}
+      TEMPORAL_ENSURE_SCHEDULES: ${TEMPORAL_ENSURE_SCHEDULES:-true}
+
+  grafana:
+    restart: unless-stopped
+    ports: !override
+      - "${VPS_GRAFANA_BIND:-127.0.0.1}:${VPS_GRAFANA_PORT:-8094}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_SERVER_ROOT_URL: https://${PUBLIC_HOST}/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+
+  prometheus:
+    restart: unless-stopped
+    ports: !override []
+
+  loki:
+    restart: unless-stopped
+    ports: !override []
+
+  tempo:
+    restart: unless-stopped
+    ports: !override []
+
+  otel-collector:
+    restart: unless-stopped
+    ports: !override []
