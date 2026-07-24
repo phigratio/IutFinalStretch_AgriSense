@@ -144,9 +144,11 @@ export default function AgriSense() {
       .then((nextWorkspace) => {
         if (cancelled) return;
         setWorkspace(nextWorkspace);
-        setSelectedWorkspaceFarmId((current) => current ?? nextWorkspace.farmCards[0]?.farmId);
-        if (!farmerId && !farmId && !sessionId && nextWorkspace.farmCards[0]) {
-          const first = nextWorkspace.farmCards[0];
+        const preferredFarmId = chooseWorkspaceFarmId(nextWorkspace, activeStage, selectedWorkspaceFarmId ?? farmId);
+        setSelectedWorkspaceFarmId(preferredFarmId);
+        if (!farmerId && !farmId && !sessionId && preferredFarmId) {
+          const first = nextWorkspace.farmCards.find((card) => card.farmId === preferredFarmId);
+          if (!first) return;
           setFarmerId(first.farmerId);
           setFarmId(first.farmId);
           setSessionId(first.sessionId);
@@ -158,7 +160,7 @@ export default function AgriSense() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, farmerId, farmId, sessionId]);
+  }, [user?.id, farmerId, farmId, sessionId, activeStage, selectedWorkspaceFarmId]);
 
   useEffect(() => {
     if (!useMemory) return;
@@ -1777,8 +1779,12 @@ function resultFromWorkspace(
   if (!farm) return null;
   const weatherCard = workspace?.weatherCards.find((card) => card.farmId === farm.farmId);
   const evidenceCard = workspace?.evidenceCards.find((card) => card.farmId === farm.farmId || card.sessionId === farm.sessionId);
+  const rankingCard = workspace?.rankingCards.find((card) => card.farmId === farm.farmId || card.sessionId === farm.sessionId);
+  const planCard = workspace?.planCards.find((card) => card.farmId === farm.farmId || card.sessionId === farm.sessionId);
   const includeWeather = activeStage !== "intake" && Boolean(weatherCard);
   const includeEvidence = activeStage !== "intake" && activeStage !== "weather" && Boolean(evidenceCard);
+  const includeRanking = ["crop_ranking", "season_plan", "scheduler", "financials", "scenario", "trace", "full"].includes(activeStage) && Boolean(rankingCard);
+  const includePlan = ["season_plan", "scheduler", "financials", "scenario", "trace", "full"].includes(activeStage) && Boolean(planCard);
 
   return {
     sessionId: farm.sessionId ?? "",
@@ -1795,9 +1801,36 @@ function resultFromWorkspace(
     farmProfile: farm.profile,
     weather: includeWeather ? weatherCard?.weather : undefined,
     retrievedEvidence: includeEvidence ? evidenceCard?.retrievedEvidence : undefined,
+    cropRankings: includeRanking ? rankingCard?.cropRankings : undefined,
+    seasonPlan: includePlan ? planCard?.seasonPlan : undefined,
     rememberedOutcomes: workspace?.outcomeCards ?? [],
     trace: [],
   };
+}
+
+function chooseWorkspaceFarmId(
+  workspace: AgriSenseWorkspace,
+  activeStage: ViewStage,
+  currentFarmId: string | undefined,
+): string | undefined {
+  const current = currentFarmId && workspace.farmCards.some((card) => card.farmId === currentFarmId) ? currentFarmId : undefined;
+  const byData = (farmIds: Array<string | undefined>) => farmIds.find((id): id is string => Boolean(id && workspace.farmCards.some((card) => card.farmId === id)));
+  const completeFarm = workspace.farmCards.find((card) => card.completion === "complete")?.farmId;
+  const firstFarm = workspace.farmCards[0]?.farmId;
+
+  if (activeStage === "weather") {
+    return byData(workspace.weatherCards.map((card) => card.farmId)) ?? current ?? completeFarm ?? firstFarm;
+  }
+  if (activeStage === "evidence") {
+    return byData(workspace.evidenceCards.map((card) => card.farmId)) ?? byData(workspace.weatherCards.map((card) => card.farmId)) ?? current ?? completeFarm ?? firstFarm;
+  }
+  if (activeStage === "crop_ranking") {
+    return byData(workspace.rankingCards.map((card) => card.farmId)) ?? byData(workspace.evidenceCards.map((card) => card.farmId)) ?? current ?? completeFarm ?? firstFarm;
+  }
+  if (["season_plan", "scheduler", "financials", "scenario"].includes(activeStage)) {
+    return byData(workspace.planCards.map((card) => card.farmId)) ?? byData(workspace.rankingCards.map((card) => card.farmId)) ?? current ?? completeFarm ?? firstFarm;
+  }
+  return current ?? completeFarm ?? firstFarm;
 }
 
 function actionsForFarm(
@@ -1836,6 +1869,13 @@ function actionsForFarm(
       workflowStage: "crop_ranking",
       ...base,
       reason: "Rank crops after weather and evidence are available.",
+    },
+    {
+      id: "run_season_plan",
+      label: "Generate season plan",
+      workflowStage: "full",
+      ...base,
+      reason: "Produce dated work, finance math, and scheduler tasks from the ranked plan.",
     },
   ];
 }

@@ -102,6 +102,7 @@ interface PlanRow {
   id: string;
   session_id: string | null;
   farm_id: string;
+  budget_bdt: string | number | null;
   crop: string;
   reasoning: string;
   expected_yield: string | number;
@@ -295,13 +296,15 @@ export class AgriSenseWorkspaceService {
     if (farmIds.length === 0) return [];
     const plans = await this.prisma!.$queryRaw<PlanRow[]>`
       SELECT
-        "id", "session_id", "farm_id", "crop", "reasoning",
-        "expected_yield"::text, "expected_revenue_bdt"::text, "total_cost_bdt"::text,
-        "net_profit_bdt"::text, "roi_pct"::text, "break_even_yield"::text,
-        "break_even_price_bdt_per_kg"::text, "created_at", "updated_at"
-      FROM "season_plans"
-      WHERE "farm_id" = ANY(${farmIds}::uuid[])
-      ORDER BY "updated_at" DESC
+        p."id", p."session_id", p."farm_id", f."budget_bdt"::text,
+        p."crop", p."reasoning",
+        p."expected_yield"::text, p."expected_revenue_bdt"::text, p."total_cost_bdt"::text,
+        p."net_profit_bdt"::text, p."roi_pct"::text, p."break_even_yield"::text,
+        p."break_even_price_bdt_per_kg"::text, p."created_at", p."updated_at"
+      FROM "season_plans" p
+      JOIN "farm_profiles" f ON f."id" = p."farm_id"
+      WHERE p."farm_id" = ANY(${farmIds}::uuid[])
+      ORDER BY p."updated_at" DESC
       LIMIT ${limit}
     `;
     if (plans.length === 0) return [];
@@ -476,17 +479,20 @@ function mapRanking(value: unknown): CropRecommendation | undefined {
 }
 
 function mapPlanCard(plan: PlanRow, items: PlanItemRow[]): WorkspacePlanCard {
+  const expectedYield = numberValue(plan.expected_yield) ?? 0;
+  const expectedRevenue = numberValue(plan.expected_revenue_bdt) ?? 0;
   const totalCost = numberValue(plan.total_cost_bdt) ?? 0;
+  const budget = numberValue(plan.budget_bdt) ?? 0;
   const financials = {
-    expectedYieldKg: numberValue(plan.expected_yield) ?? 0,
-    expectedRevenueBdt: numberValue(plan.expected_revenue_bdt) ?? 0,
+    expectedYieldKg: expectedYield,
+    expectedRevenueBdt: expectedRevenue,
     totalCostBdt: totalCost,
     netProfitBdt: numberValue(plan.net_profit_bdt) ?? 0,
     roiPct: numberValue(plan.roi_pct) ?? 0,
     breakEvenYieldKg: numberValue(plan.break_even_yield) ?? 0,
-    pricePerKgBdt: numberValue(plan.break_even_price_bdt_per_kg) ?? 0,
-    budgetBdt: 0,
-    budgetSurplusBdt: 0,
+    pricePerKgBdt: expectedYield > 0 ? Math.round((expectedRevenue / expectedYield) * 100) / 100 : numberValue(plan.break_even_price_bdt_per_kg) ?? 0,
+    budgetBdt: budget,
+    budgetSurplusBdt: budget - totalCost,
     costBreakdown: [{
       category: "contingency",
       label: "Saved total production cost",
@@ -550,6 +556,7 @@ function buildSuggestedActions(
   actions.push({ id: "run_weather", label: weather.some((card) => card.farmId === selected.farmId) ? "Refresh weather" : "Fetch weather", workflowStage: "weather", ...base, reason: "Profile is complete enough for live weather grounding." });
   actions.push({ id: "run_evidence", label: evidence.some((card) => card.farmId === selected.farmId || card.sessionId === selected.sessionId) ? "Refresh evidence" : "Retrieve evidence", workflowStage: "evidence", ...base, reason: "Use profile plus weather to retrieve agronomic evidence." });
   actions.push({ id: "continue_crop_ranking", label: "Continue crop ranking", workflowStage: "crop_ranking", ...base, reason: "Weather and evidence can feed crop suitability ranking." });
+  actions.push({ id: "run_season_plan", label: "Generate season plan", workflowStage: "full", ...base, reason: "Use the ranked crops to produce dated actions, finance math, and scheduler tasks." });
   return actions;
 }
 
