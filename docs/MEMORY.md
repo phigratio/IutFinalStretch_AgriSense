@@ -105,3 +105,10 @@
   setup guide, demo PHP, and pre-event repo; produced the six planning docs; flagged
   compliance rule → D1; proposed architecture/phases; this file seeded. Next action for team:
   execute Phase 0 (P0-1..P0-5) immediately.
+- 24Jul 11:15 — Claude session 1 (with A) — Planning docs pushed to repo main (ba71caa) so
+  all members can pull them. GitHub reports the repo was renamed →
+  github.com/phigratio/IutFinalStretch_AgriSense (local origin URL updated). ⚠ Note: this is
+  the pre-event repo — per D1/RULES §1 the SUBMISSION repo must be fresh with window-only
+  code; recommended: create it now (P0-1) and keep this repo for planning/reference. Also
+  verify naming with organizers: required pattern is `TeamNameAgriSense` (example shows no
+  underscore).
