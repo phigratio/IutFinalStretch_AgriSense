@@ -32,12 +32,20 @@ export default function Temporal() {
     setLoading("refresh");
     setError(null);
     try {
-      const [nextSchedules, nextAlerts, nextJobRuns] = await Promise.all([
-        listTemporalSchedules(),
+      const [scheduleResult, nextAlerts, nextJobRuns] = await Promise.all([
+        listTemporalSchedules().then((value) => ({ value })).catch((err: unknown) => ({ err })),
         listProactiveAlerts(20),
         listTemporalJobRuns(10),
       ]);
-      setSchedules(nextSchedules);
+      if ("value" in scheduleResult) {
+        setSchedules(scheduleResult.value);
+      } else {
+        setSchedules({
+          taskQueue: "agrisense-cron",
+          schedules: fallbackSchedules,
+        });
+        setError(scheduleResult.err instanceof Error ? `Schedule status unavailable: ${scheduleResult.err.message}` : "Schedule status unavailable");
+      }
       setAlerts(nextAlerts);
       setJobRuns(nextJobRuns);
     } catch (err) {
@@ -147,6 +155,30 @@ export default function Temporal() {
     </>
   );
 }
+
+const fallbackSchedules: TemporalSchedule[] = [
+  {
+    scheduleId: "agrisense-weather-alerts-daily-0700",
+    workflowType: "weatherAlertSweepWorkflow",
+    description: "Daily proactive weather-triggered advice for active farm plans.",
+    cronExpression: "0 1 * * *",
+    exists: false,
+  },
+  {
+    scheduleId: "agrisense-plan-reminders-daily-0630",
+    workflowType: "planTaskReminderSweepWorkflow",
+    description: "Daily reminders for fertilizer, irrigation, pest, and harvest tasks due soon.",
+    cronExpression: "30 0 * * *",
+    exists: false,
+  },
+  {
+    scheduleId: "agrisense-memory-refresh-every-6h",
+    workflowType: "memoryRefreshSweepWorkflow",
+    description: "Refresh semantic farm memory for returning-farmer demos.",
+    cronExpression: "0 */6 * * *",
+    exists: false,
+  },
+];
 
 function ProactiveStory({ alert, schedule }: { alert?: ProactiveAlert; schedule?: TemporalSchedule }) {
   const adjustment = alert?.rawEvidence?.adjustment;
