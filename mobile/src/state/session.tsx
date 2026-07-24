@@ -8,6 +8,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 
 import { sendMessage, type SendMessageInput } from '@/api/agrisense';
+import { diagnoseLeaf as postLeafDiagnosis, type LeafDiagnosisResult, type LeafImagePart } from '@/api/vision';
 import type {
   AgriSenseMessageResult,
   CropRecommendation,
@@ -27,6 +28,7 @@ export interface ChatBubble {
   text: string;
   trace?: TraceEvent[];
   missingFields?: string[];
+  diagnosis?: LeafDiagnosisResult;
 }
 
 interface SessionState {
@@ -53,6 +55,7 @@ interface SessionState {
     stageOrAcceptedOutcomeIds?: WorkflowStage | string[],
     acceptedOutcomeIds?: string[],
   ) => Promise<void>;
+  diagnoseLeaf: (image: LeafImagePart) => Promise<void>;
   ignoreOutcome: (id: string) => void;
   reset: () => void;
 }
@@ -155,6 +158,40 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [sessionId, farmerId, farmId, useMemory, ignoredOutcomeIds, language, sending],
   );
 
+  const diagnoseLeafPhoto = useCallback(
+    async (image: LeafImagePart) => {
+      if (sending) return;
+      setSending(true);
+      setBubbles((prev) => [...prev, { id: bubbleId(), role: 'farmer', text: '🍃 Sent a leaf photo for diagnosis.' }]);
+      try {
+        const diagnosis = await postLeafDiagnosis({
+          image,
+          farmId,
+          sessionId,
+          crop: seasonPlan?.crop,
+          locationText: profile?.locationText,
+          areaAcres: profile?.sizeAcres,
+          language,
+          save: true,
+          createAlerts: true,
+        });
+        if (diagnosis.trace?.length) setTrace((prev) => [...prev, ...diagnosis.trace]);
+        const summary = diagnosis.healthy
+          ? `No disease detected (${Math.round(diagnosis.confidence * 100)}% confidence). Keep monitoring the crop.`
+          : `${diagnosis.disease} on ${diagnosis.crop} — ${Math.round(diagnosis.confidence * 100)}% confidence, ${diagnosis.severity} severity.`;
+        setBubbles((prev) => [
+          ...prev,
+          { id: bubbleId(), role: 'agent', text: summary, trace: diagnosis.trace, diagnosis },
+        ]);
+      } catch (err) {
+        setBubbles((prev) => [...prev, { id: bubbleId(), role: 'error', text: (err as Error).message }]);
+      } finally {
+        setSending(false);
+      }
+    },
+    [sending, farmId, sessionId, seasonPlan, profile, language],
+  );
+
   const ignoreOutcome = useCallback((id: string) => {
     setIgnoredOutcomeIds((prev) => prev.includes(id) ? prev : [...prev, id]);
     setRememberedOutcomes((prev) => prev.filter((outcome) => outcome.id !== id));
@@ -198,6 +235,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setLanguage,
       setUseMemory,
       send,
+      diagnoseLeaf: diagnoseLeafPhoto,
       ignoreOutcome,
       reset,
     }),
@@ -219,6 +257,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       bubbles,
       sending,
       send,
+      diagnoseLeafPhoto,
       ignoreOutcome,
       reset,
     ],

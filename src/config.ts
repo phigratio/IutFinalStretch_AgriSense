@@ -18,6 +18,18 @@ export const config = {
   openaiChatModel: process.env.OPENAI_CHAT_MODEL ?? "gpt-4o",
   openaiIntakeModel: process.env.OPENAI_INTAKE_MODEL ?? "gpt-4.1-mini",
   openaiSttModel: process.env.OPENAI_STT_MODEL ?? "whisper-1",
+  // Leaf disease detection (Tier-2 T2-4). Primary = a HuggingFace image classifier;
+  // fallback = OpenAI vision (openaiVisionModel) when the classifier is unsure or
+  // doesn't cover the crop (e.g. rice). Both real calls; see src/vision/.
+  hfToken: process.env.HF_TOKEN,
+  hfInferenceBaseUrl:
+    process.env.HF_INFERENCE_BASE_URL ?? "https://router.huggingface.co/hf-inference/models",
+  hfPlantDiseaseModel:
+    process.env.HF_PLANT_DISEASE_MODEL ??
+    "linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification",
+  // Below this top-label probability (or on a crop mismatch), fall back to OpenAI vision.
+  visionConfidenceThreshold: Number(process.env.VISION_CONFIDENCE_THRESHOLD) || 0.6,
+  openaiVisionModel: process.env.OPENAI_VISION_MODEL ?? process.env.OPENAI_CHAT_MODEL ?? "gpt-4o",
   // Fixed global identity for the shared agronomy knowledge base in mem0.
   mem0KbUserId: process.env.MEM0_KB_USER_ID ?? "agrisense-kb",
   mem0KbAgentId: process.env.MEM0_KB_AGENT_ID ?? "agrisense-kb",

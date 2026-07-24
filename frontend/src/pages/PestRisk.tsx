@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import PageMeta from "../components/common/PageMeta.js";
 import FarmWeatherMap from "../components/common/FarmWeatherMap.js";
+import LeafDiagnosisCard from "../components/vision/LeafDiagnosisCard.js";
 import {
   assessPestRisk,
   listPestAssessments,
@@ -191,6 +192,15 @@ export default function PestRiskPage() {
               </div>
             )}
           </section>
+
+          <LeafDiagnosisCard
+            farmId={farmId}
+            planId={planId}
+            cropId={cropId}
+            cropLabel={cropOptions.find((crop) => crop.id === cropId)?.label}
+            locationText={locationText}
+            areaAcres={numeric(areaAcres)}
+          />
         </main>
 
         <aside className="space-y-4">
@@ -324,7 +334,8 @@ function SafetyPanel({ result }: { result: PestRiskResult | null }) {
         {result?.assessment.safetyNote ?? "Follow local DAE/SAAO advice and product label dosage before pesticide or fungicide use."}
       </p>
       <p className="mt-3 text-xs leading-5 text-gray-600 dark:text-gray-300">
-        v1 covers rice, potato, and tomato with weather-triggered rules. It predicts risk, not visual diagnosis.
+        Weather rules cover rice, potato, and tomato. The leaf-photo tool adds visual diagnosis:
+        a trained model first, then AI vision (shown with a caution) for anything it doesn't cover.
       </p>
     </section>
   );

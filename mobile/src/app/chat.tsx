@@ -26,6 +26,9 @@ import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession, type ChatBubble } from '@/state/session';
 import type { Language, MemoryOutcome } from '@/api/types';
+import * as ImagePicker from 'expo-image-picker';
+import { LeafResultCard } from '@/components/leaf-result';
+import type { LeafImagePart } from '@/api/vision';
 
 const FIELD_HINTS: Record<string, string> = {
   location: 'My farm is in ',
@@ -191,6 +194,7 @@ function Bubble({ item, onHint }: { item: ChatBubble; onHint: (text: string) => 
           {isError ? `⚠️ ${item.text}` : item.text}
         </ThemedText>
         <TraceChipRow trace={item.trace} />
+        {item.diagnosis && <LeafResultCard diagnosis={item.diagnosis} />}
         {item.missingFields && item.missingFields.length > 0 && (
           <View style={styles.hintRow}>
             {item.missingFields.map((field) => (
@@ -211,7 +215,7 @@ function Bubble({ item, onHint }: { item: ChatBubble; onHint: (text: string) => 
 }
 
 export default function ChatScreen() {
-  const { bubbles, sending, send } = useSession();
+  const { bubbles, sending, send, diagnoseLeaf } = useSession();
   const theme = useTheme();
   const [draft, setDraft] = useState('');
   const listRef = useRef<FlatList<ChatBubble>>(null);
@@ -221,6 +225,19 @@ export default function ChatScreen() {
     setDraft('');
     void send(text);
   };
+
+  async function pickAndDiagnose() {
+    if (sending) return;
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return;
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
+    if (result.canceled || result.assets.length === 0) return;
+    const asset = result.assets[0];
+    const image: LeafImagePart = (asset as { file?: File }).file
+      ? (asset as { file: File }).file
+      : { uri: asset.uri, name: asset.fileName ?? 'leaf.jpg', type: asset.mimeType ?? 'image/jpeg' };
+    await diagnoseLeaf(image);
+  }
 
   const canSend = !sending && draft.trim() !== '';
 
@@ -265,6 +282,17 @@ export default function ChatScreen() {
               returnKeyType="send"
               multiline
             />
+            <Pressable
+              onPress={() => void pickAndDiagnose()}
+              disabled={sending}
+              accessibilityLabel="Diagnose a leaf photo"
+              style={[
+                styles.leafBtn,
+                { borderColor: theme.border, backgroundColor: theme.backgroundElement },
+                sending && styles.sendBtnDisabled,
+              ]}>
+              <ThemedText type="smallBold">🍃</ThemedText>
+            </Pressable>
             <Pressable
               onPress={submit}
               disabled={!canSend}
@@ -409,4 +437,12 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { opacity: 0.5 },
   sendLabel: { color: '#ffffff' },
+  leafBtn: {
+    borderWidth: 1,
+    borderRadius: Spacing.two + Spacing.half,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two + Spacing.half,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 });
