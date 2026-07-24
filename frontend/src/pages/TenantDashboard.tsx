@@ -3,6 +3,7 @@ import { fulfillAssistRequest, listAssistRequests, type AssistRequest, type Onbo
 import PageMeta from "../components/common/PageMeta.js";
 import LocationAutofill, { EditableDistrictSelect } from "../components/onboarding/LocationAutofill.js";
 import TenantKnowledgeUploader from "../components/tenant/TenantKnowledgeUploader.js";
+import TenantKnowledgeSearch from "../components/tenant/TenantKnowledgeSearch.js";
 
 const SOILS = [{ v: "sandy", bn: "বেলে" }, { v: "loam", bn: "দোআঁশ" }, { v: "clay", bn: "এঁটেল" }, { v: "silt", bn: "পলি" }];
 const WATERS = [{ v: "rainfed", bn: "বৃষ্টিনির্ভর" }, { v: "limited_irrigation", bn: "সীমিত সেচ" }, { v: "reliable_irrigation", bn: "নিশ্চিত সেচ" }];
@@ -37,6 +38,8 @@ export default function TenantDashboard() {
       </section>
 
       {error ? <div className="portal-alert portal-alert--error">{error}</div> : null}
+
+      <TenantKnowledgeSearch />
 
       <TenantKnowledgeUploader />
 
