@@ -10,7 +10,8 @@
  * request/responses. Consumed by: routes/payments.ts and (later) the agent's
  * checkout_order tool — both call this same function.
  */
-import { bdapps as defaultBdapps, isSuccess, toTelAddress, type BdappsApi } from "../bdapps/index.js";
+import { bdapps as defaultBdapps, isSuccess, type BdappsApi } from "../bdapps/index.js";
+import { resolveSubscriberAddress } from "../bdapps/subscriberStore.js";
 import { getDefaultAgriSenseStore, type AgriSenseStore } from "../agrisense/agrisenseStore.js";
 import { getDefaultPaymentStore, type PaymentStore } from "./store.js";
 
@@ -88,7 +89,9 @@ export async function checkout(
   input: CheckoutInput,
   deps: CheckoutDeps = defaultDeps(),
 ): Promise<CheckoutResult> {
-  const tel = toTelAddress(input.mobile);
+  // Resolve to the masked subscriberId when we captured one at OTP verify —
+  // bdapps rejects the raw number on this app (E1951). See subscriberStore.
+  const tel = resolveSubscriberAddress(input.mobile);
   const payment = await deps.payments.createPayment({
     mobile: tel,
     amountBdt: input.amountBdt,
