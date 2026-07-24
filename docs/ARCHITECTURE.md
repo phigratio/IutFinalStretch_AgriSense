@@ -12,8 +12,9 @@
    and explains. This wins "Accuracy & practicality" (20 pts) and makes math inspectable.
 2. **Everything the agent does is a trace event.** No hidden calls. The trace is a product
    feature (Tier-0 #8), not a log.
-3. **One process, zero infra.** Single Node backend + SQLite file + local embeddings.
-   Nothing to orchestrate at the venue; `npm run dev` and it's alive. Docker optional, never required.
+3. **Few moving parts.** Node backend + Postgres/pgvector + the mem0 stack (mem0-api + Neo4j),
+   all via `docker-compose up`. mem0 owns embeddings, vector search, and graph memory so the app
+   never runs its own embedding model.
 4. **Every risky dependency has a fallback behind a flag.** LLM provider chain, weather cache,
    `MOCK_BDAPPS`. Demo never dies on stage.
 5. **Contract-first collaboration.** All cross-member boundaries are typed in `shared/types.ts`.
@@ -44,16 +45,17 @@ flowchart LR
         Pest[PestRisk rules]
         Alert[AlertEngine watcher]
       end
-      RAG[RAG retriever<br/>MiniLM local embeddings + BM25-lite]
+      RAG[RAG retriever<br/>mem0 client → mem0-api]
       BdappsC[bdapps client<br/>SMS · CaaS · OTP]
       Weather[Open-Meteo client + cache]
     end
 
-    subgraph Storage [SQLite better-sqlite3]
-      DB[(farms · sessions · messages<br/>plans · traces · orders<br/>kb_chunks+vectors · alerts · weather_cache)]
+    subgraph Storage [Postgres + pgvector]
+      DB[(farms · sessions · messages<br/>plans · traces · orders<br/>alerts · weather_cache)]
+      Mem0[(mem0: KB + memory<br/>Neo4j graph + pgvector)]
     end
 
-    LLM[LLM adapter<br/>Gemini free → Groq → Anthropic]
+    LLM[LLM adapter<br/>OpenAI gpt-4o]
 
     Chat -->|POST /api/chat| API --> Loop
     Loop <--> LLM
@@ -78,10 +80,10 @@ flowchart LR
 │   ├── config.ts          # env parsing, feature flags (all FLAG_* and MOCK_* here)
 │   ├── db/                # schema.sql, db.ts (better-sqlite3 init + DAOs)      [owner C]
 │   ├── agent/             # loop.ts, context.ts, prompts.ts, toolRegistry.ts    [owner A]
-│   ├── llm/               # provider.ts (interface), gemini.ts, groq.ts, anthropic.ts, rotation [A]
+│   ├── llm/               # provider.ts (interface), openai.ts (agent chat only) [A]
 │   ├── tools/             # one file per tool; thin wrappers binding engines/clients to schemas [A wires, B/C implement behind]
 │   ├── engines/           # cropScore.ts, seasonPlanner.ts, finance.ts, fertilizer.ts, pest.ts, alerts.ts  [owner B]
-│   ├── rag/               # ingest.ts (CLI), embed.ts (MiniLM), retrieve.ts (hybrid)           [owner B]
+│   ├── rag/               # mem0Client.ts (mem0-api HTTP), mem0Store.ts (pgvector), ingest.ts (CLI) [owner B]
 │   ├── integrations/
 │   │   ├── openMeteo.ts   # geocode + forecast + SQLite cache                   [owner B]
 │   │   └── bdapps/        # client.ts, sms.ts, caas.ts, otp.ts, listeners.ts, mock.ts [owner C]
@@ -145,7 +147,7 @@ last plan status + previous summary. Greeting template proves it in the demo.
 |---|---|---|
 | `geocode_location(name)` | Open-Meteo geocoding | B |
 | `get_weather(lat,lon,days)` | Open-Meteo forecast + cache | B |
-| `query_knowledge_base(query, cropFilter?)` | RAG hybrid retrieve | B |
+| `query_knowledge_base(query, cropFilter?)` | mem0 `search` (semantic + graph) | B |
 | `rank_crops(profile, weatherSummary)` | CropScore engine | B |
 | `build_season_plan(crop, sowDate, profile)` | SeasonPlanner | B |
 | `compute_financials(crop, area, inputs…)` | FinanceEngine (pure) | B |
@@ -190,24 +192,25 @@ the "working tests where they matter" for the 8-pt technical row).
 
 | Need | Choice | Notes |
 |---|---|---|
-| LLM | **Gemini 2.5 Flash free tier** (AI Studio key) | function calling + streaming + vision (enables T2-4). Each teammate makes a key; adapter rotates on 429. |
-| LLM fallback | **Groq free tier** (llama-3.3-70b) | same `LLMProvider` interface; env `LLM_PROVIDER` + auto-failover on repeated errors. |
-| LLM fallback 2 | Anthropic (only if a funded key appears) | adapter stub ready, not required. |
-| Embeddings | **Transformers.js `all-MiniLM-L6-v2` locally** | no key, no rate limit, works offline; vectors stored as BLOBs in SQLite; brute-force cosine over a few-thousand chunks is milliseconds. |
+| LLM (agent) | **OpenAI `gpt-4o`** (funded `OPENAI_API_KEY`) | function calling + streaming + vision (enables T2-4). `gpt-4o-mini` as a cheap swap via `OPENAI_CHAT_MODEL`. Single provider — no key rotation. |
+| RAG / vectors / memory | **mem0** (self-hosted `mem0-api` + Neo4j graph + pgvector) | already set up in `docker-compose.yml` + `deploy/mem0/`. App integrates via `src/rag/mem0Client.ts` (`add` to ingest, `search` to retrieve). mem0 embeds with OpenAI `text-embedding-3-small` (1536-dim, matches `vector(1536)`/`RAG_EMBEDDING_DIMENSIONS`) internally — the app never calls the embeddings API directly. |
 | Weather | **Open-Meteo** forecast + geocoding | free, keyless, 16-day daily + hourly; every response cached in `weather_cache` (resilience + demo replay). |
 | SMS / payment | **bdapps sandbox** (`developer.bdapps.com`) | credentials from provisioning (see BDApps-Service-Setup). `MOCK_BDAPPS=1` for dev/offline only — declared in README. |
 | Market prices | Seeded JSON from public DAM bulletins (dated) | declared seeded; optional live scrape is a flagged stretch, never on the demo path. |
 
-**LLM adapter interface** (in `server/llm/provider.ts`):
-`chat(messages, tools, opts) → {text?, toolCalls?, usage}` with streaming callback; provider
-implementations translate tool schemas; rotation wrapper handles key cycling, retry/backoff,
-and provider failover. Nothing outside `server/llm/` knows which provider is live.
+**LLM adapter interface** (in `src/llm/provider.ts`):
+`chat(messages, tools, opts) → {text?, toolCalls?, usage}` with streaming callback, plus
+`embed(texts) → number[][]` for the RAG store. The OpenAI implementation translates tool schemas
+and handles retry/backoff on 429/5xx. Single provider, so no rotation/failover layer; nothing
+outside `src/llm/` knows which model is live.
 
 ## 7. Data & contracts
 
-SQLite tables: `farms`, `sessions`, `messages`, `summaries`, `plans`, `plan_tasks`,
-`trace_events`, `kb_docs`, `kb_chunks(+vector blob)`, `weather_cache`, `market_prices`,
-`suppliers`, `orders`, `payments`, `alerts`. Schema in `server/db/schema.sql` (owner C, reviewed by A).
+App state (Postgres via Prisma, `prisma/schema.prisma`): `farms`, `sessions`, `messages`,
+`summaries`, `plans`, `plan_tasks`, `trace_events` (`agent_tool_calls`), `weather_cache`
+(`weather_snapshots`), `market_prices`, `suppliers`, `orders`, `payments`, `alerts`.
+**KB chunks + conversational memory + all vectors live in mem0** (Neo4j graph + pgvector),
+reached through `src/rag/mem0Client.ts` — not app-owned SQL tables.
 
 Core shared types (full field lists in DESIGN.md §6; file `shared/types.ts` is the single
 source of truth): `FarmProfile`, `WeatherDaily`, `CropRecommendation`, `SeasonPlan`,
@@ -229,7 +232,7 @@ source of truth): `FarmProfile`, `WeatherDaily`, `CropRecommendation`, `SeasonPl
 
 | Failure | Mitigation |
 |---|---|
-| LLM 429/outage | key rotation → provider failover → user-visible "retrying" state; short answers cached per session |
+| LLM 429/outage | retry/backoff on the OpenAI call → user-visible "retrying" state; short answers cached per session; `gpt-4o-mini` swap via env if `gpt-4o` is rate-limited |
 | Open-Meteo down / venue wifi flake | last cached forecast for that lat/lon served with `stale: true` flag; agent says "using this morning's forecast, fetched HH:MM" (still real data, honestly labeled) |
 | bdapps E1303 (IP not whitelisted) | re-check venue public IP at every network change; documented fix; `MOCK_BDAPPS` only if sandbox is down during dev — never silently in demo |
 | bdapps E1326 (low balance) | demo script uses small amounts (৳5–20); low-balance path is itself a demoable branch ("insufficient balance" advice) |
@@ -238,9 +241,10 @@ source of truth): `FarmProfile`, `WeatherDaily`, `CropRecommendation`, `SeasonPl
 
 ## 9. Env & flags (all read in `server/config.ts`, documented in `.env.example`)
 
-`LLM_PROVIDER`, `GEMINI_API_KEYS` (comma-list), `GROQ_API_KEY`, `ANTHROPIC_API_KEY?`,
-`BDAPPS_APP_ID`, `BDAPPS_PASSWORD`, `MOCK_BDAPPS`, `FLAG_ALERTS`, `FLAG_MARKETPLACE`,
-`FLAG_BENGALI`, `FLAG_VISION`, `PORT`, `DB_PATH`.
+`OPENAI_API_KEY` (agent chat + mem0's embedder), `OPENAI_CHAT_MODEL` (default `gpt-4o`),
+`MEM0_API_URL`, `MEM0_API_KEY`, `MEM0_DEFAULT_EMBEDDER_MODEL` (default `text-embedding-3-small`),
+`RAG_EMBEDDING_DIMENSIONS` (1536), `DATABASE_URL`, `BDAPPS_APP_ID`, `BDAPPS_PASSWORD`,
+`MOCK_BDAPPS`, `FLAG_ALERTS`, `FLAG_MARKETPLACE`, `FLAG_BENGALI`, `FLAG_VISION`, `PORT`.
 
 ## 10. What we deliberately did NOT carry over from the pre-event experiment repo
 

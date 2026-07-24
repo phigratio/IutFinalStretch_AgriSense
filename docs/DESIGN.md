@@ -144,8 +144,9 @@ soil" (unit + vague soil) · "budget nai bollei chole" · "last year potato lost
 
 **Two representations, both built during the event:**
 - **Chunks for RAG:** markdown-ified sections, ~500 tokens, metadata `{docId, section, crop,
-  topic}`, MiniLM vectors in SQLite. Hybrid retrieve = cosine top-20 ∪ keyword-boost → rerank
-  by (0.7·cos + 0.3·bm25lite + crop-filter bonus) → top-5 with `KbRef`s.
+  topic}`, pushed to **mem0** (`mem0Client.add`). mem0 embeds (OpenAI `text-embedding-3-small`,
+  1536-dim) and stores in its Neo4j graph + pgvector; retrieval is `mem0Client.search(query,
+  filters)` → top chunks with `KbRef`s (semantic + graph, mem0 owns the ranking).
 - **Structured tables for engines** (`server/engines/data/*.ts`): crop table (seasons, soils,
   stage durations, water class, seed rate, baseline yield & costs), BARC dose table, Kc table,
   pest rules. Each row carries a `source: KbRef` so even engine outputs cite documents.

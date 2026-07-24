@@ -14,7 +14,7 @@
 |----|-------|------|-----------|
 | P0-1 | ALL | Pick team name → create fresh GitHub repo `<TeamName>AgriSense`; add members; correct `user.name/email` on all machines; `.gitignore` (+`.env`) in first commit; copy `docs/` in | repo exists, 3 clones work |
 | P0-2 | A | Scaffold: `npm init` server (Express 5 + tsx + TS strict + vitest + zod), `npm create vite` → `web/`, folder skeleton per ARCHITECTURE §3, `shared/types.ts` v1 with core contracts, `.env.example`, Prettier | `npm run dev` boots both; smoke route answers |
-| P0-3 | B | Gemini keys ×3 + Groq key created & tested with a curl; start KB source hunt: download BARC Fertilizer Recommendation Guide, DAE/BRRI/BARI crop guides, FAO crop-water tables, crop calendar, recent DAM price bulletin into `kb-sources/` with `SOURCES.md` (url, date) | keys respond; ≥6 quality source docs saved |
+| P0-3 | B | **OpenAI key** created & tested with a curl (`gpt-4o` chat); **mem0 stack up** (`docker-compose up mem0-api mem0-neo4j`, smoke `add`+`search` via `mem0Client`); start KB source hunt: download BARC Fertilizer Recommendation Guide, DAE/BRRI/BARI crop guides, FAO crop-water tables, crop calendar, recent DAM price bulletin into `kb-sources/` with `SOURCES.md` (url, date) | chat key responds; mem0 add/search round-trips; ≥6 quality source docs saved |
 | P0-4 | C | bdapps provisioning (per BDApps-Service-Setup): Pro app, enable SMS+CAAS(+Subscription), venue public IP in Allowed Hosts, listener URLs (ngrok placeholder ok), capture `APP_ID`+password into `.env`; verify with one real `POST /sms/send` or balance query | an S1000 response seen (or exact blocker documented + mock path agreed) |
 | P0-5 | ALL | 10-min contract review of `shared/types.ts` + `schema.sql` v1 together | all three agree; `contract:` commit on main |
 
@@ -26,10 +26,10 @@ Goal: one thin thread through everything: chat → agent loop → 2 real tools �
 
 | ID | Owner | Task |
 |----|-------|------|
-| P1-A1 | A | LLM adapter (`provider.ts` + Gemini impl + key rotation + Groq failover) with function calling + streaming |
+| P1-A1 | A | LLM adapter (`provider.ts` + OpenAI impl: chat `gpt-4o`, function calling + streaming). Embeddings/retrieval are mem0's job, not this adapter — see P1-B2 |
 | P1-A2 | A | Agent loop v1 (plan→act→observe, MAX_STEPS, zod arg validation, trace event emission), system prompt v1 (persona + "never invent numbers" + ask-only-gaps) |
 | P1-B1 | B | `openMeteo.ts`: geocode + 16-day forecast + SQLite cache; tools `geocode_location`, `get_weather` |
-| P1-B2 | B | KB ingest v1: markdown-ify 2 best sources, chunk (~500 tok, metadata `{doc,section,crop}`), MiniLM embeddings via Transformers.js into SQLite; `query_knowledge_base` tool with hybrid (cosine + keyword) retrieve |
+| P1-B2 | B | KB ingest v1: markdown-ify 2 best sources, chunk (~500 tok, metadata `{doc,section,crop}`), push into **mem0** via `mem0Client.add` (mem0 embeds + stores in Neo4j graph + pgvector); `query_knowledge_base` tool wraps `mem0Client.search` |
 | P1-C1 | C | SQLite init + DAOs (`farms`,`sessions`,`messages`,`trace_events`); `POST /api/chat` SSE route streaming `ChatEvent` |
 | P1-C2 | C | UI v1: chat pane + collapsible Agent Trace side panel rendering `plan`/`trace` events live; farm profile card |
 
@@ -84,7 +84,7 @@ Priority order (feature-flagged, each demoed to one other member before merge):
 
 In order: **T2-1 marketplace ranking UI** (C — mostly done via P3), **T2-2 price intelligence**
 sell/store/wait heuristic (B), **T2-3 Bengali toggle** (A — prompt + UI toggle + SMS encoding 16),
-**T2-4 leaf photo via Gemini vision** (A, `FLAG_VISION`, first to cut).
+**T2-4 leaf photo via OpenAI `gpt-4o` vision** (A, `FLAG_VISION`, first to cut).
 
 ## Phase 6 — Hardening & submission package (06:00 → 08:00)
 

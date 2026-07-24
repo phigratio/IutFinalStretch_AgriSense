@@ -38,13 +38,18 @@
   copying** · rules ban pre-built code, DQ risk outweighs any speedup · rejected: porting it.
 - D2 — **Custom agent loop** (plan→act→observe, zod tools, trace bus) over LangChain/framework
   · full control of trace + gap-filling + judges' "not a wrapper" Q&A · rejected: heavy framework.
-- D3 — **LLM = Gemini 2.5 Flash free tier, 3 rotating keys; Groq llama-3.3-70b failover**
-  behind one adapter · no paid APIs available; function calling + vision needed · rejected:
-  Anthropic API (no funded key), Ollama local (too slow on our laptops).
+- D3 — **LLM = OpenAI `gpt-4o`** (funded team `OPENAI_API_KEY`) behind one adapter · function
+  calling + streaming + vision (covers T2-4) in one provider, simpler than a rotation/failover
+  chain · `gpt-4o-mini` env swap if rate-limited · rejected: Gemini/Groq free tiers (superseded
+  once a funded OpenAI key was available), Ollama local (too slow on our laptops).
 - D4 — **Weather = Open-Meteo** (keyless, 16-day, geocoding) with SQLite cache · free + reliable
   + real API for rubric · rejected: OpenWeatherMap (key + quota friction).
-- D5 — **Embeddings local via Transformers.js MiniLM; vectors in SQLite; hybrid retrieve** ·
-  zero cost/rate-limits, venue-wifi-proof RAG · rejected: hosted vector DBs, API embeddings.
+- D5 — **RAG / vectors / memory = mem0** (already set up: `mem0-api` + Neo4j graph + pgvector;
+  embeds with OpenAI `text-embedding-3-small`, 1536-dim, matching the `vector(1536)` schema).
+  App integrates via `src/rag/mem0Client.ts` (`add`/`search`); ingest KB ahead of demo so
+  retrieval is offline-safe · one memory/RAG layer for KB + conversation, graph + semantic recall
+  for free · rejected: app-side embedding calls, local Transformers.js MiniLM (384-dim,
+  mismatched), custom hybrid retriever, hosted vector DBs.
 - D6 — **SQLite (better-sqlite3) single file** for ALL state incl. traces & KB · zero infra at
   venue, cross-session memory for free · rejected: Postgres+Prisma (migration friction).
 - D7 — **All math in deterministic TS engines; LLM never computes numbers** · accuracy rubric
@@ -60,8 +65,9 @@
 
 ## 4. Environment & credentials status (update as they land)
 
-- [ ] Gemini keys ×3 (owner: B) — tested with curl?
-- [ ] Groq key (B)
+- [ ] OpenAI key in `.env` as `OPENAI_API_KEY` (owner: B) — `gpt-4o` chat tested with curl?
+      (same key feeds mem0's embedder)
+- [ ] mem0 stack up (owner: B) — `mem0-api` + `mem0-neo4j` running; `mem0Client` add/search round-trips?
 - [ ] bdapps Pro app provisioned: APP_ID ☐ · password in .env ☐ · venue public IP whitelisted ☐
       (E1303 = re-check IP) · listener URLs set (ngrok) ☐ · first S1000 seen? ☐
 - [ ] Repo created + 3 clones working
@@ -82,7 +88,8 @@
 
 **BLOCKED / RISKS WATCHLIST**
 - bdapps approval latency / IP whitelist — started at P0 deliberately; escalate to mentors if stuck by 13:00.
-- Gemini free-tier RPM during rehearsals — mitigation: key rotation, terse prompts, cached turns.
+- OpenAI rate limits / spend during rehearsals — mitigation: terse prompts, cached turns,
+  `gpt-4o-mini` swap via `OPENAI_CHAT_MODEL`, watch the billing dashboard.
 
 ## 6. Checkpoint results (fill at CP time — honest pass/fail + what was cut)
 
@@ -95,7 +102,9 @@
 
 - Team name? (blocks repo creation — decide by 12:00)
 - Does the venue share a static public IP for bdapps whitelisting, or NAT that changes? (C asks organizers)
-- Is a funded Anthropic/OpenAI key available from any member? (would slot into adapter as D3 fallback-2)
+- ~~Is a funded Anthropic/OpenAI key available?~~ **Resolved:** funded OpenAI key held by the
+  team → sole LLM provider (D3): `gpt-4o` for agent chat; RAG/memory/embeddings via mem0 (D5),
+  which uses the same OpenAI key for `text-embedding-3-small` under the hood.
 - bdapps TAP doc (dev.bdapps.com/API_Documentation/bdapps_tap_api.html) — confirm CaaS flow
   matches DGD v1.1.3 shapes (C, during P3-C2).
 
