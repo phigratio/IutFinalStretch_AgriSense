@@ -1,9 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext.js";
 import { SidebarProvider } from "./context/SidebarContext.js";
 import { AuthProvider } from "./context/AuthContext.js";
+import { LanguageProvider } from "./context/LanguageContext.js";
 import ProtectedRoute from "./components/common/ProtectedRoute.js";
 import AppLayout from "./layout/AppLayout.js";
 import Dashboard from "./pages/Dashboard.js";
@@ -38,9 +39,11 @@ createRoot(rootEl).render(
   <StrictMode>
     <ThemeProvider>
       <BrowserRouter>
-        <AuthProvider>
-          <SidebarProvider>
-            <Routes>
+        <LanguageProvider>
+          <AuthProvider>
+            <SidebarProvider>
+              <Routes>
+              <Route path="/dashboard" element={<Navigate to="/admin/dashboard" replace />} />
               {/* Everything inside the panel requires a valid session. */}
               <Route element={<ProtectedRoute />}>
                 <Route index path="/" element={<DashboardLanding />} />
@@ -61,7 +64,6 @@ createRoot(rootEl).render(
                 <Route element={<RoleRoute allow={["admin"]} redirectTo="/" />}>
                 <Route element={<AppLayout />}>
                   <Route path="/admin/dashboard" element={<Dashboard />} />
-                  <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/tenant-requests" element={<TenantRequests />} />
                   <Route path="/admin/onboarding" element={<TenantRequests />} />
                   <Route path="/users" element={<Users />} />
@@ -81,9 +83,10 @@ createRoot(rootEl).render(
               </Route>
               <Route path="/signin" element={<SignIn />} />
               <Route path="*" element={<NotFound />} />
-            </Routes>
-          </SidebarProvider>
-        </AuthProvider>
+              </Routes>
+            </SidebarProvider>
+          </AuthProvider>
+        </LanguageProvider>
       </BrowserRouter>
     </ThemeProvider>
   </StrictMode>,

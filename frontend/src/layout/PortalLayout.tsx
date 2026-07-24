@@ -1,5 +1,6 @@
 import { Link, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.js";
+import LanguageToggle from "../components/common/LanguageToggle.js";
 
 export default function PortalLayout() {
   const { user, logout } = useAuth();
@@ -13,6 +14,7 @@ export default function PortalLayout() {
             <span aria-hidden="true">🌾</span> AgriSense
           </Link>
           <div className="flex min-w-0 items-center gap-3">
+            <LanguageToggle compact />
             <div className="hidden min-w-0 text-right sm:block">
               <p className="truncate text-sm font-semibold text-gray-800 dark:text-white/90">{user?.name}</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">{user?.role === "tenant" ? "অনুমোদিত টেন্যান্ট" : "কৃষক অ্যাকাউন্ট"}</p>

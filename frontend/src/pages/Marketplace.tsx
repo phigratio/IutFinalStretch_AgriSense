@@ -1,8 +1,21 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import PageMeta from "../components/common/PageMeta.js";
-import { getMarketplaceIntelligence, type MarketplaceIntelligenceResult, type SupplierOffer } from "../api/marketplace.js";
+import {
+  getMarketplaceIntelligence,
+  getMarketplaceRun,
+  listMarketplaceRuns,
+  type MarketplaceIntelligenceResult,
+  type MarketplaceRunRecord,
+  type SupplierOffer,
+} from "../api/marketplace.js";
+import type { AgriSenseMessageResult, SeasonPlanTask } from "../api/agrisense.js";
+import { checkoutPayment, type CheckoutResult } from "../api/payments.js";
 import { BoxIcon, CreditCardIcon, ListIcon, SearchIcon } from "../icons/index.js";
+
+/** Sandbox CaaS caps a debit at ৳100, so a large order pays a booking deposit. */
+const DEPOSIT_CAP = 100;
 
 const presets = [
   { label: "Urea in Gazipur", itemName: "Urea fertilizer", quantity: 120, unit: "kg", district: "Gazipur", crop: "rice" },
@@ -12,32 +25,85 @@ const presets = [
 ];
 
 export default function Marketplace() {
-  const [itemName, setItemName] = useState("Urea fertilizer");
-  const [quantity, setQuantity] = useState(120);
-  const [unit, setUnit] = useState("kg");
-  const [district, setDistrict] = useState("Gazipur");
-  const [crop, setCrop] = useState("rice");
+  const [params] = useSearchParams();
+  const planSuggestions = useMemo(readSeasonPlanSuggestions, []);
+  const [itemName, setItemName] = useState(params.get("itemName") ?? planSuggestions[0]?.itemName ?? "Urea fertilizer");
+  const [quantity, setQuantity] = useState(Number(params.get("quantity") ?? planSuggestions[0]?.quantity ?? 120));
+  const [unit, setUnit] = useState(params.get("unit") ?? planSuggestions[0]?.unit ?? "kg");
+  const [district, setDistrict] = useState(params.get("district") ?? "Gazipur");
+  const [crop, setCrop] = useState(params.get("crop") ?? planSuggestions[0]?.crop ?? "rice");
+  const [payMobile, setPayMobile] = useState("01812345678");
   const [result, setResult] = useState<MarketplaceIntelligenceResult | null>(null);
+  const [runs, setRuns] = useState<MarketplaceRunRecord[]>([]);
+  const [loadingRunId, setLoadingRunId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    void refreshRuns();
+  }, []);
+
+  async function refreshRuns() {
+    try {
+      const nextRuns = await listMarketplaceRuns({ limit: 12 });
+      setRuns(nextRuns);
+      if (!result && nextRuns[0]) setResult(nextRuns[0]);
+    } catch {
+      setRuns([]);
+    }
+  }
+
   async function runIntelligence(event?: FormEvent) {
     event?.preventDefault();
+    await runNeed({ itemName, quantity, unit, district, crop });
+  }
+
+  async function runNeed(need: MarketplaceNeedSuggestion) {
     setLoading(true);
     setError(null);
     try {
       const response = await getMarketplaceIntelligence({
-        itemName,
-        quantity,
-        unit,
-        district,
-        crop,
+        itemName: need.itemName,
+        quantity: need.quantity,
+        unit: need.unit,
+        district: need.district ?? district,
+        crop: need.crop,
       });
       setResult(response);
+      await refreshRuns();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to run marketplace intelligence");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function openRun(id: string) {
+    setError(null);
+    setLoadingRunId(id);
+    try {
+      const run = await getMarketplaceRun(id);
+      setResult(run);
+      setItemName(run.needs.itemName);
+      setQuantity(run.needs.quantity);
+      setUnit(run.needs.unit);
+      setDistrict(run.needs.district ?? district);
+      setCrop(run.priceIntelligence.crop);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load saved comparison");
+    } finally {
+      setLoadingRunId(null);
+    }
+  }
+
+  function applyNeed(need: MarketplaceNeedSuggestion, run = false) {
+    setItemName(need.itemName);
+    setQuantity(need.quantity);
+    setUnit(need.unit);
+    setCrop(need.crop);
+    if (need.district) setDistrict(need.district);
+    if (run) {
+      void runNeed(need);
     }
   }
 
@@ -47,17 +113,27 @@ export default function Marketplace() {
     <>
       <PageMeta
         title="Marketplace Intelligence · ICT Fest"
-        description="Seeded supplier comparison and market price recommendation agent"
+        description="Supplier comparison and market price recommendation agent"
       />
 
       <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Marketplace Intelligence</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Seeded supplier ranking, market price history, sell/store/wait reasoning, mem0 memory, and trace.
+            Supplier ranking, market price history, sell/store/wait reasoning, mem0 memory, and trace.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {planSuggestions.slice(0, 3).map((suggestion) => (
+            <button
+              key={`${suggestion.itemName}-${suggestion.quantity}-${suggestion.unit}`}
+              type="button"
+              onClick={() => applyNeed(suggestion)}
+              className="rounded-lg border border-success-200 bg-success-50 px-3 py-2 text-xs font-medium text-success-700 hover:bg-success-100 dark:border-success-500/20 dark:bg-success-500/10 dark:text-success-300"
+            >
+              Plan: {suggestion.itemName}
+            </button>
+          ))}
           {presets.map((preset) => (
             <button
               key={preset.label}
@@ -111,6 +187,9 @@ export default function Marketplace() {
                 <option value="mustard">Mustard</option>
               </select>
             </Field>
+            <Field label="Mobile (for supplier payment)">
+              <input value={payMobile} onChange={(event) => setPayMobile(event.target.value)} placeholder="01XXXXXXXXX" className={inputClass} />
+            </Field>
             <button
               type="submit"
               disabled={loading}
@@ -127,9 +206,12 @@ export default function Marketplace() {
               <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">{result.agentMessage}</p>
             </div>
           )}
+
+          <SeasonPlanNeedsPanel suggestions={planSuggestions} onApply={applyNeed} />
         </section>
 
         <main className="space-y-4">
+          <PreviousRunsPanel runs={runs} activeId={result?.id} loadingRunId={loadingRunId} onOpen={(id) => void openRun(id)} />
           <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -137,17 +219,17 @@ export default function Marketplace() {
                 <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Supplier Comparison</h2>
               </div>
               <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-500">
-                {result?.seeded ? "Seeded catalog" : "Not run"}
+                {result?.seeded ? "Catalog ready" : "Not run"}
               </span>
             </div>
             {!result ? (
               <EmptyState text="Run the marketplace agent to rank suppliers by price, delivery time, distance, and rating." />
             ) : result.supplierOffers.length === 0 ? (
-              <EmptyState text="No seeded supplier has enough matching stock for this need." />
+              <EmptyState text="No supplier has enough matching stock for this need." />
             ) : (
               <div className="mt-4 space-y-3">
                 {result.supplierOffers.map((offer, index) => (
-                  <SupplierCard key={offer.supplierId} offer={offer} rank={index + 1} best={offer.supplierId === bestOffer?.supplierId} />
+                  <SupplierCard key={offer.supplierId} offer={offer} rank={index + 1} best={offer.supplierId === bestOffer?.supplierId} mobile={payMobile} />
                 ))}
               </div>
             )}
@@ -159,7 +241,7 @@ export default function Marketplace() {
               <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Market Price Intelligence</h2>
             </div>
             {!result ? (
-              <EmptyState text="Current and historical seeded prices appear here after a run." />
+              <EmptyState text="Current and historical market prices appear here after a run." />
             ) : (
               <PricePanel result={result} />
             )}
@@ -175,7 +257,137 @@ export default function Marketplace() {
   );
 }
 
-function SupplierCard({ offer, rank, best }: { offer: SupplierOffer; rank: number; best: boolean }) {
+interface MarketplaceNeedSuggestion {
+  itemName: string;
+  quantity: number;
+  unit: string;
+  district?: string;
+  crop: string;
+  source?: string;
+}
+
+function PreviousRunsPanel({
+  runs,
+  activeId,
+  loadingRunId,
+  onOpen,
+}: {
+  runs: MarketplaceRunRecord[];
+  activeId?: string;
+  loadingRunId: string | null;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <ListIcon width={18} height={18} />
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Previous Comparisons</h2>
+        </div>
+        <span className="text-xs text-gray-500 dark:text-gray-400">{runs.length} saved</span>
+      </div>
+      {runs.length === 0 ? (
+        <EmptyState text="Saved marketplace comparisons will appear here after the first run." />
+      ) : (
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {runs.map((run) => {
+            const best = run.supplierOffers[0];
+            return (
+              <button
+                key={run.id}
+                type="button"
+                onClick={() => onOpen(run.id)}
+                disabled={loadingRunId === run.id}
+                className={`rounded-lg border p-3 text-left transition ${
+                  activeId === run.id
+                    ? "border-brand-300 bg-brand-50 dark:border-brand-500/40 dark:bg-brand-500/10"
+                    : "border-gray-200 hover:border-brand-200 hover:bg-gray-50 dark:border-gray-800 dark:hover:border-brand-500/30 dark:hover:bg-white/[0.04]"
+                } disabled:opacity-60`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{run.needs.itemName}</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {run.needs.quantity} {run.needs.unit} · {run.needs.district ?? "Any district"} · {formatDate(run.createdAt.slice(0, 10))}
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-white px-2 py-1 text-xs font-semibold text-brand-500 shadow-sm dark:bg-white/[0.08]">
+                    {loadingRunId === run.id ? "Loading" : run.priceIntelligence.recommendation.action.replace("_", " ")}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <Metric label="Best" value={best?.supplierName ?? "n/a"} />
+                  <Metric label="Price" value={best ? formatMoney(best.unitPriceBdt) : "n/a"} />
+                  <Metric label="Total" value={best ? formatMoney(best.totalPriceBdt) : "n/a"} />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SeasonPlanNeedsPanel({
+  suggestions,
+  onApply,
+}: {
+  suggestions: MarketplaceNeedSuggestion[];
+  onApply: (need: MarketplaceNeedSuggestion, run?: boolean) => void;
+}) {
+  if (suggestions.length === 0) return null;
+  return (
+    <div className="mt-4 rounded-lg border border-success-200 bg-success-50/70 p-3 dark:border-success-500/20 dark:bg-success-500/10">
+      <p className="text-xs font-semibold text-success-800 dark:text-success-300">Season plan availability</p>
+      <div className="mt-2 space-y-2">
+        {suggestions.map((suggestion) => (
+          <button
+            key={`${suggestion.itemName}-${suggestion.quantity}-${suggestion.unit}`}
+            type="button"
+            onClick={() => onApply(suggestion, true)}
+            className="flex w-full items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-left text-xs text-gray-700 hover:bg-success-100 dark:bg-white/[0.05] dark:text-gray-200 dark:hover:bg-success-500/15"
+          >
+            <span className="min-w-0 truncate">{suggestion.itemName}</span>
+            <span className="shrink-0 font-semibold text-success-700 dark:text-success-300">
+              {suggestion.quantity} {suggestion.unit}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SupplierCard({ offer, rank, best, mobile }: { offer: SupplierOffer; rank: number; best: boolean; mobile: string }) {
+  const [busy, setBusy] = useState(false);
+  const [receipt, setReceipt] = useState<CheckoutResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const deposit = Math.min(Math.round(offer.totalPriceBdt), DEPOSIT_CAP);
+
+  async function buy() {
+    setError(null);
+    setReceipt(null);
+    if (!mobile.trim()) {
+      setError("Enter a mobile number above to pay.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await checkoutPayment({
+        mobile: mobile.trim(),
+        amountBdt: deposit,
+        description: `Booking: ${offer.requestedQuantity} ${offer.unit} ${offer.itemName} — ${offer.supplierName}`,
+      });
+      setReceipt(res);
+      if (!res.ok) setError(`${res.statusCode}: ${res.statusDetail ?? "payment failed"}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Checkout failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className={`rounded-lg border p-3 ${best ? "border-success-500/40 bg-success-50/60 dark:bg-success-500/[0.08]" : "border-gray-200 dark:border-gray-800"}`}>
       <div className="flex items-start justify-between gap-3">
@@ -196,6 +408,31 @@ function SupplierCard({ offer, rank, best }: { offer: SupplierOffer; rank: numbe
         <Metric label="Rating" value={`${offer.rating.toFixed(1)}/5`} />
       </div>
       <p className="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">{offer.rankReason}</p>
+
+      <div className="mt-3 flex items-center gap-3 border-t border-gray-200 pt-3 dark:border-gray-800">
+        <button
+          type="button"
+          onClick={() => void buy()}
+          disabled={busy}
+          className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand-500 px-3 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-60"
+        >
+          <CreditCardIcon width={15} height={15} />
+          {busy ? "Charging…" : `Buy · pay ${formatMoney(deposit)} deposit`}
+        </button>
+        <span className="text-[11px] text-gray-400">via bdapps CaaS (Mobile Account)</span>
+      </div>
+
+      {receipt?.status === "success" && (
+        <div className="mt-3 rounded-lg border border-success-500/30 bg-success-50 p-3 text-xs text-success-700 dark:bg-success-500/10 dark:text-success-500">
+          <p className="font-semibold">✅ Payment received{receipt.mock ? " · MOCK" : ""}</p>
+          <p className="mt-1">Charged {formatMoney(receipt.amountBdt)} · Trx {receipt.internalTrxId ?? receipt.externalTrxId}</p>
+          {receipt.balanceBeforeBdt != null && (
+            <p>Operator balance {formatMoney(receipt.balanceBeforeBdt)} → {formatMoney(receipt.balanceBeforeBdt - receipt.amountBdt)}</p>
+          )}
+          <p>{receipt.smsSent ? "📩 SMS receipt sent" : "receipt recorded"}</p>
+        </div>
+      )}
+      {error && <p className="mt-2 text-xs text-error-600 dark:text-error-500">⚠️ {error}</p>}
     </div>
   );
 }
@@ -265,7 +502,7 @@ function MemoryPanel({ result }: { result: MarketplaceIntelligenceResult | null 
           <p className="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">
             {result.memory.status === "used"
               ? `${result.memory.retrieved.length} memory result(s) retrieved for this marketplace run.`
-              : result.memory.error ?? "mem0 is unavailable; seeded DB results are still shown."}
+              : result.memory.error ?? "mem0 is unavailable; marketplace results are still shown."}
           </p>
         </div>
       )}
@@ -336,4 +573,73 @@ function formatDate(value: string): string {
     month: "short",
     day: "numeric",
   }).format(new Date(`${value}T00:00:00Z`));
+}
+
+function readSeasonPlanSuggestions(): MarketplaceNeedSuggestion[] {
+  const raw = localStorage.getItem("agrisense.latestPlan");
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as Partial<AgriSenseMessageResult>;
+    const plan = parsed.seasonPlan;
+    if (!plan) return [];
+    const crop = normalizeCropForMarket(plan.crop);
+    const suggestions = new Map<string, MarketplaceNeedSuggestion>();
+
+    for (const task of plan.tasks ?? []) {
+      for (const input of task.inputs ?? []) {
+        const marketItem = normalizePlanInputItem(input.item);
+        if (!marketItem) continue;
+        const key = `${marketItem}:${input.unit}`;
+        const existing = suggestions.get(key);
+        suggestions.set(key, {
+          itemName: marketItem,
+          quantity: roundQuantity((existing?.quantity ?? 0) + Number(input.quantity ?? 0)),
+          unit: input.unit || "kg",
+          crop,
+          source: task.title,
+        });
+      }
+      const fallback = taskToMarketplaceNeed(task, crop);
+      if (fallback && !suggestions.has(`${fallback.itemName}:${fallback.unit}`)) {
+        suggestions.set(`${fallback.itemName}:${fallback.unit}`, fallback);
+      }
+    }
+
+    return [...suggestions.values()].slice(0, 8);
+  } catch {
+    return [];
+  }
+}
+
+function taskToMarketplaceNeed(task: SeasonPlanTask, crop: string): MarketplaceNeedSuggestion | undefined {
+  const text = `${task.title} ${task.description}`.toLowerCase();
+  if (text.includes("seed")) return { itemName: `${crop === "rice" ? "Rice" : crop} seed`, quantity: task.quantity ?? 20, unit: task.unit ?? "kg", crop, source: task.title };
+  if (text.includes("urea")) return { itemName: "Urea fertilizer", quantity: task.quantity ?? 100, unit: task.unit ?? "kg", crop, source: task.title };
+  if (text.includes("tsp")) return { itemName: "TSP fertilizer", quantity: task.quantity ?? 50, unit: task.unit ?? "kg", crop, source: task.title };
+  if (text.includes("mop")) return { itemName: "MoP fertilizer", quantity: task.quantity ?? 50, unit: task.unit ?? "kg", crop, source: task.title };
+  return undefined;
+}
+
+function normalizePlanInputItem(item: string): string | undefined {
+  const normalized = item.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized.includes("urea")) return "Urea fertilizer";
+  if (normalized.includes("tsp")) return "TSP fertilizer";
+  if (normalized.includes("mop") || normalized.includes("potash")) return "MoP fertilizer";
+  if (normalized.includes("seed")) return item.trim();
+  if (normalized.includes("fertilizer")) return item.trim();
+  return undefined;
+}
+
+function normalizeCropForMarket(crop: string): string {
+  const normalized = crop.toLowerCase();
+  if (normalized.includes("rice") || normalized.includes("aman") || normalized.includes("boro")) return "rice";
+  if (normalized.includes("maize")) return "maize";
+  if (normalized.includes("mustard")) return "mustard";
+  return normalized.split(/\s+/)[0] || "rice";
+}
+
+function roundQuantity(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 1;
+  return Math.round(value * 100) / 100;
 }

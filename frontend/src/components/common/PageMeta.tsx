@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useLanguage } from "../../context/LanguageContext.js";
 
 interface Props {
   title: string;
@@ -7,8 +8,10 @@ interface Props {
 
 /** Minimal document-title setter (stands in for react-helmet). */
 export default function PageMeta({ title, description }: Props) {
+  const { t, language } = useLanguage();
+
   useEffect(() => {
-    document.title = title;
+    document.title = t(title);
     if (description) {
       let tag = document.querySelector('meta[name="description"]');
       if (!tag) {
@@ -16,9 +19,9 @@ export default function PageMeta({ title, description }: Props) {
         tag.setAttribute("name", "description");
         document.head.appendChild(tag);
       }
-      tag.setAttribute("content", description);
+      tag.setAttribute("content", t(description));
     }
-  }, [title, description]);
+  }, [title, description, language, t]);
 
   return null;
 }

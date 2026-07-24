@@ -68,7 +68,8 @@ export interface PestRiskResult {
   };
 }
 
-export interface PestAssessmentRecord extends Omit<PestRiskAssessment, "weatherFeatures" | "citations" | "safetyNote"> {
+export interface PestAssessmentRecord extends Omit<PestRiskAssessment, "id" | "weatherFeatures" | "citations" | "safetyNote"> {
+  id: string;
   farmerId?: string;
   farmId?: string;
   sessionId?: string;
@@ -113,4 +114,8 @@ export function listPestAssessments(input: {
   }
   const query = params.toString();
   return apiFetch<PestAssessmentRecord[]>(`/api/pest-risk/assessments${query ? `?${query}` : ""}`);
+}
+
+export function getPestAssessment(id: string): Promise<PestAssessmentRecord> {
+  return apiFetch<PestAssessmentRecord>(`/api/pest-risk/assessments/${id}`);
 }

@@ -115,8 +115,17 @@ export class PostgresIntakeStore implements IntakeStore {
     const sessionId = input.sessionId ?? randomUUID();
 
     await this.prisma.$executeRaw`
-      INSERT INTO "farmer_profiles" ("id", "user_id", "bdapps_mobile", "preferred_language")
-      VALUES (${farmerId}::uuid, ${uuidOrNull(input.userId)}::uuid, ${input.bdappsMobile ?? null}, ${normalizeLanguage(input.preferredLanguage) ?? "en"})
+      INSERT INTO "farmer_profiles" (
+        "id", "user_id", "bdapps_mobile", "preferred_language", "created_at", "updated_at"
+      )
+      VALUES (
+        ${farmerId}::uuid,
+        ${uuidOrNull(input.userId)}::uuid,
+        ${input.bdappsMobile ?? null},
+        ${normalizeLanguage(input.preferredLanguage) ?? "en"},
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+      )
       ON CONFLICT ("id") DO UPDATE SET
         "user_id" = COALESCE(EXCLUDED."user_id", "farmer_profiles"."user_id"),
         "bdapps_mobile" = COALESCE(EXCLUDED."bdapps_mobile", "farmer_profiles"."bdapps_mobile"),
@@ -125,14 +134,25 @@ export class PostgresIntakeStore implements IntakeStore {
     `;
 
     await this.prisma.$executeRaw`
-      INSERT INTO "farm_profiles" ("id", "farmer_id")
-      VALUES (${farmId}::uuid, ${farmerId}::uuid)
+      INSERT INTO "farm_profiles" ("id", "farmer_id", "created_at", "updated_at")
+      VALUES (${farmId}::uuid, ${farmerId}::uuid, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       ON CONFLICT ("id") DO NOTHING
     `;
 
     await this.prisma.$executeRaw`
-      INSERT INTO "agent_sessions" ("id", "user_id", "farmer_id", "farm_id", "channel", "status")
-      VALUES (${sessionId}::uuid, ${uuidOrNull(input.userId)}::uuid, ${farmerId}::uuid, ${farmId}::uuid, ${input.channel ?? "web"}, 'intake')
+      INSERT INTO "agent_sessions" (
+        "id", "user_id", "farmer_id", "farm_id", "channel", "status", "created_at", "updated_at"
+      )
+      VALUES (
+        ${sessionId}::uuid,
+        ${uuidOrNull(input.userId)}::uuid,
+        ${farmerId}::uuid,
+        ${farmId}::uuid,
+        ${input.channel ?? "web"},
+        'intake',
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+      )
       ON CONFLICT ("id") DO NOTHING
     `;
 

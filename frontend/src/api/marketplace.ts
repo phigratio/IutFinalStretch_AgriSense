@@ -42,6 +42,7 @@ export interface MarketPricePoint {
 }
 
 export interface MarketplaceIntelligenceResult {
+  id?: string;
   agentMessage: string;
   needs: {
     itemName: string;
@@ -72,9 +73,40 @@ export interface MarketplaceIntelligenceResult {
   seeded: true;
 }
 
+export interface MarketplaceRunRecord extends MarketplaceIntelligenceResult {
+  id: string;
+  userId?: string;
+  tenantId?: string;
+  farmerId?: string;
+  farmId?: string;
+  sessionId?: string;
+  crop: string;
+  createdAt: string;
+}
+
 export function getMarketplaceIntelligence(input: MarketplaceIntelligenceRequest): Promise<MarketplaceIntelligenceResult> {
   return apiFetch<MarketplaceIntelligenceResult>("/api/marketplace/intelligence", {
     method: "POST",
     body: input,
   });
+}
+
+export function listMarketplaceRuns(input: {
+  userId?: string;
+  tenantId?: string;
+  farmerId?: string;
+  farmId?: string;
+  sessionId?: string;
+  limit?: number;
+} = {}): Promise<MarketplaceRunRecord[]> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  const query = params.toString();
+  return apiFetch<MarketplaceRunRecord[]>(`/api/marketplace/runs${query ? `?${query}` : ""}`);
+}
+
+export function getMarketplaceRun(id: string): Promise<MarketplaceRunRecord> {
+  return apiFetch<MarketplaceRunRecord>(`/api/marketplace/runs/${id}`);
 }
