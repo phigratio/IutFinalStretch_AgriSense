@@ -1,12 +1,14 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import PageMeta from "../components/common/PageMeta.js";
 import FarmWeatherMap from "../components/common/FarmWeatherMap.js";
 import {
   getAgriSenseContext,
   getAgriSenseMemory,
+  getAgriSenseWorkspace,
   sendAgriSenseMessage,
   simulateAgriSenseScenario,
+  type AgriSenseWorkspace,
   type AgriSenseMessageResult,
   type ContextBundle,
   type CropRecommendation,
@@ -17,6 +19,8 @@ import {
   type ScenarioSimulationResult,
   type SeasonPlanTask,
   type TraceEvent,
+  type WorkspaceFarmCard,
+  type WorkspaceSuggestedAction,
   type WorkflowStage,
 } from "../api/agrisense.js";
 import { transcribeVoice } from "../api/voice.js";
@@ -92,6 +96,8 @@ export default function AgriSense() {
   const [rememberedOutcomes, setRememberedOutcomes] = useState<MemoryOutcome[]>([]);
   const [memorySessions, setMemorySessions] = useState<MemorySessionSummary[]>([]);
   const [contextBundle, setContextBundle] = useState<ContextBundle | null>(null);
+  const [workspace, setWorkspace] = useState<AgriSenseWorkspace | null>(null);
+  const [selectedWorkspaceFarmId, setSelectedWorkspaceFarmId] = useState<string | undefined>();
   const [scenarioResult, setScenarioResult] = useState<ScenarioSimulationResult | null>(null);
   const [ignoredOutcomeIds, setIgnoredOutcomeIds] = useState<string[]>([]);
   const [geoPoint, setGeoPoint] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -104,9 +110,14 @@ export default function AgriSense() {
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimeoutRef = useRef<number | undefined>(undefined);
 
-  const activePlan = result?.seasonPlan;
-  const profile = result?.farmProfile;
   const activeStage = normalizeStage(searchParams.get("stage"));
+  const workspaceResult = useMemo(
+    () => resultFromWorkspace(workspace, selectedWorkspaceFarmId, activeStage),
+    [workspace, selectedWorkspaceFarmId, activeStage],
+  );
+  const renderedResult = result ?? workspaceResult;
+  const activePlan = renderedResult?.seasonPlan;
+  const profile = renderedResult?.farmProfile;
 
   useEffect(() => {
     const raw = localStorage.getItem("agrisense.sessionContext");
@@ -126,6 +137,28 @@ export default function AgriSense() {
     if (!sessionId && !farmerId && !farmId) return;
     localStorage.setItem("agrisense.sessionContext", JSON.stringify({ sessionId, farmerId, farmId, language }));
   }, [sessionId, farmerId, farmId, language]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAgriSenseWorkspace({ userId: user?.id, farmerId, farmId, sessionId, limit: 8 })
+      .then((nextWorkspace) => {
+        if (cancelled) return;
+        setWorkspace(nextWorkspace);
+        setSelectedWorkspaceFarmId((current) => current ?? nextWorkspace.farmCards[0]?.farmId);
+        if (!farmerId && !farmId && !sessionId && nextWorkspace.farmCards[0]) {
+          const first = nextWorkspace.farmCards[0];
+          setFarmerId(first.farmerId);
+          setFarmId(first.farmId);
+          setSessionId(first.sessionId);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setWorkspace(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, farmerId, farmId, sessionId]);
 
   useEffect(() => {
     if (!useMemory) return;
@@ -163,6 +196,7 @@ export default function AgriSense() {
     messageText = input,
     workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" || activeStage === "scheduler" || activeStage === "scenario" ? "full" : activeStage,
     acceptedOutcomeIds?: string[],
+    overrides: { sessionId?: string; farmerId?: string; farmId?: string } = {},
   ) {
     const text = messageText.trim();
     if (!text || loading) return;
@@ -175,9 +209,9 @@ export default function AgriSense() {
     try {
       const response = await sendAgriSenseMessage({
         message: text,
-        sessionId,
-        farmerId,
-        farmId,
+        sessionId: overrides.sessionId ?? sessionId,
+        farmerId: overrides.farmerId ?? farmerId,
+        farmId: overrides.farmId ?? farmId,
         userId: user?.id,
         preferredLanguage: language,
         useMemory,
@@ -193,6 +227,7 @@ export default function AgriSense() {
       setFarmerId(response.farmerId);
       setFarmId(response.farmId);
       setResult(response);
+      setSelectedWorkspaceFarmId(response.farmId);
       if (response.context) {
         setContextBundle(response.context);
       }
@@ -202,6 +237,9 @@ export default function AgriSense() {
       if (response.seasonPlan) {
         localStorage.setItem("agrisense.latestPlan", JSON.stringify(response));
       }
+      getAgriSenseWorkspace({ userId: user?.id, farmerId: response.farmerId, farmId: response.farmId, sessionId: response.sessionId, limit: 8 })
+        .then(setWorkspace)
+        .catch(() => undefined);
       setTrace((current) => [...current, ...response.trace]);
       setMessages((current) => [
         ...current,
@@ -334,6 +372,34 @@ export default function AgriSense() {
     void submitMessage(message, stage);
   }
 
+  function selectWorkspaceFarm(card: WorkspaceFarmCard) {
+    setSelectedWorkspaceFarmId(card.farmId);
+    setSessionId(card.sessionId);
+    setFarmerId(card.farmerId);
+    setFarmId(card.farmId);
+    setResult(null);
+    setMessages((current) => current.length <= 1 ? current : [
+      ...current,
+      { role: "agent", text: `Loaded saved farm: ${profileSummary(card.profile)}.` },
+    ]);
+  }
+
+  function runWorkspaceAction(action: WorkspaceSuggestedAction) {
+    if (action.farmId) setSelectedWorkspaceFarmId(action.farmId);
+    setSessionId(action.sessionId);
+    setFarmerId(action.farmerId);
+    setFarmId(action.farmId);
+    const stage = action.workflowStage ?? "full";
+    const message = action.id === "complete_intake"
+      ? "continue intake"
+      : `continue from ${stageLabels[stage] ?? "Full Run"}`;
+    void submitMessage(message, stage, undefined, {
+      sessionId: action.sessionId,
+      farmerId: action.farmerId,
+      farmId: action.farmId,
+    });
+  }
+
   function ignoreOutcome(id: string) {
     setIgnoredOutcomeIds((current) => current.includes(id) ? current : [...current, id]);
     setRememberedOutcomes((current) => current.filter((outcome) => outcome.id !== id));
@@ -446,6 +512,14 @@ export default function AgriSense() {
         </div>
       )}
 
+      <WorkspaceResumePanel
+        activeStage={activeStage}
+        workspace={workspace}
+        selectedFarmId={selectedWorkspaceFarmId}
+        onSelectFarm={selectWorkspaceFarm}
+        onRunAction={runWorkspaceAction}
+      />
+
       <MemoryPanel
         useMemory={useMemory}
         outcomes={rememberedOutcomes}
@@ -521,7 +595,7 @@ export default function AgriSense() {
         <main className="space-y-4">
           <WorkflowStageSidebar
             activeStage={activeStage}
-            result={result}
+            result={renderedResult}
             loading={loading}
             onSelect={selectStage}
             onRun={runStage}
@@ -529,10 +603,10 @@ export default function AgriSense() {
           <StageContent
             activeStage={activeStage}
             profile={profile}
-            missingFields={result?.missingFields ?? []}
-            result={result}
+            missingFields={renderedResult?.missingFields ?? []}
+            result={renderedResult}
             activePlan={activePlan}
-            context={contextBundle ?? result?.context}
+            context={contextBundle ?? renderedResult?.context}
             scenarioResult={scenarioResult}
             loading={loading}
             onSimulateScenario={runScenario}
@@ -623,6 +697,119 @@ function WorkflowStageSidebar({
         })}
       </div>
     </section>
+  );
+}
+
+function WorkspaceResumePanel({
+  activeStage,
+  workspace,
+  selectedFarmId,
+  onSelectFarm,
+  onRunAction,
+}: {
+  activeStage: ViewStage;
+  workspace: AgriSenseWorkspace | null;
+  selectedFarmId?: string;
+  onSelectFarm: (card: WorkspaceFarmCard) => void;
+  onRunAction: (action: WorkspaceSuggestedAction) => void;
+}) {
+  const selectedFarm = workspace?.farmCards.find((card) => card.farmId === selectedFarmId) ?? workspace?.farmCards[0];
+  const selectedWeather = selectedFarm ? workspace?.weatherCards.find((card) => card.farmId === selectedFarm.farmId) : undefined;
+  const selectedEvidence = selectedFarm
+    ? workspace?.evidenceCards.find((card) => card.farmId === selectedFarm.farmId || card.sessionId === selectedFarm.sessionId)
+    : undefined;
+  const actions = selectedFarm ? actionsForFarm(selectedFarm, Boolean(selectedWeather), Boolean(selectedEvidence)) : [];
+  const focusedActions = activeStage === "weather"
+    ? actions.filter((action) => action.workflowStage === "weather" || action.workflowStage === "intake")
+    : activeStage === "evidence"
+      ? actions.filter((action) => action.workflowStage === "evidence" || action.workflowStage === "weather" || action.workflowStage === "intake")
+      : actions;
+
+  return (
+    <section className="mb-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Resume From Saved Farm Data</h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Pick a previous farm/session, then run only the current module instead of restarting the full workflow.
+          </p>
+        </div>
+        <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-500">
+          {workspace ? `${workspace.farmCards.length} farm${workspace.farmCards.length === 1 ? "" : "s"}` : "Loading"}
+        </span>
+      </div>
+
+      {!workspace || workspace.farmCards.length === 0 ? (
+        <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">No saved farm profile found yet. Use the intake chat once, then weather and evidence can resume from here.</p>
+      ) : (
+        <>
+          <div className="mt-4 grid gap-3 xl:grid-cols-3">
+            {workspace.farmCards.slice(0, 6).map((card) => (
+              <button
+                key={card.farmId}
+                type="button"
+                onClick={() => onSelectFarm(card)}
+                className={`rounded-lg border p-3 text-left transition ${
+                  card.farmId === selectedFarm?.farmId
+                    ? "border-brand-300 bg-brand-50/80 dark:border-brand-500/40 dark:bg-brand-500/[0.08]"
+                    : "border-gray-200 bg-gray-50 hover:bg-white dark:border-gray-800 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{profileSummary(card.profile)}</p>
+                  <span className={card.completion === "complete" ? successPillClass : warningPillClass}>
+                    {card.completion}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  {card.missingFields.length === 0 ? "Ready for weather and evidence." : `Missing ${card.missingFields.join(", ")}.`}
+                </p>
+                <p className="mt-2 text-[11px] text-gray-400">Updated {new Date(card.updatedAt).toLocaleString()} · {card.sessionId ? shortId(card.sessionId) : "no session"}</p>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(260px,0.75fr)]">
+            <ResumeInfoCard
+              title="Latest Weather"
+              value={selectedWeather ? `${selectedWeather.rain7dMm} mm rain / 7d` : "Not fetched yet"}
+              detail={selectedWeather ? `${selectedWeather.weather.locationText} · ${new Date(selectedWeather.refreshedAt).toLocaleString()}` : "Run weather for the selected farm."}
+            />
+            <ResumeInfoCard
+              title="Latest Evidence"
+              value={selectedEvidence ? `${selectedEvidence.count} source item(s)` : "Not retrieved yet"}
+              detail={selectedEvidence ? `Last retrieval ${new Date(selectedEvidence.retrievedAt).toLocaleString()}` : "Run evidence after profile and weather are ready."}
+            />
+            <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+              <p className="text-xs font-semibold text-gray-900 dark:text-white">Suggested Action</p>
+              <div className="mt-3 space-y-2">
+                {focusedActions.slice(0, 3).map((action) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    onClick={() => onRunAction(action)}
+                    className="w-full rounded-lg bg-brand-500 px-3 py-2 text-left text-xs font-semibold text-white hover:bg-brand-600"
+                  >
+                    {action.label}
+                    <span className="mt-1 block font-normal opacity-85">{action.reason}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function ResumeInfoCard({ title, value, detail }: { title: string; value: string; detail: string }) {
+  return (
+    <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+      <p className="text-xs font-semibold text-gray-900 dark:text-white">{title}</p>
+      <p className="mt-2 text-sm font-semibold text-gray-800 dark:text-gray-100">{value}</p>
+      <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{detail}</p>
+    </div>
   );
 }
 
@@ -1289,7 +1476,7 @@ function SeasonPlanPanel({ plan }: { plan: NonNullable<AgriSenseMessageResult["s
       </div>
       <div className="mt-4 space-y-2">
         {plan.tasks.map((task) => (
-          <TaskRow key={`${task.phase}-${task.startDate}`} task={task} />
+          <TaskRow key={`${task.phase}-${task.startDate}`} task={task} crop={plan.crop} />
         ))}
       </div>
     </section>
@@ -1445,7 +1632,7 @@ function FinancialPanel({ plan }: { plan: NonNullable<AgriSenseMessageResult["se
   );
 }
 
-function TaskRow({ task }: { task: SeasonPlanTask }) {
+function TaskRow({ task, crop }: { task: SeasonPlanTask; crop?: string }) {
   return (
     <div className="grid gap-2 rounded-lg border border-gray-200 p-3 dark:border-gray-800 md:grid-cols-[140px_minmax(0,1fr)_110px]">
       <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -1455,9 +1642,17 @@ function TaskRow({ task }: { task: SeasonPlanTask }) {
         <p className="text-sm font-semibold text-gray-900 dark:text-white">{task.title}</p>
         <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{task.description}</p>
         {task.inputs && task.inputs.length > 0 && (
-          <p className="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-300">
-            {task.inputs.map((input) => `${input.item}: ${input.quantity} ${input.unit}`).join(" · ")}
-          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {task.inputs.map((input) => (
+              <Link
+                key={`${task.title}-${input.item}`}
+                to={marketplaceUrlForInput(input.item, input.quantity, input.unit, crop)}
+                className="rounded-md border border-success-200 bg-success-50 px-2 py-1 text-xs font-medium text-success-700 hover:bg-success-100 dark:border-success-500/20 dark:bg-success-500/10 dark:text-success-300"
+              >
+                {input.item}: {input.quantity} {input.unit}
+              </Link>
+            ))}
+          </div>
         )}
         {task.weatherNote && (
           <p className="mt-1 text-xs font-medium leading-5 text-warning-700 dark:text-warning-400">{task.weatherNote}</p>
@@ -1527,6 +1722,32 @@ function sumTaskCosts(tasks: SeasonPlanTask[], phase: string): number {
   return tasks.filter((task) => task.phase === phase).reduce((sum, task) => sum + (task.totalCostBdt ?? 0), 0);
 }
 
+function marketplaceUrlForInput(item: string, quantity: number, unit: string, crop?: string): string {
+  const params = new URLSearchParams({
+    itemName: normalizeMarketplaceItem(item),
+    quantity: String(quantity),
+    unit,
+    crop: normalizeMarketplaceCrop(crop ?? item),
+  });
+  return `/marketplace?${params.toString()}`;
+}
+
+function normalizeMarketplaceItem(item: string): string {
+  const normalized = item.toLowerCase();
+  if (normalized.includes("urea")) return "Urea fertilizer";
+  if (normalized.includes("tsp")) return "TSP fertilizer";
+  if (normalized.includes("mop") || normalized.includes("potash")) return "MoP fertilizer";
+  return item;
+}
+
+function normalizeMarketplaceCrop(value: string): string {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("rice") || normalized.includes("aman") || normalized.includes("boro")) return "rice";
+  if (normalized.includes("maize")) return "maize";
+  if (normalized.includes("mustard")) return "mustard";
+  return "rice";
+}
+
 function formatInputTotal(totals: Record<string, number>, label: string): string {
   const match = Object.entries(totals).find(([key]) => key.toLowerCase().includes(label.toLowerCase()));
   return match ? `${match[1]} kg` : "0 kg";
@@ -1547,6 +1768,92 @@ function roundCoord(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
 
+function resultFromWorkspace(
+  workspace: AgriSenseWorkspace | null,
+  selectedFarmId: string | undefined,
+  activeStage: ViewStage,
+): AgriSenseMessageResult | null {
+  const farm = workspace?.farmCards.find((card) => card.farmId === selectedFarmId) ?? workspace?.farmCards[0];
+  if (!farm) return null;
+  const weatherCard = workspace?.weatherCards.find((card) => card.farmId === farm.farmId);
+  const evidenceCard = workspace?.evidenceCards.find((card) => card.farmId === farm.farmId || card.sessionId === farm.sessionId);
+  const includeWeather = activeStage !== "intake" && Boolean(weatherCard);
+  const includeEvidence = activeStage !== "intake" && activeStage !== "weather" && Boolean(evidenceCard);
+
+  return {
+    sessionId: farm.sessionId ?? "",
+    farmerId: farm.farmerId,
+    farmId: farm.farmId,
+    workflowStage: activeStage === "context" || activeStage === "scheduler" || activeStage === "scenario" || activeStage === "trace"
+      ? "full"
+      : activeStage,
+    nextAvailableStages: farm.completion === "complete" ? ["weather", "evidence", "crop_ranking", "season_plan", "financials", "full"] : ["intake"],
+    assistantMessage: farm.completion === "complete"
+      ? `Loaded saved farm profile for ${farm.profile.locationText ?? "this farm"}. Continue from ${stageLabels[activeStage]}.`
+      : `Saved farm profile is missing ${farm.missingFields.join(", ")}.`,
+    missingFields: farm.missingFields,
+    farmProfile: farm.profile,
+    weather: includeWeather ? weatherCard?.weather : undefined,
+    retrievedEvidence: includeEvidence ? evidenceCard?.retrievedEvidence : undefined,
+    rememberedOutcomes: workspace?.outcomeCards ?? [],
+    trace: [],
+  };
+}
+
+function actionsForFarm(
+  farm: WorkspaceFarmCard,
+  hasWeather: boolean,
+  hasEvidence: boolean,
+): WorkspaceSuggestedAction[] {
+  const base = { farmId: farm.farmId, farmerId: farm.farmerId, sessionId: farm.sessionId };
+  if (farm.completion === "incomplete") {
+    return [{
+      id: "complete_intake",
+      label: "Complete intake",
+      workflowStage: "intake",
+      ...base,
+      reason: `${farm.missingFields.length} required field(s) missing.`,
+    }];
+  }
+  return [
+    {
+      id: "run_weather",
+      label: hasWeather ? "Refresh weather" : "Fetch weather",
+      workflowStage: "weather",
+      ...base,
+      reason: "Use saved profile to call live weather directly.",
+    },
+    {
+      id: "run_evidence",
+      label: hasEvidence ? "Refresh evidence" : "Retrieve evidence",
+      workflowStage: "evidence",
+      ...base,
+      reason: hasWeather ? "Use profile plus weather for RAG retrieval." : "Weather will run first, then evidence retrieval.",
+    },
+    {
+      id: "continue_crop_ranking",
+      label: "Continue crop ranking",
+      workflowStage: "crop_ranking",
+      ...base,
+      reason: "Rank crops after weather and evidence are available.",
+    },
+  ];
+}
+
+function profileSummary(profile: IntakeProfile): string {
+  return [
+    profile.locationText,
+    profile.sizeAcres ? `${profile.sizeAcres} acres` : undefined,
+    profile.soilType,
+    profile.waterAvailability,
+    profile.budgetBdt ? formatMoney(profile.budgetBdt) : undefined,
+    profile.targetSeason,
+  ].filter(Boolean).join(" · ") || "Saved farm";
+}
+
 function normalizeStage(value: string | null): ViewStage {
   return workflowStages.some((stage) => stage.id === value) ? (value as ViewStage) : "full";
 }
+
+const successPillClass = "rounded-full bg-success-50 px-2.5 py-1 text-[11px] font-semibold text-success-700 dark:bg-success-500/15 dark:text-success-400";
+const warningPillClass = "rounded-full bg-warning-50 px-2.5 py-1 text-[11px] font-semibold text-warning-700 dark:bg-warning-500/15 dark:text-warning-400";

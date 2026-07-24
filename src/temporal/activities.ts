@@ -264,9 +264,10 @@ async function insertJobRun(
   const info = safeActivityInfo();
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     INSERT INTO "temporal_job_runs" (
-      "workflow_type", "workflow_id", "status", "started_at", "summary"
+      "id", "workflow_type", "workflow_id", "status", "started_at", "summary"
     )
     VALUES (
+      gen_random_uuid(),
       ${input.workflow},
       ${info?.workflowExecution?.workflowId ?? null},
       ${input.status},

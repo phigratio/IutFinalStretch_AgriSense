@@ -3,7 +3,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { config } from "../config.js";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { marketPriceSeeds, supplierSeeds } from "./seedData.js";
-import { type MarketPricePoint, type SupplierOffer } from "./types.js";
+import { type MarketplaceIntelligenceResult, type MarketplaceRunRecord, type MarketPricePoint, type SupplierOffer } from "./types.js";
 
 export interface SupplierSearchInput {
   itemName: string;
@@ -18,10 +18,23 @@ export interface MarketplaceStore {
   ensureSeeded(): Promise<void>;
   listSupplierOffers(input: SupplierSearchInput): Promise<SupplierOffer[]>;
   listMarketPrices(crop: string, district?: string): Promise<MarketPricePoint[]>;
+  saveRun(input: {
+    result: MarketplaceIntelligenceResult;
+    userId?: string;
+    tenantId?: string;
+    farmerId?: string;
+    farmId?: string;
+    sessionId?: string;
+    crop: string;
+  }): Promise<MarketplaceRunRecord>;
+  listRuns(input: { userId?: string; tenantId?: string; farmerId?: string; farmId?: string; sessionId?: string; limit?: number }): Promise<MarketplaceRunRecord[]>;
+  getRun(id: string): Promise<MarketplaceRunRecord | undefined>;
   close?(): Promise<void>;
 }
 
 export class InMemoryMarketplaceStore implements MarketplaceStore {
+  readonly runs: MarketplaceRunRecord[] = [];
+
   async ensureSeeded(): Promise<void> {
     return undefined;
   }
@@ -65,6 +78,46 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     const districtMatches = cropMatches.filter((price) => !normalizedDistrict || normalizeText(price.district) === normalizedDistrict || normalizeText(price.marketName).includes(normalizedDistrict));
     return districtMatches.length > 0 ? districtMatches : cropMatches;
   }
+
+  async saveRun(input: {
+    result: MarketplaceIntelligenceResult;
+    userId?: string;
+    tenantId?: string;
+    farmerId?: string;
+    farmId?: string;
+    sessionId?: string;
+    crop: string;
+  }): Promise<MarketplaceRunRecord> {
+    const id = randomUUID();
+    const record: MarketplaceRunRecord = {
+      ...input.result,
+      id,
+      userId: input.userId,
+      tenantId: input.tenantId,
+      farmerId: input.farmerId,
+      farmId: input.farmId,
+      sessionId: input.sessionId,
+      crop: input.crop,
+      createdAt: new Date().toISOString(),
+    };
+    this.runs.unshift(record);
+    return record;
+  }
+
+  async listRuns(input: { userId?: string; tenantId?: string; farmerId?: string; farmId?: string; sessionId?: string; limit?: number }): Promise<MarketplaceRunRecord[]> {
+    const limit = normalizeLimit(input.limit, 20);
+    return this.runs
+      .filter((row) => !input.userId || row.userId === input.userId)
+      .filter((row) => !input.tenantId || row.tenantId === input.tenantId)
+      .filter((row) => !input.farmerId || row.farmerId === input.farmerId)
+      .filter((row) => !input.farmId || row.farmId === input.farmId)
+      .filter((row) => !input.sessionId || row.sessionId === input.sessionId)
+      .slice(0, limit);
+  }
+
+  async getRun(id: string): Promise<MarketplaceRunRecord | undefined> {
+    return this.runs.find((run) => run.id === id);
+  }
 }
 
 export class PostgresMarketplaceStore implements MarketplaceStore {
@@ -84,7 +137,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       const supplierId = randomUUID();
       await this.prisma.$executeRaw`
         INSERT INTO "marketplace_suppliers" (
-          "id", "name", "district", "latitude", "longitude", "rating", "delivery_days", "seeded"
+          "id", "name", "district", "latitude", "longitude", "rating", "delivery_days", "seeded", "created_at", "updated_at"
         )
         VALUES (
           ${supplierId}::uuid,
@@ -94,7 +147,9 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
           ${supplier.longitude},
           ${supplier.rating},
           ${supplier.deliveryDays},
-          true
+          true,
+          now(),
+          now()
         )
         ON CONFLICT ("name", "district") DO UPDATE SET
           "latitude" = EXCLUDED."latitude",
@@ -116,7 +171,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       for (const item of supplier.items) {
         await this.prisma.$executeRaw`
           INSERT INTO "marketplace_supplier_items" (
-            "id", "supplier_id", "item_name", "category", "unit", "price_bdt", "stock_quantity", "seeded"
+            "id", "supplier_id", "item_name", "category", "unit", "price_bdt", "stock_quantity", "seeded", "created_at", "updated_at"
           )
           VALUES (
             ${randomUUID()}::uuid,
@@ -126,7 +181,9 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
             ${item.unit},
             ${item.priceBdt},
             ${item.stockQuantity},
-            true
+            true,
+            now(),
+            now()
           )
           ON CONFLICT ("supplier_id", "item_name", "unit") DO UPDATE SET
             "category" = EXCLUDED."category",
@@ -241,6 +298,72 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     return this.queryMarketPrices(crop);
   }
 
+  async saveRun(input: {
+    result: MarketplaceIntelligenceResult;
+    userId?: string;
+    tenantId?: string;
+    farmerId?: string;
+    farmId?: string;
+    sessionId?: string;
+    crop: string;
+  }): Promise<MarketplaceRunRecord> {
+    const id = randomUUID();
+    const rows = await this.prisma.$queryRaw<MarketplaceRunRow[]>`
+      INSERT INTO "marketplace_intelligence_runs" (
+        "id", "user_id", "tenant_id", "farmer_id", "farm_id", "session_id",
+        "item_name", "quantity", "unit", "district", "crop", "result"
+      )
+      VALUES (
+        ${id}::uuid,
+        ${input.userId ?? null}::uuid,
+        ${input.tenantId ?? null}::uuid,
+        ${input.farmerId ?? null}::uuid,
+        ${input.farmId ?? null}::uuid,
+        ${input.sessionId ?? null}::uuid,
+        ${input.result.needs.itemName},
+        ${input.result.needs.quantity},
+        ${input.result.needs.unit},
+        ${input.result.needs.district ?? null},
+        ${input.crop},
+        ${JSON.stringify({ ...input.result, id })}::jsonb
+      )
+      RETURNING
+        "id", "user_id", "tenant_id", "farmer_id", "farm_id", "session_id",
+        "crop", "result", "created_at"
+    `;
+    return mapRun(rows[0]!);
+  }
+
+  async listRuns(input: { userId?: string; tenantId?: string; farmerId?: string; farmId?: string; sessionId?: string; limit?: number }): Promise<MarketplaceRunRecord[]> {
+    const limit = normalizeLimit(input.limit, 20);
+    const rows = await this.prisma.$queryRaw<MarketplaceRunRow[]>`
+      SELECT
+        "id", "user_id", "tenant_id", "farmer_id", "farm_id", "session_id",
+        "crop", "result", "created_at"
+      FROM "marketplace_intelligence_runs"
+      WHERE (${input.userId ?? null}::uuid IS NULL OR "user_id" = ${input.userId ?? null}::uuid)
+        AND (${input.tenantId ?? null}::uuid IS NULL OR "tenant_id" = ${input.tenantId ?? null}::uuid)
+        AND (${input.farmerId ?? null}::uuid IS NULL OR "farmer_id" = ${input.farmerId ?? null}::uuid)
+        AND (${input.farmId ?? null}::uuid IS NULL OR "farm_id" = ${input.farmId ?? null}::uuid)
+        AND (${input.sessionId ?? null}::uuid IS NULL OR "session_id" = ${input.sessionId ?? null}::uuid)
+      ORDER BY "created_at" DESC
+      LIMIT ${limit}
+    `;
+    return rows.map(mapRun);
+  }
+
+  async getRun(id: string): Promise<MarketplaceRunRecord | undefined> {
+    const rows = await this.prisma.$queryRaw<MarketplaceRunRow[]>`
+      SELECT
+        "id", "user_id", "tenant_id", "farmer_id", "farm_id", "session_id",
+        "crop", "result", "created_at"
+      FROM "marketplace_intelligence_runs"
+      WHERE "id" = ${id}::uuid
+      LIMIT 1
+    `;
+    return rows[0] ? mapRun(rows[0]) : undefined;
+  }
+
   private async queryMarketPrices(crop: string, district?: string): Promise<MarketPricePoint[]> {
     const rows = await this.prisma.$queryRaw<Array<MarketPricePoint>>`
       SELECT
@@ -271,6 +394,33 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
   async close(): Promise<void> {
     await this.prisma.$disconnect();
   }
+}
+
+interface MarketplaceRunRow {
+  id: string;
+  user_id: string | null;
+  tenant_id: string | null;
+  farmer_id: string | null;
+  farm_id: string | null;
+  session_id: string | null;
+  crop: string;
+  result: unknown;
+  created_at: Date;
+}
+
+function mapRun(row: MarketplaceRunRow): MarketplaceRunRecord {
+  const result = row.result as MarketplaceIntelligenceResult;
+  return {
+    ...result,
+    id: row.id,
+    userId: row.user_id ?? undefined,
+    tenantId: row.tenant_id ?? undefined,
+    farmerId: row.farmer_id ?? undefined,
+    farmId: row.farm_id ?? undefined,
+    sessionId: row.session_id ?? undefined,
+    crop: row.crop,
+    createdAt: row.created_at.toISOString(),
+  };
 }
 
 let defaultStore: MarketplaceStore | undefined;
@@ -344,6 +494,10 @@ function stableSeedId(value: string): string {
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function normalizeLimit(limit: number | undefined, fallback: number): number {
+  return Math.min(Math.max(limit ?? fallback, 1), 100);
 }
 
 function formatBdt(value: number): string {

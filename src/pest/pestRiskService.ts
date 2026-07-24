@@ -90,6 +90,7 @@ export interface PestRiskStore {
     sourceTraceIds: string[];
   }): Promise<PestAssessmentRecord>;
   listAssessments(input: { farmId?: string; planId?: string; limit?: number }): Promise<PestAssessmentRecord[]>;
+  getAssessment(id: string): Promise<PestAssessmentRecord | undefined>;
   createAlert(input: {
     context: PestContext;
     assessmentId?: string;
@@ -133,6 +134,10 @@ export class InMemoryPestRiskStore implements PestRiskStore {
       .filter((row) => !input.farmId || row.farmId === input.farmId)
       .filter((row) => !input.planId || row.planId === input.planId)
       .slice(0, limit);
+  }
+
+  async getAssessment(id: string): Promise<PestAssessmentRecord | undefined> {
+    return this.assessments.find((row) => row.id === id);
   }
 
   async createAlert(input: { context: PestContext; risk: PestRisk }): Promise<boolean> {
@@ -258,6 +263,19 @@ export class PostgresPestRiskStore implements PestRiskStore {
       LIMIT ${limit}
     `;
     return rows.map(mapAssessment);
+  }
+
+  async getAssessment(id: string): Promise<PestAssessmentRecord | undefined> {
+    const rows = await this.prisma.$queryRaw<AssessmentRow[]>`
+      SELECT
+        "id", "farmer_id", "farm_id", "session_id", "plan_id", "crop_id", "crop_label",
+        "growth_stage", "days_after_sowing", "location_text", "area_acres"::text,
+        "highest_severity", "risks", "weather", "trace", "source_trace_ids", "created_at"
+      FROM "pest_disease_assessments"
+      WHERE "id" = ${id}::uuid
+      LIMIT 1
+    `;
+    return rows[0] ? mapAssessment(rows[0]) : undefined;
   }
 
   async createAlert(input: {
@@ -396,6 +414,10 @@ export class PestRiskService {
 
   async listAssessments(input: { farmId?: string; planId?: string; limit?: number }): Promise<PestAssessmentRecord[]> {
     return this.store.listAssessments(input);
+  }
+
+  async getAssessment(id: string): Promise<PestAssessmentRecord | undefined> {
+    return this.store.getAssessment(id);
   }
 }
 

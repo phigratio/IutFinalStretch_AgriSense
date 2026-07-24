@@ -4,8 +4,12 @@
  */
 import { Router, type Request, type Response } from "express";
 import { agriSenseService, AgriSenseService } from "../agrisense/agrisenseService.js";
+import { agriSenseWorkspaceService, AgriSenseWorkspaceService } from "../agrisense/workspaceService.js";
 
-export function createAgriSenseRouter(service: AgriSenseService = agriSenseService): Router {
+export function createAgriSenseRouter(
+  service: AgriSenseService = agriSenseService,
+  workspaceService: AgriSenseWorkspaceService = agriSenseWorkspaceService,
+): Router {
   const router = Router();
 
   router.post("/sessions", async (req: Request, res: Response): Promise<void> => {
@@ -129,6 +133,23 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
           userId: stringQuery(req.query.userId),
           farmerId: stringQuery(req.query.farmerId),
           farmId: stringQuery(req.query.farmId),
+          bdappsMobile: stringQuery(req.query.bdappsMobile),
+          limit: numberQuery(req.query.limit),
+        }),
+      );
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
+
+  router.get("/workspace", async (req: Request, res: Response): Promise<void> => {
+    try {
+      res.json(
+        await workspaceService.getWorkspace({
+          userId: stringQuery(req.query.userId),
+          farmerId: stringQuery(req.query.farmerId),
+          farmId: stringQuery(req.query.farmId),
+          sessionId: stringQuery(req.query.sessionId),
           bdappsMobile: stringQuery(req.query.bdappsMobile),
           limit: numberQuery(req.query.limit),
         }),
