@@ -111,6 +111,19 @@ export const ArrowUpIcon = (props: IconProps) => (
   </svg>
 );
 
+export const MicIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8" />
+  </svg>
+);
+
+export const StopIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <rect x="7" y="7" width="10" height="10" rx="1.5" />
+  </svg>
+);
+
 export const ArrowDownIcon = (props: IconProps) => (
   <svg {...base(props)}>
     <path d="M12 5v14M19 12l-7 7-7-7" />

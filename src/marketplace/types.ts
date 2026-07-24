@@ -1,4 +1,5 @@
 import { type IntakeTraceEvent } from "../agent/intakeSchema.js";
+import { type ContextBundle } from "../context/contextService.js";
 
 export interface MarketplaceNeed {
   itemName: string;
@@ -60,6 +61,9 @@ export interface MarketplaceIntelligenceRequest {
   longitude?: number;
   crop?: string;
   userId?: string;
+  tenantId?: string;
+  farmerId?: string;
+  farmId?: string;
   sessionId?: string;
 }
 
@@ -73,6 +77,7 @@ export interface MarketplaceIntelligenceResult {
     retrieved: unknown[];
     error?: string;
   };
+  context?: ContextBundle;
   trace: IntakeTraceEvent[];
   seeded: true;
 }

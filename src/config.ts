@@ -17,6 +17,7 @@ export const config = {
   openaiApiKey: process.env.OPENAI_API_KEY,
   openaiChatModel: process.env.OPENAI_CHAT_MODEL ?? "gpt-4o",
   openaiIntakeModel: process.env.OPENAI_INTAKE_MODEL ?? "gpt-4.1-mini",
+  openaiSttModel: process.env.OPENAI_STT_MODEL ?? "whisper-1",
   // Fixed global identity for the shared agronomy knowledge base in mem0.
   mem0KbUserId: process.env.MEM0_KB_USER_ID ?? "agrisense-kb",
   mem0KbAgentId: process.env.MEM0_KB_AGENT_ID ?? "agrisense-kb",
@@ -24,6 +25,10 @@ export const config = {
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME,
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY,
   cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET,
+  // BDApps premium gating (P6): when true, proactive-alert SMS only goes to
+  // subscribed (premium) farmers — subscription unlocks the alert channel.
+  // Default false so free farmers with an active channel still get alerts.
+  alertsRequirePremium: process.env.ALERTS_REQUIRE_PREMIUM === "true",
 };
 
 export function assertProductionConfig(): void {

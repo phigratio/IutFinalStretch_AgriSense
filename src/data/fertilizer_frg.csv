@@ -8,6 +8,7 @@ rice_boro,high,220,85,100,95,10,0.33,15;35;55,FRG-2018,https://barc.gov.bd,Ferti
 wheat,medium,200,90,50,110,5,0.5,21,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
 maize,medium,300,160,110,60,12,0.25,20;40,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
 potato,medium,300,160,250,120,10,0.6,30,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
+tomato,medium,260,180,220,80,8,0.45,25;45,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
 mustard,medium,175,85,55,120,6,0.5,25,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
 lentil,medium,45,85,35,40,4,1.0,,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
 onion,medium,250,150,130,30,6,0.34,25;45,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified

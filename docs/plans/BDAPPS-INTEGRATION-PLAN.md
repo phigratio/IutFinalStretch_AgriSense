@@ -40,14 +40,47 @@ story judges reward.
 
 For our app config (Subscriber Confirmation Required = YES), **BDApps rejects the raw phone
 number on SMS / CaaS / subscription calls with E1951 — even after the farmer is REGISTERED.**
-Only the **masked `subscriberId`** returned by `otp/verify` is accepted. So:
+Only the **masked `subscriberId`** (privacy-preserving token) is accepted. BDApps only hands
+us that token when the farmer takes a consent action through us — you cannot text a stranger.
 
-> **OTP verification is the front door. Nothing in the REACH or PAYMENT layers works for a
-> farmer until they've been OTP-verified once and we've stored their masked subscriberId.**
+> **A captured masked subscriberId is the prerequisite for ANY BDApps communication with a
+> farmer. Without it, BDApps is inert for that user — no SMS, no alerts, no payment.**
 
-We already built this: `src/bdapps/subscriberStore.ts` captures the masked id at verify and
-resolves every later call to it (`resolveSubscriberAddress`). This plan is largely about
-routing every feature through that door.
+### 1a. Login ≠ channel activation (the distinction that governs everything)
+
+These are two different things and must not be conflated:
+
+- **Login** = getting *into the app*. Any method works: email/password, Google (Navid's
+  flows), or BDApps OTP. Login alone gives app access and a role token. **Login by
+  email/Google yields NO masked id → those users are unreachable by BDApps.**
+- **Channel activation** = capturing the farmer's **masked subscriberId** so BDApps can reach
+  them. This is a *separate* consent step, required before any SMS/alert/payment feature works,
+  and prompted when the farmer opts into such a feature ("Verify your phone to get weather
+  alerts by SMS").
+
+**The masked id is captured at three points (per DGD §6.3.2 + §3.2/§4.2), most reliable first:**
+
+| # | Capture point | When | Reliability |
+|---|---|---|---|
+| 1 | **Subscription-notification webhook** `/bdapps/subscription` | After the farmer confirms subscription (telecom-side) | **Canonical** — DGD: masked-msisdn is delivered here on confirmation |
+| 2 | **Inbound SMS / USSD** `sourceAddress` on `/bdapps/sms`,`/bdapps/ussd` | Farmer texts `agrisms START` to 21213 or dials `*213*74756#` | Reliable — user-initiated opt-in, no OTP needed |
+| 3 | **OTP verify** response `subscriberId` | App-initiated OTP flow | **Optional** per DGD — only populated *after* subscription confirmation; treat as a bonus, not a guarantee |
+
+Consequences the whole team must design around:
+- A user who logs in with email/Google and never subscribes / texts in / verifies is
+  **BDApps-unreachable** — by BDApps' privacy design, not our bug.
+- **Navid's tenant-entered phone** (`FarmerOnboarding.phone`, `filledBy: tenant`) is a raw
+  number → **not a reachable channel**. The farmer still must activate the channel themselves.
+- Fallbacks for the unreachable (in-app notification — needs app open; email — non-BDApps)
+  exist but are not real substitutes for SMS reach.
+
+**The rule:** *Login is for app access. A captured masked subscriberId (webhook > inbound >
+OTP) is the prerequisite for BDApps communication. Any feature that reaches the farmer
+off-app must ensure the channel is active, and prompt channel activation if it isn't.*
+
+We already built the credential cache: `src/bdapps/subscriberStore.ts` (maps number → masked
+id, resolves every call). The work ahead wires the three capture points into it + persists to
+`FarmerProfile.bdappsSubscriberId`, then gates features on "is the channel active?".
 
 ---
 
@@ -228,3 +261,121 @@ and needs no BDApps activation we don't already have.
 - **Demo posture:** lead with the working subscription charge + real SMS alert (both move real
   money / reach the phone), show the CaaS checkout reaching a real debit call in the trace, and
   declare the CaaS charge as pending activation or simulated — never presented as completed.
+
+---
+
+## 7. Implementation plan (concrete, non-breaking, grounded in current code)
+
+### 7.0 Two design rules this plan obeys
+
+1. **Additive to Navid's auth.** BDApps login = a new *provider* through the existing
+   `AuthStore.upsertOAuthUser` + `AuthIdentity` table (Google is already one provider). Zero
+   edits to signup/login/Google/onboarding. Farmer gets a normal `role:"user"` token.
+2. **Channel activation is a capability, not a login.** The masked id is captured at three
+   points (§1a) and persisted once; features check "channel active?" via one helper.
+
+### 7.1 Data model (one migration, all additive — owner: coordinate with Mujahid)
+
+```
+FarmerProfile        + bdappsSubscriberId String?   // masked id, the reach credential
+                     + channelActivatedAt DateTime?  // when captured
+                     + premium            Boolean @default(false)
+                     + premiumSince       DateTime?
+ProactiveAlert       + smsMessageId       String?   // BDApps messageId of the sent alert
+                     + deliveredAt        DateTime?
+                     + deliveryStatus     String @default("pending") // pending|sent|delivered|failed
+AuthIdentity         (no change — new rows use provider="bdapps", providerUserId=normalized phone)
+```
+
+`bdappsSubscriberId` on `FarmerProfile` makes `subscriberStore` the *write-through cache* of a
+durable column (survives restarts, replaces the env-seed for real users).
+
+### 7.2 Backend modules
+
+| File (new unless noted) | Responsibility |
+|---|---|
+| `src/bdapps/channel.ts` | `activateChannel(farmerId, mobile, maskedId)`, `getChannel(farmerId)`, `isChannelActive(farmerId)`. Writes `FarmerProfile.bdappsSubscriberId` + updates `subscriberStore`. Single source of truth for "can we reach this farmer?". |
+| `src/auth/bdappsAuth.ts` | `BdappsAuthService` mirroring `GoogleOAuthService`: `requestOtp(phone)`, `verifyOtp(ref, otp)` → `store.upsertOAuthUser({provider:"bdapps", providerUserId: normPhone, email: synthetic, name, emailVerified:true})` → `createResponse(user).accessToken`. On verify, if masked id present, `activateChannel(...)`. |
+| `src/routes/auth.ts` (edit, +2 routes) | `POST /auth/bdapps/otp/request`, `POST /auth/bdapps/otp/verify` — next to `/auth/google`. Only *additions*. |
+| `src/routes/bdappsListeners.ts` (edit) | **Wire the 3 capture points:** `/bdapps/subscription` → `activateChannel` from `note.subscriberId` (canonical) + set/clear `premium`; `/bdapps/sms` → if keyword `START`/opt-in, `activateChannel` from `sourceAddress`, then keyword router (Flow D); `/bdapps/ussd` → USSD menu state machine (Flow E). |
+| `src/notifications/smsDispatcher.ts` | `deliverAlert(alertId)`: load alert → farm → farmer → `getChannel` → if active + premium, `bdapps.sendSms(masked, message, {encoding: bn?16:0})` → write `smsMessageId`/`deliveryStatus`. No channel → mark `skipped_no_channel`. |
+| `src/temporal/activities.ts` (edit) | After `INSERT proactive_alerts`, call `deliverAlert(...)` for each new alert (Flow C). |
+| `src/routes/channel.ts` | `GET /api/channel/status` (is my channel active/premium?), used by app to decide whether to prompt activation. |
+
+### 7.3 Frontend / mobile
+
+| Surface | Work |
+|---|---|
+| Mobile **new "Account" tab** (or fold into Home) | Phone-verify (OTP) flow → calls `/auth/bdapps/otp/*`; shows channel status + Premium toggle. |
+| Mobile **Alerts tab** (new) | List `proactive_alerts` with "sent by SMS ✓" badge; pull-to-refresh. |
+| Mobile **Money/Market** | Before a BDApps-reaching action, check `/api/channel/status`; if inactive, show "Verify your phone to enable SMS receipts/alerts" → OTP sheet. |
+| Web (Navid's) | Optional: add BDApps phone-verify button on SignIn/Onboarding beside Google; reuse same endpoints. Coordinate so it doesn't clash with his role flow. |
+
+### 7.4 Sequenced phases (each shippable + demoable on its own)
+
+- **P1 — Channel core + capture (foundation).** `channel.ts` + data model migration + wire
+  `/bdapps/subscription` webhook to `activateChannel` (canonical capture) + `GET
+  /api/channel/status`. *Demo:* subscribe → webhook fires → farmer's channel goes active,
+  visible in status. **No app UI needed to prove it.** Highest leverage; unblocks everything.
+- **P2 — Proactive alert → SMS (biggest demo value).** `smsDispatcher` + hook into the
+  Temporal alert activity + mobile Alerts tab. *Demo:* trigger weather sweep → real SMS on the
+  phone → alert shows "sent ✓". Rides entirely on already-working SMS.
+- **P3 — BDApps login provider + phone-verify UX.** `bdappsAuth.ts` + 2 auth routes + mobile
+  verify sheet. *Demo:* log in by phone; returning farmer greeted with plan status (Tier-1).
+- **P4 — Inbound opt-in + keyword replies (Flow D).** Wire `/bdapps/sms` capture + keyword
+  router. Needs ngrok. *Demo:* text `agrisms PLAN` → get plan back, no app.
+- **P5 — USSD menu (Flow E).** State machine in `ussdMenu.ts`. Needs ngrok. *Demo:*
+  `*213*74756#` → menu → advice.
+- **P6 — Premium gating (Flow B).** `premium` flag from subscription webhook gates alerts/
+  scenario/marketplace. *Demo:* subscribe → premium features unlock.
+- **P7 — Marketplace CaaS buy (Flow F).** Wire the Buy button to the (ready) checkout. Works
+  when BDApps activates CaaS.
+
+### 7.5 Non-breaking checklist (verify after each phase)
+
+- `npm test` green (Navid's auth/onboarding tests must stay green — they exercise the shared
+  store/token).
+- Existing `/auth/*`, `/api/onboarding/*` untouched in behavior; new routes are strictly added.
+- A farmer created via BDApps and one created via Navid's onboarding with the **same phone**
+  resolve to **one `AppUser`** (agree phone as canonical link with Navid — the one coordination
+  item). `upsertOAuthUser`'s email-match fallback + a phone lookup in `activateChannel` covers it.
+- `MOCK_BDAPPS=1` still exercises every flow offline for CI/dev.
+
+### 7.6 Recommended start
+
+**P1 then P2.** P1 makes "channel activation" real and captures the credential the correct
+(canonical, webhook) way; P2 turns that into the headline "agent texts the farmer real advice"
+demo — both on BDApps capabilities already proven live, no CaaS activation required.
+
+### 7.7 Refinements from teammate features (surveyed 24 Jul ~21:30)
+
+Since the plan was written, the team shipped role-based dashboards, a **pest-risk engine**,
+**scenario/pest Temporal workflows**, and phone fields across onboarding/tenant/assist forms.
+Impact on this plan (backend P1–P3 already done — these guide the frontend + remaining phases):
+
+- **R1 — Pest-risk & scenario are NEW proactive-alert sources.** `src/pest/pestRiskService.ts`
+  inserts into `proactive_alerts` (and scenario workflows exist). P2's `smsDispatcher` already
+  delivers *any* pending alert regardless of type, so **pest/disease and scenario alerts get SMS
+  delivery for free** — a great feature ("we detected blast risk at your rice's vegetative stage,
+  scout now"). **But those paths don't currently *trigger* delivery** (only the weather/plan
+  Temporal sweeps + the dev route do). Fix: add a `dispatchAlertsSafely()` call after pest/
+  scenario alert creation (coordinate with phigratio, or a small shared post-insert hook). Low
+  effort, high demo value — makes P2 cover 4 alert types, not 2.
+- **R2 — Web verify-phone integration point = `UserDashboard`** (the farmer's role home), which
+  already shows their phone from `GET /api/onboarding/me` (`OnboardingProfile.phone`,
+  `missingFields` includes `"phone"`). Web flow: dashboard "Verify phone / Enable SMS alerts"
+  button → `/auth/bdapps/otp/request(phone)` → OTP modal → `/auth/bdapps/otp/verify` → channel
+  active; show status. **The farmer never retypes their number — reuse the onboarding phone.**
+- **R2a — `/api/channel/status` refinement:** currently takes `?mobile=`. For the authenticated
+  web farmer, add an auth-derived variant (token → onboarding phone → status) so the dashboard
+  needs no phone param. Keep the `?mobile=` form for the dev/mobile pre-login case.
+- **R3 — Phone-as-canonical-link is now urgent, not optional.** Phone is collected in onboarding
+  self-profile, assist requests, AND tenant requests. A farmer can arrive at an `AppUser` via
+  email/Google + onboarding phone, then BDApps-verify the same phone. Before P3 hits the web,
+  agree with Navid: on `verifyOtp`, if an `AppUser` already exists whose onboarding/farmer phone
+  matches, **link to it** (set the bdapps `AuthIdentity` on the existing user) rather than
+  minting a second user. (Backend hook: extend `bdappsAuth.verifyOtp` to look up an existing
+  user by phone before `upsertOAuthUser`.)
+
+**Net:** the P1–P7 structure holds. Add **R1** (pest/scenario alerts → SMS, a quick P2 extension)
+and fold **R2/R2a/R3** into the web phase (next). Nothing in the plan needs to be rethought.

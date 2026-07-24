@@ -13,6 +13,7 @@
 import { bdapps as defaultBdapps, isSuccess, type BdappsApi } from "../bdapps/index.js";
 import { resolveSubscriberAddress } from "../bdapps/subscriberStore.js";
 import { getDefaultAgriSenseStore, type AgriSenseStore } from "../agrisense/agrisenseStore.js";
+import { contextHydrator, type ContextBundle } from "../context/contextService.js";
 import { getDefaultPaymentStore, type PaymentStore } from "./store.js";
 
 export interface CheckoutInput {
@@ -22,6 +23,9 @@ export interface CheckoutInput {
   description?: string;
   planId?: string;
   userId?: string;
+  tenantId?: string;
+  farmerId?: string;
+  farmId?: string;
   /** When set, each CaaS step is logged to agent_tool_calls for the trace panel. */
   sessionId?: string;
 }
@@ -39,6 +43,7 @@ export interface CheckoutResult {
   smsSent: boolean;
   /** True when any step was served by the offline mock (declared honestly in UI/README). */
   mock: boolean;
+  context?: ContextBundle;
 }
 
 export interface CheckoutDeps {
@@ -92,6 +97,16 @@ export async function checkout(
   // Resolve to the masked subscriberId when we captured one at OTP verify —
   // bdapps rejects the raw number on this app (E1951). See subscriberStore.
   const tel = resolveSubscriberAddress(input.mobile);
+  const hydratedContext = await contextHydrator.hydrate({
+    message: `${input.description ?? "payment checkout"} ${input.amountBdt}`,
+    userId: input.userId,
+    tenantId: input.tenantId,
+    farmerId: input.farmerId,
+    farmId: input.farmId,
+    sessionId: input.sessionId,
+    bdappsMobile: tel,
+    limit: 5,
+  });
   const payment = await deps.payments.createPayment({
     mobile: tel,
     amountBdt: input.amountBdt,
@@ -102,6 +117,7 @@ export async function checkout(
       amountBdt: input.amountBdt,
       description: input.description ?? "AgriSense order",
       sessionId: input.sessionId,
+      contextCacheKey: hydratedContext.identity.cacheKey,
     },
   });
   const externalTrxId = `AGS-${payment.id.slice(0, 8)}-${Date.now()}`;
@@ -130,6 +146,7 @@ export async function checkout(
       amountBdt: input.amountBdt,
       smsSent: false,
       mock,
+      context: hydratedContext,
     };
   };
 
@@ -219,5 +236,6 @@ export async function checkout(
     amountBdt: input.amountBdt,
     smsSent,
     mock,
+    context: hydratedContext,
   };
 }

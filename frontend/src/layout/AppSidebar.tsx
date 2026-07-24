@@ -22,11 +22,13 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { name: "Dashboard", path: "/admin/dashboard", icon: <GridIcon /> },
   { name: "AgriSense Full", path: "/agrisense", icon: <BoxIcon /> },
+  { name: "Pest Risk", path: "/pest-risk", icon: <SearchSidebarIcon /> },
   { name: "Agri Weather", path: "/agrisense?stage=weather", icon: <SearchSidebarIcon /> },
   { name: "Agri Evidence", path: "/agrisense?stage=evidence", icon: <SearchSidebarIcon /> },
   { name: "Crop Ranking", path: "/agrisense?stage=crop_ranking", icon: <BoxIcon /> },
   { name: "Season Plan", path: "/agrisense?stage=season_plan", icon: <CalendarIcon /> },
   { name: "Financial Math", path: "/agrisense?stage=financials", icon: <CreditCardIcon /> },
+  { name: "Finance Management", path: "/finance", icon: <CreditCardIcon /> },
   { name: "Marketplace Intel", path: "/marketplace", icon: <MarketplaceIcon /> },
   { name: "Agent Trace", path: "/agrisense?stage=trace", icon: <ListIcon /> },
   { name: "Agent Intake", path: "/agent-intake", icon: <ListIcon /> },

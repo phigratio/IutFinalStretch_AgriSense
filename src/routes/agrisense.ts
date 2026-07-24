@@ -21,6 +21,11 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
           channel: req.body.channel ?? "web",
           preferredLanguage: req.body.preferredLanguage,
           selectedCrop: req.body.selectedCrop,
+          latitude: numberBody(req.body.latitude),
+          longitude: numberBody(req.body.longitude),
+          useMemory: req.body.useMemory,
+          acceptedOutcomeIds: req.body.acceptedOutcomeIds,
+          ignoredOutcomeIds: req.body.ignoredOutcomeIds,
           workflowStage: req.body.workflowStage,
           triggerReason: req.body.triggerReason,
         }),
@@ -44,6 +49,11 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
           channel: req.body.channel ?? "web",
           preferredLanguage: req.body.preferredLanguage,
           selectedCrop: req.body.selectedCrop,
+          latitude: numberBody(req.body.latitude),
+          longitude: numberBody(req.body.longitude),
+          useMemory: req.body.useMemory,
+          acceptedOutcomeIds: req.body.acceptedOutcomeIds,
+          ignoredOutcomeIds: req.body.ignoredOutcomeIds,
           workflowStage: req.body.workflowStage,
           triggerReason: req.body.triggerReason,
         }),
@@ -67,8 +77,36 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
           channel: req.body.channel ?? "web",
           preferredLanguage: req.body.preferredLanguage,
           selectedCrop: req.body.selectedCrop,
+          latitude: numberBody(req.body.latitude),
+          longitude: numberBody(req.body.longitude),
+          useMemory: req.body.useMemory,
+          acceptedOutcomeIds: req.body.acceptedOutcomeIds,
+          ignoredOutcomeIds: req.body.ignoredOutcomeIds,
           workflowStage: req.body.workflowStage ?? "full",
           triggerReason: req.body.triggerReason ?? "user_requested_replan",
+        }),
+      );
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
+
+  router.post("/scenarios/simulate", async (req: Request, res: Response): Promise<void> => {
+    try {
+      res.json(
+        await service.simulateScenario({
+          sessionId: req.body.sessionId,
+          userId: req.body.userId,
+          tenantId: req.body.tenantId,
+          farmerId: req.body.farmerId,
+          farmId: req.body.farmId,
+          planId: req.body.planId,
+          bdappsMobile: req.body.bdappsMobile,
+          preferredLanguage: req.body.preferredLanguage,
+          selectedCrop: req.body.selectedCrop,
+          message: req.body.message,
+          deltas: req.body.deltas,
+          baseline: req.body.baseline,
         }),
       );
     } catch (error) {
@@ -79,6 +117,22 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
   router.get("/sessions/:sessionId/trace", async (req: Request, res: Response): Promise<void> => {
     try {
       res.json(await service.listTrace(String(req.params.sessionId)));
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
+
+  router.get("/memory", async (req: Request, res: Response): Promise<void> => {
+    try {
+      res.json(
+        await service.getMemory({
+          userId: stringQuery(req.query.userId),
+          farmerId: stringQuery(req.query.farmerId),
+          farmId: stringQuery(req.query.farmId),
+          bdappsMobile: stringQuery(req.query.bdappsMobile),
+          limit: numberQuery(req.query.limit),
+        }),
+      );
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
@@ -101,3 +155,19 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
 }
 
 export const agrisenseRouter = createAgriSenseRouter();
+
+function stringQuery(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function numberQuery(value: unknown): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function numberBody(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}

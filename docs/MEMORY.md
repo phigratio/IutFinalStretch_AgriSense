@@ -186,6 +186,82 @@
   - Infra note during this: teammate added `multer` dep + KB migrations (kb_ingestion_jobs);
     ran `npm install` + `prisma generate` + `migrate deploy` to get backend booting.
 
+- 24Jul ~20:10 — Claude session (with Labib) — **Started BDApps feature integration, build
+  order = backend → web → mobile** (web has auth already, so it's the cheapest backend test
+  bed; mobile has none so BDApps OTP will become its login). Plan detail:
+  docs/plans/BDAPPS-INTEGRATION-PLAN.md §7 (P1-P7). **P1 shipped (58883ae):** channel
+  activation core. ⚠ **Schema change for Mujahid to note:** additive migration
+  `20260724140105_add_bdapps_channel` adds `bdappsSubscriberId/channelActivatedAt/premium/
+  premiumSince` to `FarmerProfile` (sorts after 090000 which creates the table — safe on
+  fresh migrate deploy). New `src/bdapps/channel.ts` = single source of truth for "can BDApps
+  reach this farmer?" (masked id persisted to profile + write-through to subscriberStore).
+  Wired the **canonical capture point**: `/bdapps/subscription` webhook → activateChannel +
+  premium. New `GET /api/channel/status`. Live-verified end-to-end. Next: P2 (proactive
+  alert → real SMS, hooks the existing Temporal weatherAlertSweep). Anyone pulling: run
+  `npx prisma generate && npx prisma migrate deploy`.
+
+- 24Jul ~20:20 — Claude session (with Labib) — **P2 shipped (a03edb2): proactive alert →
+  real SMS delivery** — the headline "agent reaches the farmer off-app" feature. New
+  `src/notifications/smsDispatcher.ts` delivers pending `proactive_alerts` by SMS to the
+  farmer's masked BDApps channel (gated on channel activation → `skipped_no_channel` if
+  inactive). Additive migration `20260724210000_add_alert_delivery` (delivery_status/
+  sms_message_id/delivered_at on proactive_alerts). Hooked into the weather + plan-task
+  Temporal sweeps (best-effort). Dev route `POST /api/dev/{seed-demo-alert,deliver-alerts}`
+  for on-demand demo. **LIVE-VERIFIED: seeded alert → delivered → real BDApps messageId
+  12607242018482171 persisted, delivery_status=sent, real SMS to 01805758966.** tsc + 37
+  tests green. ⚠ Migration note: `prisma migrate dev` is broken by teammates' parallel-
+  timestamp migrations (shadow-DB replay hits marketplace_orders ordering) — use
+  `migrate deploy` (works fine); my P2 migration was hand-written + deployed. Next: P3
+  (BDApps login provider, backend→web→mobile).
+
+- 24Jul ~21:15 — Claude session (with Labib) — **P3 shipped (edb736f): BDApps phone
+  identity / OTP login.** Confirmed model with Labib: BDApps = **verification-to-enable-
+  features**, NOT a separate login silo; on mobile (no auth) it doubles as sign-in via the
+  SHARED identity. `src/auth/bdappsAuth.ts` (mirrors GoogleOAuthService): OTP request/verify
+  → `upsertOAuthUser(provider:"bdapps", providerUserId:phone-digits, synthetic email, role
+  user)` → same JWT as email/Google; captures channel + links FarmerProfile.userId when a
+  masked id is present (else channel activates later via subscription webhook — identity
+  doesn't depend on it). 2 additive routes `/auth/bdapps/otp/{request,verify}`. **Non-
+  breaking:** widened `UpsertOAuthUserInput.provider` to `"google"|"bdapps"` (type-only, both
+  store impls already persist any provider string) — Navid's 12 auth tests still green.
+  Also fixed channel.activate to store RAW mobile (was tel:-normalized → lookup mismatch with
+  seed/onboarding/env). **Live-verified (mock OTP, real number blocked by E1351):** token
+  works with Navid's `/auth/me`; FarmerProfile linked (user_id + masked id); channel active.
+  42 tests green. ⚠ Coordinate w/ Navid: phone is the canonical link so an email-signup +
+  bdapps-verify with the same phone don't fork into 2 AppUsers. Backend for P1/P2/P3 done;
+  next = web frontend (verify-phone button) then mobile sign-in, per build order.
+
+- 24Jul ~21:45 — Claude session (with Labib) — **R1 + web phase shipped.** R1 (aea518e):
+  pest/disease alerts now deliver by SMS (hooked deliverPendingAlerts into pest alert
+  creation; dispatcher is alert-type-agnostic so weather+plan+pest+scenario all covered) —
+  live-verified a blast-risk SMS. **Web-backend (225ec31):** added authenticated
+  `POST /auth/bdapps/verify-phone` + `BdappsAuthService.activatePhoneForUser` — a logged-in
+  web user (email/Google) verifies their phone to enable BDApps; channel activates on THEIR
+  existing AppUser (no new user/token) — sidesteps the duplicate-user problem (R3). Live-
+  verified: email signup → verify-phone → channelActive, no new token. **Web-UI (a3930f3):**
+  `frontend/src/api/channel.ts` + a Bengali "এসএমএস সতর্কতা" (SMS alerts) card on
+  UserDashboard — farmer verifies the onboarding phone → OTP → channel active; frontend tsc +
+  vite build green. bdapps login route flow: `/auth/bdapps/otp/request` (shared) →
+  `/auth/bdapps/otp/verify` (mobile SIGN-IN, new user+token) OR `/auth/bdapps/verify-phone`
+  (web, authenticated, activates channel on current user). Next: mobile sign-in UI (reuses
+  these endpoints). NOTE: keep running `prisma generate && migrate deploy` after pulls —
+  teammates keep evolving the schema (imageUrl, tenant phone, voice route, etc).
+
+- 24Jul ~22:15 — Claude session (with Labib) — **Mobile BDApps phone sign-in shipped
+  (f60b92f)** — completes the backend→web→mobile build order. Mobile had NO auth; phone-OTP
+  now signs the farmer in on the SHARED backend identity (`/auth/bdapps/otp/*`), giving
+  mobile the login + Tier-1 persistent identity it lacked. Added: cross-platform token store
+  (`mobile/src/api/tokenStore.ts` — localStorage web / in-memory native, no new dep),
+  `apiFetch` now attaches the bearer token, `mobile/src/api/auth.ts`, `mobile/src/state/
+  auth.tsx` AuthProvider (bootstraps from stored token via /auth/me → returning farmer stays
+  in), and an **Account tab** (phone→OTP→verified, shows farmer + SMS-channel status + sign
+  out). 8 mobile tabs now; tsc + expo web export green. NOTE: phigratio upgraded the weather
+  sweep to emit a proper "Delay nitrogen application by N days → move window to <dates>"
+  alert (impacted-task aware) — flows straight into the P2 SMS dispatcher. BDApps integration
+  now spans identity (web verify + mobile sign-in), reach (weather/plan/pest alerts → real
+  SMS), and payment (CaaS checkout, blocked only on bdapps activation). Remaining: P4 inbound
+  SMS keywords, P5 USSD menu (both need ngrok), P6 premium gating, P7 marketplace CaaS buy.
+
 ## 8. Session log (append-only: `HH:MM — <who> — <what changed>`)
 
 - 24Jul 11:00 — Claude session 1 (with A) — Read problem statement, bdapps cheatsheet/DGD/

@@ -12,6 +12,7 @@ import { type IntakeField, type IntakeProfile, type IntakeTraceEvent } from "./i
 export interface IntakeStore {
   loadOrCreate(input: {
     sessionId?: string;
+    userId?: string;
     farmerId?: string;
     farmId?: string;
     bdappsMobile?: string;
@@ -47,6 +48,7 @@ export class InMemoryIntakeStore implements IntakeStore {
 
   async loadOrCreate(input: {
     sessionId?: string;
+    userId?: string;
     farmerId?: string;
     farmId?: string;
     bdappsMobile?: string;
@@ -91,6 +93,7 @@ export class PostgresIntakeStore implements IntakeStore {
 
   async loadOrCreate(input: {
     sessionId?: string;
+    userId?: string;
     farmerId?: string;
     farmId?: string;
     bdappsMobile?: string;
@@ -112,9 +115,10 @@ export class PostgresIntakeStore implements IntakeStore {
     const sessionId = input.sessionId ?? randomUUID();
 
     await this.prisma.$executeRaw`
-      INSERT INTO "farmer_profiles" ("id", "bdapps_mobile", "preferred_language")
-      VALUES (${farmerId}::uuid, ${input.bdappsMobile ?? null}, ${normalizeLanguage(input.preferredLanguage) ?? "en"})
+      INSERT INTO "farmer_profiles" ("id", "user_id", "bdapps_mobile", "preferred_language")
+      VALUES (${farmerId}::uuid, ${uuidOrNull(input.userId)}::uuid, ${input.bdappsMobile ?? null}, ${normalizeLanguage(input.preferredLanguage) ?? "en"})
       ON CONFLICT ("id") DO UPDATE SET
+        "user_id" = COALESCE(EXCLUDED."user_id", "farmer_profiles"."user_id"),
         "bdapps_mobile" = COALESCE(EXCLUDED."bdapps_mobile", "farmer_profiles"."bdapps_mobile"),
         "preferred_language" = COALESCE(EXCLUDED."preferred_language", "farmer_profiles"."preferred_language"),
         "updated_at" = CURRENT_TIMESTAMP
@@ -127,8 +131,8 @@ export class PostgresIntakeStore implements IntakeStore {
     `;
 
     await this.prisma.$executeRaw`
-      INSERT INTO "agent_sessions" ("id", "farmer_id", "farm_id", "channel", "status")
-      VALUES (${sessionId}::uuid, ${farmerId}::uuid, ${farmId}::uuid, ${input.channel ?? "web"}, 'intake')
+      INSERT INTO "agent_sessions" ("id", "user_id", "farmer_id", "farm_id", "channel", "status")
+      VALUES (${sessionId}::uuid, ${uuidOrNull(input.userId)}::uuid, ${farmerId}::uuid, ${farmId}::uuid, ${input.channel ?? "web"}, 'intake')
       ON CONFLICT ("id") DO NOTHING
     `;
 
@@ -267,6 +271,12 @@ function toNumber(value: string | null): number | undefined {
   if (value === null) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function uuidOrNull(value: string | undefined): string | null {
+  return value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : null;
 }
 
 function metadataFor(profile: IntakeProfile): Prisma.InputJsonValue {

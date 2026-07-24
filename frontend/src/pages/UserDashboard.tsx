@@ -9,6 +9,7 @@ import {
   type SeasonPlanResult,
   type RetrievedEvidence,
 } from "../api/agrisense.js";
+import { getChannelStatus, requestBdappsOtp, verifyPhone, type ChannelStatus } from "../api/channel.js";
 import PageMeta from "../components/common/PageMeta.js";
 import { PortalLoader } from "../components/common/DashboardLanding.js";
 import { useAuth } from "../context/AuthContext.js";
@@ -210,7 +211,94 @@ function HomeTab({ profile, result, busy, onRun, onAsk, error }: {
           <ProfileItem label="মৌসুম" value={profile?.targetSeason ? SEASON[profile.targetSeason] ?? profile.targetSeason : undefined} />
         </dl>
       </section>
+
+      {profile?.phone ? <ChannelCard phone={profile.phone} /> : null}
     </div>
+  );
+}
+
+/**
+ * BDApps SMS-channel activation. A logged-in farmer verifies their phone (OTP)
+ * so AgriSense can text weather/pest alerts. Activates the channel on THIS
+ * account — no new login.
+ */
+function ChannelCard({ phone }: { phone: string }) {
+  const [status, setStatus] = useState<ChannelStatus | null>(null);
+  const [step, setStep] = useState<"idle" | "otp">("idle");
+  const [referenceNo, setReferenceNo] = useState("");
+  const [otp, setOtp] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    getChannelStatus(phone).then(setStatus).catch(() => setStatus({ active: false, premium: false }));
+  }, [phone]);
+
+  async function sendOtp() {
+    setBusy(true); setMsg(null);
+    try {
+      const { referenceNo } = await requestBdappsOtp(phone);
+      setReferenceNo(referenceNo);
+      setStep("otp");
+      setMsg("আপনার মোবাইলে একটি কোড পাঠানো হয়েছে।");
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "কোড পাঠানো যায়নি।");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirm() {
+    setBusy(true); setMsg(null);
+    try {
+      const res = await verifyPhone({ referenceNo, otp, mobile: phone });
+      if (res.channelActive) {
+        setStatus({ active: true, premium: status?.premium ?? false });
+        setStep("idle");
+        setMsg(null);
+      } else {
+        setMsg("চ্যানেল সক্রিয় হয়নি। সাবস্ক্রিপশন নিশ্চিত করার পর আবার চেষ্টা করুন।");
+      }
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "কোড যাচাই করা যায়নি।");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="portal-workbench" aria-labelledby="sms-channel-title">
+      <div className="portal-section-heading">
+        <div>
+          <h2 id="sms-channel-title">এসএমএস সতর্কতা</h2>
+          <p>আবহাওয়া ও পোকা-রোগের সতর্কবার্তা সরাসরি আপনার মোবাইলে পান — অ্যাপ খোলা ছাড়াই।</p>
+        </div>
+        {status?.active ? <span className="portal-status portal-status--success">✓ চালু আছে</span> : null}
+      </div>
+
+      {status === null ? (
+        <p>লোড হচ্ছে…</p>
+      ) : status.active ? (
+        <p>আপনার নম্বর <strong>{phone}</strong> যাচাই করা হয়েছে। AgriSense আপনাকে গুরুত্বপূর্ণ সতর্কবার্তা এসএমএস করবে।</p>
+      ) : step === "idle" ? (
+        <div>
+          <p>এসএমএস সতর্কতা চালু করতে আপনার নম্বর <strong>{phone}</strong> যাচাই করুন।</p>
+          <button type="button" className="portal-button" disabled={busy} onClick={() => void sendOtp()}>
+            {busy ? "পাঠানো হচ্ছে…" : "কোড পাঠান ও যাচাই করুন"}
+          </button>
+        </div>
+      ) : (
+        <div className="portal-otp">
+          <label htmlFor="otp-input">মোবাইলে আসা কোডটি লিখুন</label>
+          <input id="otp-input" value={otp} onChange={(e) => setOtp(e.target.value)} inputMode="numeric" placeholder="৬ ডিজিটের কোড" />
+          <button type="button" className="portal-button" disabled={busy || otp.trim().length < 4} onClick={() => void confirm()}>
+            {busy ? "যাচাই হচ্ছে…" : "যাচাই করুন"}
+          </button>
+        </div>
+      )}
+
+      {msg ? <p className="portal-hint">{msg}</p> : null}
+    </section>
   );
 }
 

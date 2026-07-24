@@ -7,12 +7,13 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { config } from "../config.js";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { type IntakeTraceEvent } from "../agent/intakeSchema.js";
-import { type SeasonPlanResult, type WeatherForecast } from "./types.js";
+import { type ScenarioSimulationResult, type SeasonPlanResult, type WeatherForecast } from "./types.js";
 
 export interface AgriSenseStore {
   saveTrace(sessionId: string, event: IntakeTraceEvent): Promise<void>;
   saveWeather(sessionId: string, farmId: string, weather: WeatherForecast): Promise<string[]>;
   saveSeasonPlan(sessionId: string, farmId: string, plan: SeasonPlanResult, weatherSnapshotIds: string[]): Promise<SeasonPlanResult>;
+  saveScenarioSimulation(result: ScenarioSimulationResult): Promise<ScenarioSimulationResult>;
   listTrace(sessionId: string): Promise<unknown[]>;
   getPlan(planId: string): Promise<unknown | undefined>;
   close?(): Promise<void>;
@@ -39,6 +40,10 @@ export class InMemoryAgriSenseStore implements AgriSenseStore {
     const saved = { ...plan, id: randomUUID() };
     this.plans.set(saved.id!, saved);
     return saved;
+  }
+
+  async saveScenarioSimulation(result: ScenarioSimulationResult): Promise<ScenarioSimulationResult> {
+    return { ...result, id: result.id ?? randomUUID() };
   }
 
   async listTrace(sessionId: string): Promise<unknown[]> {
@@ -161,6 +166,29 @@ export class PostgresAgriSenseStore implements AgriSenseStore {
     }
 
     return { ...plan, id: planId };
+  }
+
+  async saveScenarioSimulation(result: ScenarioSimulationResult): Promise<ScenarioSimulationResult> {
+    const id = result.id ?? randomUUID();
+    await this.prisma.$executeRaw`
+      INSERT INTO "scenario_simulations" (
+        "id", "session_id", "farm_id", "plan_id", "scenario_label", "scenario_input",
+        "baseline_result", "scenario_result", "delta_result", "recommendation"
+      )
+      VALUES (
+        ${id}::uuid,
+        ${result.sessionId ?? null}::uuid,
+        ${result.farmId ?? null}::uuid,
+        ${result.planId ?? null}::uuid,
+        ${result.scenarioLabel},
+        ${toJsonb(result.deltas)}::jsonb,
+        ${toJsonb(result.baseline)}::jsonb,
+        ${toJsonb(result.scenario)}::jsonb,
+        ${toJsonb(result.comparison)}::jsonb,
+        ${result.recommendation}
+      )
+    `;
+    return { ...result, id };
   }
 
   async listTrace(sessionId: string): Promise<unknown[]> {

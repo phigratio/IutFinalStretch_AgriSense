@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { BdappsClient, BdappsError, isSuccess } from "./client.js";
 import { toTelAddress } from "./phone.js";
-import { handleUssd } from "./ussdMenu.js";
+import { handleUssdMenu } from "./ussdMenu.js";
+import { InMemoryChannelStore } from "./channel.js";
 import type { BdappsConfig } from "./config.js";
 
 const cfg: BdappsConfig = {
@@ -153,26 +154,35 @@ describe("error handling", () => {
   });
 });
 
-describe("handleUssd menu", () => {
-  it("shows the menu on mo-init and keeps the session open", () => {
-    const reply = handleUssd({
-      message: "",
-      sessionId: "S1",
-      sourceAddress: "tel:x",
-      ussdOperation: "mo-init",
-    });
+describe("handleUssdMenu", () => {
+  const channel = new InMemoryChannelStore();
+
+  it("shows the AgriSense menu on mo-init and keeps the session open", async () => {
+    const reply = await handleUssdMenu(
+      { message: "", sessionId: "S1", sourceAddress: "tel:x", ussdOperation: "mo-init" },
+      { channel },
+    );
     expect(reply.operation).toBe("mt-cont");
-    expect(reply.message).toMatch(/Welcome/);
+    expect(reply.message).toMatch(/AgriSense/);
+    expect(reply.message).toMatch(/My season plan/);
   });
 
-  it("answers option 1 and ends the session", () => {
-    const reply = handleUssd({
-      message: "1",
-      sessionId: "S1",
-      sourceAddress: "tel:x",
-      ussdOperation: "mo-cont",
-    });
+  it("option 3 opts into SMS alerts and ends the session", async () => {
+    const reply = await handleUssdMenu(
+      { message: "3", sessionId: "S1", sourceAddress: "tel:ussdMASK", ussdOperation: "mo-cont" },
+      { channel },
+    );
     expect(reply.operation).toBe("mt-fin");
-    expect(reply.message).toMatch(/Hello/);
+    expect(reply.message).toMatch(/alerts by SMS/i);
+    expect((await channel.getBySubscriberId("tel:ussdMASK"))?.active).toBe(true);
+  });
+
+  it("invalid option ends with a retry hint", async () => {
+    const reply = await handleUssdMenu(
+      { message: "9", sessionId: "S1", sourceAddress: "tel:x", ussdOperation: "mo-cont" },
+      { channel },
+    );
+    expect(reply.operation).toBe("mt-fin");
+    expect(reply.message).toMatch(/Invalid/i);
   });
 });

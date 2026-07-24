@@ -12,9 +12,11 @@ import Users from "./pages/Users.js";
 import Profile from "./pages/Profile.js";
 import Calendar from "./pages/Calendar.js";
 import AgriSense from "./pages/AgriSense.js";
+import PestRisk from "./pages/PestRisk.js";
 import AgentIntake from "./pages/AgentIntake.js";
 import Temporal from "./pages/Temporal.js";
 import Marketplace from "./pages/Marketplace.js";
+import Finance from "./pages/Finance.js";
 import Payments from "./pages/Payments.js";
 import Bdapps from "./pages/Bdapps.js";
 import SignIn from "./pages/SignIn.js";
@@ -66,10 +68,12 @@ createRoot(rootEl).render(
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/calendar" element={<Calendar />} />
                   <Route path="/agrisense" element={<AgriSense />} />
+                  <Route path="/pest-risk" element={<PestRisk />} />
                   <Route path="/knowledge-base" element={<KnowledgeBase />} />
                   <Route path="/agent-intake" element={<AgentIntake />} />
                   <Route path="/temporal" element={<Temporal />} />
                   <Route path="/marketplace" element={<Marketplace />} />
+                  <Route path="/finance" element={<Finance />} />
                   <Route path="/payments" element={<Payments />} />
                   <Route path="/bdapps" element={<Bdapps />} />
                 </Route>

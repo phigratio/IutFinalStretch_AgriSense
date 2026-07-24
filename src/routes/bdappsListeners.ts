@@ -9,33 +9,42 @@
  *   POST /bdapps/subscription  (Subscription Notification URL)
  */
 import { Router } from "express";
-import { bdapps, handleUssd } from "../bdapps/index.js";
+import { bdapps, handleUssdMenu } from "../bdapps/index.js";
 import type {
   IncomingSms,
   IncomingUssd,
   IncomingSubscriptionNotification,
 } from "../bdapps/index.js";
+import { activateChannel, getDefaultChannelStore } from "../bdapps/channel.js";
+import { handleInboundSms } from "../bdapps/inboundSms.js";
+import { getDefaultInboundData } from "../bdapps/inboundData.js";
 
 export const bdappsListenerRouter = Router();
 
 const ack = { statusCode: "S1000", statusDetail: "Success" };
 
-/** A user texted your short code + keyword. */
+/** A `tel:` value that is a plain BD number (not a masked token). */
+function looksLikeRawNumber(subscriberId: string): boolean {
+  return /^tel:880\d{10}$/.test(subscriberId.replace(/\s+/g, ""));
+}
+
+/**
+ * A farmer texted your shortcode+keyword. Route the keyword (START/STOP/PLAN/
+ * WEATHER/HELP) and reply by SMS — lets no-app farmers use AgriSense (Flow D).
+ * START also opts them into the SMS channel (captures their masked address).
+ */
 bdappsListenerRouter.post("/sms", async (req, res) => {
   const incoming = req.body as IncomingSms;
   console.log("[SMS IN]", JSON.stringify(incoming));
 
-  const text = (incoming.message ?? "").trim().toUpperCase();
   try {
-    if (text === "STOP" || text === "UNSUB") {
-      await bdapps.unsubscribe(incoming.sourceAddress);
-      await bdapps.sendSms(incoming.sourceAddress, "You have been unsubscribed. Bye!");
-    } else {
-      // Simple echo bot — replace with your logic.
-      await bdapps.sendSms(incoming.sourceAddress, `You said: ${incoming.message}`);
-    }
+    const { reply } = await handleInboundSms(incoming, {
+      channel: getDefaultChannelStore(),
+      data: getDefaultInboundData(),
+    });
+    await bdapps.sendSms(incoming.sourceAddress, reply);
   } catch (err) {
-    console.error("[SMS] auto-reply failed:", err);
+    console.error("[SMS] inbound handling failed:", err);
   }
 
   res.json(ack); // acknowledge receipt regardless
@@ -47,7 +56,10 @@ bdappsListenerRouter.post("/ussd", async (req, res) => {
   console.log("[USSD IN]", JSON.stringify(incoming));
 
   try {
-    const reply = handleUssd(incoming);
+    const reply = await handleUssdMenu(incoming, {
+      channel: getDefaultChannelStore(),
+      data: getDefaultInboundData(),
+    });
     // Push the next screen back to the user (needs a live session + credentials).
     await bdapps.sendUssd({
       sessionId: incoming.sessionId,
@@ -62,12 +74,30 @@ bdappsListenerRouter.post("/ussd", async (req, res) => {
   res.json(ack);
 });
 
-/** BDApps confirms a subscribe/unsubscribe actually happened. */
-bdappsListenerRouter.post("/subscription", (req, res) => {
+/**
+ * BDApps confirms a subscribe/unsubscribe. This is the CANONICAL channel-
+ * activation capture point (DGD §6.3.2): on confirmation, BDApps delivers the
+ * masked subscriberId here. We persist it to FarmerProfile so we can reach the
+ * farmer, and flip their premium entitlement from the subscription status.
+ */
+bdappsListenerRouter.post("/subscription", async (req, res) => {
   const note = req.body as IncomingSubscriptionNotification;
   console.log("[SUBSCRIPTION IN]", JSON.stringify(note));
 
-  // TODO: persist note.subscriberId + note.status to your database here.
+  try {
+    if (note.subscriberId) {
+      const registered = String(note.status).toUpperCase() === "REGISTERED";
+      await activateChannel({
+        maskedSubscriberId: note.subscriberId,
+        // If BDApps sent a raw number, use it as the mobile link too.
+        mobile: looksLikeRawNumber(note.subscriberId) ? note.subscriberId : undefined,
+        source: "subscription_webhook",
+        premium: registered,
+      });
+    }
+  } catch (err) {
+    console.error("[SUBSCRIPTION] channel activation failed:", err);
+  }
 
-  res.json(ack);
+  res.json(ack); // always acknowledge so BDApps doesn't retry-storm
 });
