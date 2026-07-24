@@ -19,6 +19,7 @@ import Bdapps from "./pages/Bdapps.js";
 import SignIn from "./pages/SignIn.js";
 import NotFound from "./pages/NotFound.js";
 import KnowledgeBase from "./pages/KnowledgeBase.js";
+import Onboarding from "./pages/Onboarding.js";
 import "./index.css";
 
 const rootEl = document.getElementById("root");
@@ -42,6 +43,7 @@ createRoot(rootEl).render(
                   <Route path="/calendar" element={<Calendar />} />
                   <Route path="/agrisense" element={<AgriSense />} />
                   <Route path="/knowledge-base" element={<KnowledgeBase />} />
+                  <Route path="/onboarding" element={<Onboarding />} />
                   <Route path="/agent-intake" element={<AgentIntake />} />
                   <Route path="/temporal" element={<Temporal />} />
                   <Route path="/marketplace" element={<Marketplace />} />
