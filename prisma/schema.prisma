@@ -22,6 +22,7 @@ model AppUser {
   farmers       FarmerProfile[]
   agentSessions AgentSession[]
   payments      BdappsPayment[]
+  marketplaceRuns MarketplaceIntelligenceRun[]
   memoryOutcomes AgentMemoryOutcome[]
 
   @@map("app_users")
@@ -119,6 +120,7 @@ model FarmerProfile {
   updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
   farms          FarmProfile[]
   sessions       AgentSession[]
+  marketplaceRuns MarketplaceIntelligenceRun[]
   memoryOutcomes AgentMemoryOutcome[]
   pestAssessments PestDiseaseAssessment[]
 
@@ -155,6 +157,7 @@ model FarmProfile {
   weatherSnapshots  WeatherSnapshot[]
   plans             SeasonPlan[]
   orders            MarketplaceOrder[]
+  marketplaceRuns   MarketplaceIntelligenceRun[]
   memoryOutcomes    AgentMemoryOutcome[]
   pestAssessments   PestDiseaseAssessment[]
 
@@ -245,6 +248,35 @@ model MarketplaceOrder {
   @@map("marketplace_orders")
 }
 
+model MarketplaceIntelligenceRun {
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String?        @map("user_id") @db.Uuid
+  user      AppUser?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tenantId  String?        @map("tenant_id") @db.Uuid
+  tenant    Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  farmerId  String?        @map("farmer_id") @db.Uuid
+  farmer    FarmerProfile? @relation(fields: [farmerId], references: [id], onDelete: SetNull)
+  farmId    String?        @map("farm_id") @db.Uuid
+  farm      FarmProfile?   @relation(fields: [farmId], references: [id], onDelete: SetNull)
+  sessionId String?        @map("session_id") @db.Uuid
+  session   AgentSession?  @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  itemName  String         @map("item_name")
+  quantity  Decimal        @db.Decimal(12, 2)
+  unit      String
+  district  String?
+  crop      String
+  result    Json
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([farmerId])
+  @@index([farmId])
+  @@index([sessionId])
+  @@index([createdAt])
+  @@map("marketplace_intelligence_runs")
+}
+
 model AgentSession {
   id             String          @id @default(uuid()) @db.Uuid
   userId         String?         @map("user_id") @db.Uuid
@@ -265,6 +297,7 @@ model AgentSession {
   toolCalls      AgentToolCall[]
   weather        WeatherSnapshot[]
   plans          SeasonPlan[]
+  marketplaceRuns MarketplaceIntelligenceRun[]
   memoryOutcomes AgentMemoryOutcome[]
   pestAssessments PestDiseaseAssessment[]
 
@@ -595,6 +628,7 @@ model Tenant {
   updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
   jurisdictions TenantJurisdiction[]
   members       TenantMember[]
+  marketplaceRuns MarketplaceIntelligenceRun[]
 
   @@map("tenants")
 }

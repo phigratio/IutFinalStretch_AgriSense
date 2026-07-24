@@ -5,6 +5,7 @@ import FarmWeatherMap from "../components/common/FarmWeatherMap.js";
 import LeafDiagnosisCard from "../components/vision/LeafDiagnosisCard.js";
 import {
   assessPestRisk,
+  getPestAssessment,
   listPestAssessments,
   type PestAssessmentRecord,
   type PestRisk,
@@ -32,6 +33,9 @@ export default function PestRiskPage() {
   const [geoPoint, setGeoPoint] = useState<{ latitude: number; longitude: number } | null>(null);
   const [result, setResult] = useState<PestRiskResult | null>(null);
   const [history, setHistory] = useState<PestAssessmentRecord[]>([]);
+  const [selectedAssessment, setSelectedAssessment] = useState<PestAssessmentRecord | null>(null);
+  const [selectedRiskId, setSelectedRiskId] = useState<string | null>(null);
+  const [loadingAssessmentId, setLoadingAssessmentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,9 +49,23 @@ export default function PestRiskPage() {
 
   async function refreshHistory() {
     try {
-      setHistory(await listPestAssessments({ farmId, planId, limit: 8 }));
+      setHistory(await listPestAssessments({ farmId, planId, limit: 12 }));
     } catch {
       setHistory([]);
+    }
+  }
+
+  async function openSavedRisk(assessmentId: string, riskId?: string) {
+    setError(null);
+    setLoadingAssessmentId(assessmentId);
+    try {
+      const assessment = await getPestAssessment(assessmentId);
+      setSelectedAssessment(assessment);
+      setSelectedRiskId(riskId ?? assessment.risks[0]?.ruleId ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load saved pest risk");
+    } finally {
+      setLoadingAssessmentId(null);
     }
   }
 
@@ -169,7 +187,11 @@ export default function PestRiskPage() {
             )}
           </form>
 
-          <HistoryPanel history={history} />
+          <HistoryPanel
+            history={history}
+            loadingAssessmentId={loadingAssessmentId}
+            onOpenRisk={(assessmentId, riskId) => void openSavedRisk(assessmentId, riskId)}
+          />
         </aside>
 
         <main className="space-y-4">
@@ -208,6 +230,18 @@ export default function PestRiskPage() {
           <TracePanel result={result} />
         </aside>
       </div>
+
+      {selectedAssessment && (
+        <SavedAssessmentModal
+          assessment={selectedAssessment}
+          selectedRiskId={selectedRiskId}
+          onSelectRisk={setSelectedRiskId}
+          onClose={() => {
+            setSelectedAssessment(null);
+            setSelectedRiskId(null);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -305,10 +339,18 @@ function ConditionList({ title, items, muted = false }: { title: string; items: 
   );
 }
 
-function HistoryPanel({ history }: { history: PestAssessmentRecord[] }) {
+function HistoryPanel({
+  history,
+  loadingAssessmentId,
+  onOpenRisk,
+}: {
+  history: PestAssessmentRecord[];
+  loadingAssessmentId: string | null;
+  onOpenRisk: (assessmentId: string, riskId?: string) => void;
+}) {
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-      <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Recent Assessments</h2>
+      <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Previous Pest Risks</h2>
       <div className="mt-3 space-y-2">
         {history.length === 0 ? (
           <p className="text-sm text-gray-500 dark:text-gray-400">No saved pest assessments yet.</p>
@@ -318,11 +360,119 @@ function HistoryPanel({ history }: { history: PestAssessmentRecord[] }) {
               <p className="text-xs font-semibold text-gray-900 dark:text-white">{item.cropLabel}</p>
               <SeverityBadge severity={item.highestSeverity} />
             </div>
-            <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{item.growthStage} · {formatDate(item.createdAt.slice(0, 10))}</p>
+            <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+              {item.growthStage} · {item.locationText} · {formatDate(item.createdAt.slice(0, 10))}
+            </p>
+            <div className="mt-2 space-y-1.5">
+              {item.risks.map((risk) => {
+                const riskId = String(risk.ruleId ?? risk.issueName ?? "risk");
+                return (
+                <button
+                  key={riskId}
+                  type="button"
+                  onClick={() => onOpenRisk(item.id, riskId)}
+                  disabled={loadingAssessmentId === item.id}
+                  className="flex w-full items-center justify-between gap-2 rounded-md border border-gray-100 px-2 py-1.5 text-left text-xs text-gray-700 hover:border-brand-200 hover:bg-brand-50 disabled:opacity-60 dark:border-white/[0.06] dark:text-gray-200 dark:hover:border-brand-500/30 dark:hover:bg-brand-500/10"
+                >
+                  <span className="min-w-0 truncate">{risk.issueName}</span>
+                  <span className="shrink-0 font-semibold text-brand-500">
+                    {loadingAssessmentId === item.id ? "Loading" : `${risk.score}/100`}
+                  </span>
+                </button>
+              );
+              })}
+            </div>
           </div>
         ))}
       </div>
     </section>
+  );
+}
+
+function SavedAssessmentModal({
+  assessment,
+  selectedRiskId,
+  onSelectRisk,
+  onClose,
+}: {
+  assessment: PestAssessmentRecord;
+  selectedRiskId: string | null;
+  onSelectRisk: (riskId: string) => void;
+  onClose: () => void;
+}) {
+  const selectedRisk = assessment.risks.find((risk) => risk.ruleId === selectedRiskId) ?? assessment.risks[0];
+
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-gray-900/55 px-4 py-6">
+      <div className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-lg bg-white shadow-xl dark:bg-gray-950">
+        <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-5 py-4 dark:border-gray-800">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Saved Pest Risk Run</h2>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {assessment.cropLabel} · {assessment.growthStage} · {assessment.locationText} · {formatDateTime(assessment.createdAt)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-200 dark:hover:bg-white/[0.04]"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="grid max-h-[calc(92vh-74px)] overflow-y-auto lg:grid-cols-[260px_minmax(0,1fr)]">
+          <aside className="border-b border-gray-200 p-4 dark:border-gray-800 lg:border-b-0 lg:border-r">
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+              <Metric label="Highest risk" value={assessment.highestSeverity} />
+              <Metric label="Area" value={`${assessment.areaAcres} acres`} />
+              <Metric label="Days" value={assessment.daysAfterSowing ?? "n/a"} />
+              <Metric label="Provider" value={assessment.weather.provider} />
+            </div>
+            <div className="mt-4 space-y-2">
+              {assessment.risks.map((risk) => (
+                <button
+                  key={risk.ruleId}
+                  type="button"
+                  onClick={() => onSelectRisk(risk.ruleId)}
+                  className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${
+                    risk.ruleId === selectedRisk?.ruleId
+                      ? "border-brand-300 bg-brand-50 text-brand-700 dark:border-brand-500/40 dark:bg-brand-500/15 dark:text-brand-300"
+                      : "border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-200 dark:hover:bg-white/[0.04]"
+                  }`}
+                >
+                  <span className="block truncate font-semibold">{risk.issueName}</span>
+                  <span className="mt-1 block text-xs opacity-80">{risk.score}/100 · {risk.severity}</span>
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          <main className="space-y-4 p-4">
+            {selectedRisk ? (
+              <RiskCard risk={selectedRisk} areaAcres={assessment.areaAcres} />
+            ) : (
+              <p className="text-sm text-gray-500 dark:text-gray-400">No saved risks in this run.</p>
+            )}
+
+            <section className="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Saved Weather</h3>
+              <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+                {assessment.weather.daily.slice(0, 4).map((day) => (
+                  <div key={day.date} className="rounded-lg bg-gray-50 p-3 text-xs dark:bg-white/[0.04]">
+                    <p className="font-semibold text-gray-900 dark:text-white">{formatDate(day.date)}</p>
+                    <p className="mt-1 text-gray-500 dark:text-gray-400">{day.rainfallMm} mm rain</p>
+                    <p className="text-gray-500 dark:text-gray-400">{day.temperatureMinC}-{day.temperatureMaxC}C</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <TracePanel result={{ assessment: recordToAssessment(assessment), weather: assessment.weather, trace: assessment.trace, alertsCreated: 0, savedAssessmentId: assessment.id, context: {} }} />
+          </main>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -399,10 +549,47 @@ function roundCoord(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
 
+function recordToAssessment(record: PestAssessmentRecord) {
+  return {
+    id: record.id,
+    cropId: record.cropId,
+    cropLabel: record.cropLabel,
+    growthStage: record.growthStage,
+    daysAfterSowing: record.daysAfterSowing,
+    areaAcres: record.areaAcres,
+    weatherFeatures: {
+      rain3dMm: sumRain(record.weather.daily.slice(0, 3)),
+      rain7dMm: sumRain(record.weather.daily.slice(0, 7)),
+      avgTempC: average(record.weather.daily.map((day) => (day.temperatureMinC + day.temperatureMaxC) / 2)),
+      minTempC: Math.min(...record.weather.daily.map((day) => day.temperatureMinC)),
+      maxTempC: Math.max(...record.weather.daily.map((day) => day.temperatureMaxC)),
+      avgHumidityPct: average(record.weather.daily.map((day) => day.humidityPct ?? 0).filter((value) => value > 0)),
+      wetnessProxy: sumRain(record.weather.daily.slice(0, 7)),
+    },
+    highestSeverity: record.highestSeverity,
+    risks: record.risks,
+    citations: record.risks.map((risk) => risk.citation),
+    safetyNote: "Follow local DAE/SAAO advice and product label dosage before pesticide or fungicide use.",
+  };
+}
+
+function sumRain(days: PestAssessmentRecord["weather"]["daily"]): number {
+  return Math.round(days.reduce((sum, day) => sum + day.rainfallMm, 0) * 10) / 10;
+}
+
+function average(values: number[]): number {
+  if (values.length === 0) return 0;
+  return Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10;
+}
+
 function formatMoney(value: number): string {
   return `৳${new Intl.NumberFormat("en-BD", { maximumFractionDigits: 0 }).format(value)}`;
 }
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("en-BD", { month: "short", day: "numeric" }).format(new Date(`${value}T00:00:00Z`));
+}
+
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat("en-BD", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
 }

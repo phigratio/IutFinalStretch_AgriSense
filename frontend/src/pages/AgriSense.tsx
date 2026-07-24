@@ -1,12 +1,14 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import PageMeta from "../components/common/PageMeta.js";
 import FarmWeatherMap from "../components/common/FarmWeatherMap.js";
 import {
   getAgriSenseContext,
   getAgriSenseMemory,
+  getAgriSenseWorkspace,
   sendAgriSenseMessage,
   simulateAgriSenseScenario,
+  type AgriSenseWorkspace,
   type AgriSenseMessageResult,
   type ContextBundle,
   type CropRecommendation,
@@ -17,6 +19,8 @@ import {
   type ScenarioSimulationResult,
   type SeasonPlanTask,
   type TraceEvent,
+  type WorkspaceFarmCard,
+  type WorkspaceSuggestedAction,
   type WorkflowStage,
 } from "../api/agrisense.js";
 import { transcribeVoice } from "../api/voice.js";
@@ -67,13 +71,93 @@ const workflowStages: Array<{
   { id: "crop_ranking", label: "Crop Ranking", tool: "crop.rank", description: "Rank crops from profile, weather, budget, and evidence." },
   { id: "season_plan", label: "Season Plan", tool: "season.plan", description: "Generate dated farming actions for the selected crop." },
   { id: "scheduler", label: "Fertigation", tool: "fertigation.schedule", description: "Inspect FRG fertilizer splits, irrigation checkpoints, organic options, and costs." },
-  { id: "financials", label: "Financial Math", tool: "finance.calculate", description: "Inspect costs, profit, ROI, and break-even." },
+  { id: "financials", label: "Financial Projection", tool: "finance.calculate", description: "Inspect costs, profit, ROI, and break-even." },
   { id: "scenario", label: "Scenario", tool: "scenario.simulate", description: "Simulate rainfall, budget, price, cost, or yield shocks and compare changed numbers." },
   { id: "trace", label: "Agent Trace", tool: "trace.read", description: "Inspect every tool call, parameter, and raw response." },
   { id: "full", label: "Full Run", tool: "agent.plan", description: "Run the complete agent workflow end to end." },
 ];
 
 const stageLabels = Object.fromEntries(workflowStages.map((stage) => [stage.id, stage.label])) as Record<ViewStage, string>;
+
+const focusedStageMeta: Record<ViewStage, { title: string; subtitle: string; rubric: string; evidence: string; runLabel: string }> = {
+  full: {
+    title: "AgriSense Full",
+    subtitle: "Complete agentic flow from conversational intake through weather, RAG, crop ranking, season plan, finance, memory, and trace.",
+    rubric: "Tier 0 + advanced overview",
+    evidence: "One place for the judge to run the end-to-end workflow and inspect every intermediate output.",
+    runLabel: "Run full workflow",
+  },
+  intake: {
+    title: "Conversational Intake",
+    subtitle: "Collects only the missing farm facts: location, farm size, soil, water, budget, and target season.",
+    rubric: "Criterion 1",
+    evidence: "Shows required-field completion, follow-up state, saved profile, and prior intake history.",
+    runLabel: "Continue intake",
+  },
+  context: {
+    title: "Context & Memory",
+    subtitle: "Hydrates cached farm profile, mem0 outcomes, prior sessions, and tenant/hub knowledge context.",
+    rubric: "Persistent memory",
+    evidence: "Shows what was remembered from older sessions before advice is generated.",
+    runLabel: "Hydrate context",
+  },
+  weather: {
+    title: "Live Weather Grounding",
+    subtitle: "Uses the farm location to fetch real rainfall, temperature, humidity, ET0, and map context.",
+    rubric: "Criterion 2",
+    evidence: "Displays provider, returned weather values, map, and trace values used downstream.",
+    runLabel: "Refresh weather",
+  },
+  evidence: {
+    title: "RAG Evidence",
+    subtitle: "Retrieves agronomic sources for crop, fertilizer, pest, weather, and season-plan advice.",
+    rubric: "Criterion 7",
+    evidence: "Shows citations and snippets so recommendations are grounded in KB retrieval.",
+    runLabel: "Retrieve evidence",
+  },
+  crop_ranking: {
+    title: "Crop Recommendation",
+    subtitle: "Ranks at least three candidate crops with suitability, water need, risk, and profit estimates.",
+    rubric: "Criterion 3",
+    evidence: "Shows crop cards and comparison metrics from profile, weather, and retrieved evidence.",
+    runLabel: "Rank crops",
+  },
+  season_plan: {
+    title: "Season Plan",
+    subtitle: "Builds a dated crop calendar from land preparation to harvest with inputs and checkpoints.",
+    rubric: "Criterion 4",
+    evidence: "Shows sowing, fertilizer, irrigation, weed, pest, and harvest windows with reasons.",
+    runLabel: "Generate plan",
+  },
+  scheduler: {
+    title: "Fertilizer & Irrigation Scheduler",
+    subtitle: "Breaks down quantities, growth-stage timing, organic alternatives, weather warnings, and cost.",
+    rubric: "Tier 1 scheduler",
+    evidence: "Shows FRG-derived inputs, irrigation events, rain-delay warnings, and task-level costs.",
+    runLabel: "Open scheduler",
+  },
+  financials: {
+    title: "Financial Projection",
+    subtitle: "Shows itemized costs, expected yield, revenue, net profit, ROI, and break-even math.",
+    rubric: "Criterion 5",
+    evidence: "Displays inspectable formulas and cost rows so changed inputs produce changed outputs.",
+    runLabel: "Calculate finance",
+  },
+  scenario: {
+    title: "Scenario Simulation",
+    subtitle: "Recalculates the plan when rainfall, budget, price, cost, or yield assumptions change.",
+    rubric: "Tier 1 scenario",
+    evidence: "Shows baseline vs revised numbers, deltas, and scenario trace.",
+    runLabel: "Simulate scenario",
+  },
+  trace: {
+    title: "Visible Agent Trace",
+    subtitle: "Exposes tool calls, parameters, latency, raw returns, and source IDs for audit.",
+    rubric: "Criterion 8",
+    evidence: "Lets a judge verify weather, RAG, finance, and plan numbers came from real calls.",
+    runLabel: "Open trace",
+  },
+};
 
 export default function AgriSense() {
   const { user } = useAuth();
@@ -95,6 +179,8 @@ export default function AgriSense() {
   const [rememberedOutcomes, setRememberedOutcomes] = useState<MemoryOutcome[]>([]);
   const [memorySessions, setMemorySessions] = useState<MemorySessionSummary[]>([]);
   const [contextBundle, setContextBundle] = useState<ContextBundle | null>(null);
+  const [workspace, setWorkspace] = useState<AgriSenseWorkspace | null>(null);
+  const [selectedWorkspaceFarmId, setSelectedWorkspaceFarmId] = useState<string | undefined>();
   const [scenarioResult, setScenarioResult] = useState<ScenarioSimulationResult | null>(null);
   const [ignoredOutcomeIds, setIgnoredOutcomeIds] = useState<string[]>([]);
   const [geoPoint, setGeoPoint] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -108,9 +194,14 @@ export default function AgriSense() {
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimeoutRef = useRef<number | undefined>(undefined);
 
-  const activePlan = result?.seasonPlan;
-  const profile = result?.farmProfile;
   const activeStage = normalizeStage(searchParams.get("stage"));
+  const workspaceResult = useMemo(
+    () => resultFromWorkspace(workspace, selectedWorkspaceFarmId, activeStage),
+    [workspace, selectedWorkspaceFarmId, activeStage],
+  );
+  const renderedResult = result ?? workspaceResult;
+  const activePlan = renderedResult?.seasonPlan;
+  const profile = renderedResult?.farmProfile;
 
   useEffect(() => {
     const raw = localStorage.getItem("agrisense.sessionContext");
@@ -130,6 +221,30 @@ export default function AgriSense() {
     if (!sessionId && !farmerId && !farmId) return;
     localStorage.setItem("agrisense.sessionContext", JSON.stringify({ sessionId, farmerId, farmId, language }));
   }, [sessionId, farmerId, farmId, language]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAgriSenseWorkspace({ userId: user?.id, farmerId, farmId, sessionId, limit: 8 })
+      .then((nextWorkspace) => {
+        if (cancelled) return;
+        setWorkspace(nextWorkspace);
+        const preferredFarmId = chooseWorkspaceFarmId(nextWorkspace, activeStage, selectedWorkspaceFarmId ?? farmId);
+        setSelectedWorkspaceFarmId(preferredFarmId);
+        if (!farmerId && !farmId && !sessionId && preferredFarmId) {
+          const first = nextWorkspace.farmCards.find((card) => card.farmId === preferredFarmId);
+          if (!first) return;
+          setFarmerId(first.farmerId);
+          setFarmId(first.farmId);
+          setSessionId(first.sessionId);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setWorkspace(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, farmerId, farmId, sessionId, activeStage, selectedWorkspaceFarmId]);
 
   useEffect(() => {
     if (!useMemory) return;
@@ -167,6 +282,7 @@ export default function AgriSense() {
     messageText = input,
     workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" || activeStage === "scheduler" || activeStage === "scenario" ? "full" : activeStage,
     acceptedOutcomeIds?: string[],
+    overrides: { sessionId?: string; farmerId?: string; farmId?: string } = {},
   ) {
     const text = messageText.trim();
     if (!text || loading) return;
@@ -179,9 +295,9 @@ export default function AgriSense() {
     try {
       const response = await sendAgriSenseMessage({
         message: text,
-        sessionId,
-        farmerId,
-        farmId,
+        sessionId: overrides.sessionId ?? sessionId,
+        farmerId: overrides.farmerId ?? farmerId,
+        farmId: overrides.farmId ?? farmId,
         userId: user?.id,
         preferredLanguage: language,
         useMemory,
@@ -197,6 +313,7 @@ export default function AgriSense() {
       setFarmerId(response.farmerId);
       setFarmId(response.farmId);
       setResult(response);
+      setSelectedWorkspaceFarmId(response.farmId);
       if (response.context) {
         setContextBundle(response.context);
       }
@@ -206,6 +323,9 @@ export default function AgriSense() {
       if (response.seasonPlan) {
         localStorage.setItem("agrisense.latestPlan", JSON.stringify(response));
       }
+      getAgriSenseWorkspace({ userId: user?.id, farmerId: response.farmerId, farmId: response.farmId, sessionId: response.sessionId, limit: 8 })
+        .then(setWorkspace)
+        .catch(() => undefined);
       setTrace((current) => [...current, ...response.trace]);
       setMessages((current) => [
         ...current,
@@ -367,6 +487,34 @@ export default function AgriSense() {
     void submitMessage(message, stage);
   }
 
+  function selectWorkspaceFarm(card: WorkspaceFarmCard) {
+    setSelectedWorkspaceFarmId(card.farmId);
+    setSessionId(card.sessionId);
+    setFarmerId(card.farmerId);
+    setFarmId(card.farmId);
+    setResult(null);
+    setMessages((current) => current.length <= 1 ? current : [
+      ...current,
+      { role: "agent", text: `Loaded saved farm: ${profileSummary(card.profile)}.` },
+    ]);
+  }
+
+  function runWorkspaceAction(action: WorkspaceSuggestedAction) {
+    if (action.farmId) setSelectedWorkspaceFarmId(action.farmId);
+    setSessionId(action.sessionId);
+    setFarmerId(action.farmerId);
+    setFarmId(action.farmId);
+    const stage = action.workflowStage ?? "full";
+    const message = action.id === "complete_intake"
+      ? "continue intake"
+      : `continue from ${stageLabels[stage] ?? "Full Run"}`;
+    void submitMessage(message, stage, undefined, {
+      sessionId: action.sessionId,
+      farmerId: action.farmerId,
+      farmId: action.farmId,
+    });
+  }
+
   function ignoreOutcome(id: string) {
     setIgnoredOutcomeIds((current) => current.includes(id) ? current : [...current, id]);
     setRememberedOutcomes((current) => current.filter((outcome) => outcome.id !== id));
@@ -414,20 +562,24 @@ export default function AgriSense() {
     }
   }
 
+  const isFullStage = activeStage === "full";
+  const stageMeta = focusedStageMeta[activeStage];
+  const canRunFocusedStage = activeStage !== "trace" && activeStage !== "context" && activeStage !== "scheduler" && activeStage !== "scenario";
+
   return (
     <>
       <PageMeta
-        title="AgriSense · ICT Fest"
-        description="Agentic agricultural advisor workspace"
+        title={`${stageMeta.title} · ICT Fest`}
+        description={stageMeta.subtitle}
       />
 
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
-            AgriSense AI
+            {stageMeta.title}
           </h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Intake, weather grounding, crop ranking, finance, plan generation, and trace.
+            {stageMeta.subtitle}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -479,17 +631,45 @@ export default function AgriSense() {
         </div>
       )}
 
-      <MemoryPanel
-        useMemory={useMemory}
-        outcomes={rememberedOutcomes}
-        sessions={memorySessions}
-        onToggle={setUseMemory}
-        onUse={useOutcome}
-        onIgnore={ignoreOutcome}
-        onViewTrace={() => selectStage("trace")}
-      />
+      {isFullStage ? (
+        <>
+          <RubricCoverageStrip />
+          <WorkspaceResumePanel
+            activeStage={activeStage}
+            workspace={workspace}
+            selectedFarmId={selectedWorkspaceFarmId}
+            onSelectFarm={selectWorkspaceFarm}
+            onRunAction={runWorkspaceAction}
+          />
 
-      <div className="grid min-h-[720px] grid-cols-1 gap-4 xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.45fr)_minmax(320px,0.95fr)]">
+          <MemoryPanel
+            useMemory={useMemory}
+            outcomes={rememberedOutcomes}
+            sessions={memorySessions}
+            onToggle={setUseMemory}
+            onUse={useOutcome}
+            onIgnore={ignoreOutcome}
+            onViewTrace={() => selectStage("trace")}
+          />
+        </>
+      ) : (
+        <FocusedStageHero
+          activeStage={activeStage}
+          meta={stageMeta}
+          profile={profile}
+          result={renderedResult}
+          traceCount={trace.length}
+          onRun={() => {
+            if (canRunFocusedStage) runStage(activeStage);
+            else if (activeStage === "scenario") selectStage("scenario");
+            else if (activeStage === "trace") selectStage("trace");
+          }}
+          loading={loading}
+        />
+      )}
+
+      <div className={`grid min-h-[720px] grid-cols-1 gap-4 ${isFullStage ? "xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.45fr)_minmax(320px,0.95fr)]" : "xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.8fr)]"}`}>
+        {isFullStage && (
         <section className="flex min-h-[560px] flex-col rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
           <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Conversation</h2>
@@ -577,32 +757,250 @@ export default function AgriSense() {
             </div>
           </form>
         </section>
+        )}
 
         <main className="space-y-4">
-          <WorkflowStageSidebar
-            activeStage={activeStage}
-            result={result}
-            loading={loading}
-            onSelect={selectStage}
-            onRun={runStage}
-          />
+          {isFullStage && (
+            <WorkflowStageSidebar
+              activeStage={activeStage}
+              result={renderedResult}
+              loading={loading}
+              onSelect={selectStage}
+              onRun={runStage}
+            />
+          )}
           <StageContent
             activeStage={activeStage}
             profile={profile}
-            missingFields={result?.missingFields ?? []}
-            result={result}
+            missingFields={renderedResult?.missingFields ?? []}
+            result={renderedResult}
             activePlan={activePlan}
-            context={contextBundle ?? result?.context}
+            context={contextBundle ?? renderedResult?.context}
             scenarioResult={scenarioResult}
             loading={loading}
             onSimulateScenario={runScenario}
           />
         </main>
 
-        <TracePanel trace={trace} />
+        <aside className="space-y-4">
+          {!isFullStage && (
+            <FocusedStageControlPanel
+              activeStage={activeStage}
+              meta={stageMeta}
+              profile={profile}
+              workspace={workspace}
+              selectedFarmId={selectedWorkspaceFarmId}
+              useMemory={useMemory}
+              outcomes={rememberedOutcomes}
+              onToggleMemory={setUseMemory}
+              onUseMemory={useOutcome}
+              onRun={() => {
+                if (canRunFocusedStage) runStage(activeStage);
+              }}
+              loading={loading}
+            />
+          )}
+          <TracePanel trace={trace} />
+        </aside>
       </div>
     </>
   );
+}
+
+function RubricCoverageStrip() {
+  const items = [
+    "Conversational intake",
+    "Live weather",
+    "Crop ranking",
+    "Season plan",
+    "Financial projection",
+    "RAG evidence",
+    "Visible trace",
+    "Persistent memory",
+    "Proactive advice",
+    "Pest risk",
+    "Marketplace",
+    "BDApps payment",
+  ];
+
+  return (
+    <section className="mb-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Hackathon Criteria Coverage</h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Each sidebar page maps to a rubric item and keeps backend evidence visible.
+          </p>
+        </div>
+        <span className="rounded-full bg-success-50 px-2.5 py-1 text-xs font-semibold text-success-700 dark:bg-success-500/15 dark:text-success-400">
+          Tier 0 + Tier 1 + selected Tier 2
+        </span>
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {items.map((item) => (
+          <div key={item} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700 dark:border-gray-800 dark:bg-white/[0.04] dark:text-gray-200">
+            {item}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function FocusedStageHero({
+  activeStage,
+  meta,
+  profile,
+  result,
+  traceCount,
+  onRun,
+  loading,
+}: {
+  activeStage: ViewStage;
+  meta: { title: string; subtitle: string; rubric: string; evidence: string; runLabel: string };
+  profile?: IntakeProfile;
+  result: AgriSenseMessageResult | null;
+  traceCount: number;
+  onRun: () => void;
+  loading: boolean;
+}) {
+  const readiness = stageReadiness(activeStage, result);
+  return (
+    <section className="mb-4 rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+              {meta.rubric}
+            </span>
+            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${readiness.ready ? successPillClass : warningPillClass}`}>
+              {readiness.label}
+            </span>
+          </div>
+          <h2 className="mt-3 text-xl font-semibold text-gray-900 dark:text-white">{meta.title}</h2>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-gray-600 dark:text-gray-300">{meta.evidence}</p>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <Metric label="Farm" value={profile ? profileSummary(profile) : "No profile selected"} />
+            <Metric label="Session" value={result?.sessionId ? shortId(result.sessionId) : "new"} />
+            <Metric label="Trace events" value={traceCount} />
+            <Metric label="Stage" value={stageLabels[activeStage]} />
+          </div>
+        </div>
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-white/[0.04]">
+          <p className="text-xs font-semibold text-gray-900 dark:text-white">Backend connection</p>
+          <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">{meta.subtitle}</p>
+          <button
+            type="button"
+            onClick={onRun}
+            disabled={loading || activeStage === "trace" || activeStage === "context" || activeStage === "scheduler"}
+            className="mt-4 h-10 w-full rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? "Running..." : meta.runLabel}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FocusedStageControlPanel({
+  activeStage,
+  meta,
+  profile,
+  workspace,
+  selectedFarmId,
+  useMemory,
+  outcomes,
+  onToggleMemory,
+  onUseMemory,
+  onRun,
+  loading,
+}: {
+  activeStage: ViewStage;
+  meta: { title: string; subtitle: string; rubric: string; evidence: string; runLabel: string };
+  profile?: IntakeProfile;
+  workspace: AgriSenseWorkspace | null;
+  selectedFarmId?: string;
+  useMemory: boolean;
+  outcomes: MemoryOutcome[];
+  onToggleMemory: (enabled: boolean) => void;
+  onUseMemory: (outcome: MemoryOutcome) => void;
+  onRun: () => void;
+  loading: boolean;
+}) {
+  const selectedFarm = workspace?.farmCards.find((card) => card.farmId === selectedFarmId) ?? workspace?.farmCards[0];
+  const visibleOutcomes = outcomes.slice(0, 3);
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Module Controls</h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{meta.rubric}</p>
+        </div>
+        <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-500">
+          {stageLabels[activeStage]}
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={onRun}
+        disabled={loading || activeStage === "trace" || activeStage === "context" || activeStage === "scheduler" || activeStage === "scenario"}
+        className="mt-4 h-10 w-full rounded-lg bg-gray-900 px-4 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-gray-900"
+      >
+        {loading ? "Running..." : meta.runLabel}
+      </button>
+
+      <div className="mt-4 rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+        <p className="text-xs font-semibold text-gray-900 dark:text-white">Farm Context</p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <Metric label="Location" value={profile?.locationText ?? selectedFarm?.profile.locationText ?? "n/a"} />
+          <Metric label="Size" value={profile?.sizeAcres ? `${profile.sizeAcres} acres` : selectedFarm?.profile.sizeAcres ? `${selectedFarm.profile.sizeAcres} acres` : "n/a"} />
+          <Metric label="Soil" value={profile?.soilType ?? selectedFarm?.profile.soilType ?? "n/a"} />
+          <Metric label="Season" value={profile?.targetSeason ?? selectedFarm?.profile.targetSeason ?? "n/a"} />
+        </div>
+      </div>
+
+      <label className="mt-4 flex cursor-pointer items-center gap-2 text-xs font-medium text-gray-700 dark:text-gray-200">
+        <input
+          type="checkbox"
+          checked={useMemory}
+          onChange={(event) => onToggleMemory(event.target.checked)}
+          className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+        />
+        Use previous sessions
+      </label>
+
+      <div className="mt-4 space-y-2">
+        <p className="text-xs font-semibold text-gray-900 dark:text-white">Remembered Outcomes</p>
+        {visibleOutcomes.length === 0 ? (
+          <p className="text-xs text-gray-500 dark:text-gray-400">No matching memory outcomes loaded.</p>
+        ) : (
+          visibleOutcomes.map((outcome) => (
+            <button
+              key={outcome.id}
+              type="button"
+              onClick={() => onUseMemory(outcome)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-left text-xs hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-white/[0.04]"
+            >
+              <span className="block font-semibold text-gray-900 dark:text-white">{outcome.title}</span>
+              <span className="mt-1 line-clamp-2 block leading-5 text-gray-500 dark:text-gray-400">{outcome.summary}</span>
+            </button>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function stageReadiness(stage: ViewStage, result: AgriSenseMessageResult | null): { ready: boolean; label: string } {
+  if (stage === "full") return { ready: Boolean(result?.seasonPlan), label: result?.seasonPlan ? "Complete run ready" : "Run needed" };
+  if (stage === "intake") return { ready: Boolean(result?.farmProfile && result.missingFields.length === 0), label: result?.farmProfile ? "Profile loaded" : "Needs intake" };
+  if (stage === "weather") return { ready: Boolean(result?.weather), label: result?.weather ? "Weather loaded" : "Needs weather" };
+  if (stage === "evidence" || stage === "context") return { ready: Boolean(result?.retrievedEvidence?.length || result?.context), label: "Evidence check" };
+  if (stage === "crop_ranking") return { ready: Boolean(result?.cropRankings?.length), label: result?.cropRankings?.length ? `${result.cropRankings.length} crops` : "Needs ranking" };
+  if (stage === "season_plan" || stage === "scheduler" || stage === "financials" || stage === "scenario") return { ready: Boolean(result?.seasonPlan), label: result?.seasonPlan ? "Plan loaded" : "Needs plan" };
+  return { ready: true, label: "Trace view" };
 }
 
 function WorkflowStageSidebar({
@@ -683,6 +1081,119 @@ function WorkflowStageSidebar({
         })}
       </div>
     </section>
+  );
+}
+
+function WorkspaceResumePanel({
+  activeStage,
+  workspace,
+  selectedFarmId,
+  onSelectFarm,
+  onRunAction,
+}: {
+  activeStage: ViewStage;
+  workspace: AgriSenseWorkspace | null;
+  selectedFarmId?: string;
+  onSelectFarm: (card: WorkspaceFarmCard) => void;
+  onRunAction: (action: WorkspaceSuggestedAction) => void;
+}) {
+  const selectedFarm = workspace?.farmCards.find((card) => card.farmId === selectedFarmId) ?? workspace?.farmCards[0];
+  const selectedWeather = selectedFarm ? workspace?.weatherCards.find((card) => card.farmId === selectedFarm.farmId) : undefined;
+  const selectedEvidence = selectedFarm
+    ? workspace?.evidenceCards.find((card) => card.farmId === selectedFarm.farmId || card.sessionId === selectedFarm.sessionId)
+    : undefined;
+  const actions = selectedFarm ? actionsForFarm(selectedFarm, Boolean(selectedWeather), Boolean(selectedEvidence)) : [];
+  const focusedActions = activeStage === "weather"
+    ? actions.filter((action) => action.workflowStage === "weather" || action.workflowStage === "intake")
+    : activeStage === "evidence"
+      ? actions.filter((action) => action.workflowStage === "evidence" || action.workflowStage === "weather" || action.workflowStage === "intake")
+      : actions;
+
+  return (
+    <section className="mb-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Resume From Saved Farm Data</h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Pick a previous farm/session, then run only the current module instead of restarting the full workflow.
+          </p>
+        </div>
+        <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-500">
+          {workspace ? `${workspace.farmCards.length} farm${workspace.farmCards.length === 1 ? "" : "s"}` : "Loading"}
+        </span>
+      </div>
+
+      {!workspace || workspace.farmCards.length === 0 ? (
+        <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">No saved farm profile found yet. Use the intake chat once, then weather and evidence can resume from here.</p>
+      ) : (
+        <>
+          <div className="mt-4 grid gap-3 xl:grid-cols-3">
+            {workspace.farmCards.slice(0, 6).map((card) => (
+              <button
+                key={card.farmId}
+                type="button"
+                onClick={() => onSelectFarm(card)}
+                className={`rounded-lg border p-3 text-left transition ${
+                  card.farmId === selectedFarm?.farmId
+                    ? "border-brand-300 bg-brand-50/80 dark:border-brand-500/40 dark:bg-brand-500/[0.08]"
+                    : "border-gray-200 bg-gray-50 hover:bg-white dark:border-gray-800 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{profileSummary(card.profile)}</p>
+                  <span className={card.completion === "complete" ? successPillClass : warningPillClass}>
+                    {card.completion}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  {card.missingFields.length === 0 ? "Ready for weather and evidence." : `Missing ${card.missingFields.join(", ")}.`}
+                </p>
+                <p className="mt-2 text-[11px] text-gray-400">Updated {new Date(card.updatedAt).toLocaleString()} · {card.sessionId ? shortId(card.sessionId) : "no session"}</p>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(260px,0.75fr)]">
+            <ResumeInfoCard
+              title="Latest Weather"
+              value={selectedWeather ? `${selectedWeather.rain7dMm} mm rain / 7d` : "Not fetched yet"}
+              detail={selectedWeather ? `${selectedWeather.weather.locationText} · ${new Date(selectedWeather.refreshedAt).toLocaleString()}` : "Run weather for the selected farm."}
+            />
+            <ResumeInfoCard
+              title="Latest Evidence"
+              value={selectedEvidence ? `${selectedEvidence.count} source item(s)` : "Not retrieved yet"}
+              detail={selectedEvidence ? `Last retrieval ${new Date(selectedEvidence.retrievedAt).toLocaleString()}` : "Run evidence after profile and weather are ready."}
+            />
+            <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+              <p className="text-xs font-semibold text-gray-900 dark:text-white">Suggested Action</p>
+              <div className="mt-3 space-y-2">
+                {focusedActions.slice(0, 3).map((action) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    onClick={() => onRunAction(action)}
+                    className="w-full rounded-lg bg-brand-500 px-3 py-2 text-left text-xs font-semibold text-white hover:bg-brand-600"
+                  >
+                    {action.label}
+                    <span className="mt-1 block font-normal opacity-85">{action.reason}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function ResumeInfoCard({ title, value, detail }: { title: string; value: string; detail: string }) {
+  return (
+    <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+      <p className="text-xs font-semibold text-gray-900 dark:text-white">{title}</p>
+      <p className="mt-2 text-sm font-semibold text-gray-800 dark:text-gray-100">{value}</p>
+      <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{detail}</p>
+    </div>
   );
 }
 
@@ -820,7 +1331,7 @@ function StageContent({
   if (activeStage === "crop_ranking") return <CropRankings rankings={result?.cropRankings ?? []} />;
   if (activeStage === "season_plan") return activePlan ? <SeasonPlanPanel plan={activePlan} /> : <EmptyStage title="Season Plan" text="Run crop ranking first, then continue into season planning." />;
   if (activeStage === "scheduler") return activePlan ? <FertigationPanel plan={activePlan} /> : <EmptyStage title="Fertigation" text="Run the season plan first to inspect fertilizer and irrigation scheduling." />;
-  if (activeStage === "financials") return activePlan ? <FinancialPanel plan={activePlan} /> : <EmptyStage title="Financial Math" text="Run the season plan first to calculate costs, ROI, profit, and break-even." />;
+  if (activeStage === "financials") return activePlan ? <FinancialPanel plan={activePlan} /> : <EmptyStage title="Financial Projection" text="Run the season plan first to calculate costs, ROI, profit, and break-even." />;
   if (activeStage === "scenario") return <ScenarioPanel result={scenarioResult} baselineReady={Boolean(activePlan)} loading={loading} onSimulate={onSimulateScenario} />;
   if (activeStage === "trace") return <EmptyStage title="Agent Trace" text="The trace inspector is open on the right side of this workspace." />;
 
@@ -1349,7 +1860,7 @@ function SeasonPlanPanel({ plan }: { plan: NonNullable<AgriSenseMessageResult["s
       </div>
       <div className="mt-4 space-y-2">
         {plan.tasks.map((task) => (
-          <TaskRow key={`${task.phase}-${task.startDate}`} task={task} />
+          <TaskRow key={`${task.phase}-${task.startDate}`} task={task} crop={plan.crop} />
         ))}
       </div>
     </section>
@@ -1459,7 +1970,7 @@ function FinancialPanel({ plan }: { plan: NonNullable<AgriSenseMessageResult["se
     <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Financial Math</h2>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Financial Projection</h2>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
             One computed source of truth for yield, revenue, cost, profit, ROI, and break-even.
           </p>
@@ -1505,7 +2016,7 @@ function FinancialPanel({ plan }: { plan: NonNullable<AgriSenseMessageResult["se
   );
 }
 
-function TaskRow({ task }: { task: SeasonPlanTask }) {
+function TaskRow({ task, crop }: { task: SeasonPlanTask; crop?: string }) {
   return (
     <div className="grid gap-2 rounded-lg border border-gray-200 p-3 dark:border-gray-800 md:grid-cols-[140px_minmax(0,1fr)_110px]">
       <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -1515,9 +2026,17 @@ function TaskRow({ task }: { task: SeasonPlanTask }) {
         <p className="text-sm font-semibold text-gray-900 dark:text-white">{task.title}</p>
         <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{task.description}</p>
         {task.inputs && task.inputs.length > 0 && (
-          <p className="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-300">
-            {task.inputs.map((input) => `${input.item}: ${input.quantity} ${input.unit}`).join(" · ")}
-          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {task.inputs.map((input) => (
+              <Link
+                key={`${task.title}-${input.item}`}
+                to={marketplaceUrlForInput(input.item, input.quantity, input.unit, crop)}
+                className="rounded-md border border-success-200 bg-success-50 px-2 py-1 text-xs font-medium text-success-700 hover:bg-success-100 dark:border-success-500/20 dark:bg-success-500/10 dark:text-success-300"
+              >
+                {input.item}: {input.quantity} {input.unit}
+              </Link>
+            ))}
+          </div>
         )}
         {task.weatherNote && (
           <p className="mt-1 text-xs font-medium leading-5 text-warning-700 dark:text-warning-400">{task.weatherNote}</p>
@@ -1587,6 +2106,32 @@ function sumTaskCosts(tasks: SeasonPlanTask[], phase: string): number {
   return tasks.filter((task) => task.phase === phase).reduce((sum, task) => sum + (task.totalCostBdt ?? 0), 0);
 }
 
+function marketplaceUrlForInput(item: string, quantity: number, unit: string, crop?: string): string {
+  const params = new URLSearchParams({
+    itemName: normalizeMarketplaceItem(item),
+    quantity: String(quantity),
+    unit,
+    crop: normalizeMarketplaceCrop(crop ?? item),
+  });
+  return `/marketplace?${params.toString()}`;
+}
+
+function normalizeMarketplaceItem(item: string): string {
+  const normalized = item.toLowerCase();
+  if (normalized.includes("urea")) return "Urea fertilizer";
+  if (normalized.includes("tsp")) return "TSP fertilizer";
+  if (normalized.includes("mop") || normalized.includes("potash")) return "MoP fertilizer";
+  return item;
+}
+
+function normalizeMarketplaceCrop(value: string): string {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("rice") || normalized.includes("aman") || normalized.includes("boro")) return "rice";
+  if (normalized.includes("maize")) return "maize";
+  if (normalized.includes("mustard")) return "mustard";
+  return "rice";
+}
+
 function formatInputTotal(totals: Record<string, number>, label: string): string {
   const match = Object.entries(totals).find(([key]) => key.toLowerCase().includes(label.toLowerCase()));
   return match ? `${match[1]} kg` : "0 kg";
@@ -1607,6 +2152,130 @@ function roundCoord(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
 
+function resultFromWorkspace(
+  workspace: AgriSenseWorkspace | null,
+  selectedFarmId: string | undefined,
+  activeStage: ViewStage,
+): AgriSenseMessageResult | null {
+  const farm = workspace?.farmCards.find((card) => card.farmId === selectedFarmId) ?? workspace?.farmCards[0];
+  if (!farm) return null;
+  const weatherCard = workspace?.weatherCards.find((card) => card.farmId === farm.farmId);
+  const evidenceCard = workspace?.evidenceCards.find((card) => card.farmId === farm.farmId || card.sessionId === farm.sessionId);
+  const rankingCard = workspace?.rankingCards.find((card) => card.farmId === farm.farmId || card.sessionId === farm.sessionId);
+  const planCard = workspace?.planCards.find((card) => card.farmId === farm.farmId || card.sessionId === farm.sessionId);
+  const includeWeather = activeStage !== "intake" && Boolean(weatherCard);
+  const includeEvidence = activeStage !== "intake" && activeStage !== "weather" && Boolean(evidenceCard);
+  const includeRanking = ["crop_ranking", "season_plan", "scheduler", "financials", "scenario", "trace", "full"].includes(activeStage) && Boolean(rankingCard);
+  const includePlan = ["season_plan", "scheduler", "financials", "scenario", "trace", "full"].includes(activeStage) && Boolean(planCard);
+
+  return {
+    sessionId: farm.sessionId ?? "",
+    farmerId: farm.farmerId,
+    farmId: farm.farmId,
+    workflowStage: activeStage === "context" || activeStage === "scheduler" || activeStage === "scenario" || activeStage === "trace"
+      ? "full"
+      : activeStage,
+    nextAvailableStages: farm.completion === "complete" ? ["weather", "evidence", "crop_ranking", "season_plan", "financials", "full"] : ["intake"],
+    assistantMessage: farm.completion === "complete"
+      ? `Loaded saved farm profile for ${farm.profile.locationText ?? "this farm"}. Continue from ${stageLabels[activeStage]}.`
+      : `Saved farm profile is missing ${farm.missingFields.join(", ")}.`,
+    missingFields: farm.missingFields,
+    farmProfile: farm.profile,
+    weather: includeWeather ? weatherCard?.weather : undefined,
+    retrievedEvidence: includeEvidence ? evidenceCard?.retrievedEvidence : undefined,
+    cropRankings: includeRanking ? rankingCard?.cropRankings : undefined,
+    seasonPlan: includePlan ? planCard?.seasonPlan : undefined,
+    rememberedOutcomes: workspace?.outcomeCards ?? [],
+    trace: [],
+  };
+}
+
+function chooseWorkspaceFarmId(
+  workspace: AgriSenseWorkspace,
+  activeStage: ViewStage,
+  currentFarmId: string | undefined,
+): string | undefined {
+  const current = currentFarmId && workspace.farmCards.some((card) => card.farmId === currentFarmId) ? currentFarmId : undefined;
+  const byData = (farmIds: Array<string | undefined>) => farmIds.find((id): id is string => Boolean(id && workspace.farmCards.some((card) => card.farmId === id)));
+  const completeFarm = workspace.farmCards.find((card) => card.completion === "complete")?.farmId;
+  const firstFarm = workspace.farmCards[0]?.farmId;
+
+  if (activeStage === "weather") {
+    return byData(workspace.weatherCards.map((card) => card.farmId)) ?? current ?? completeFarm ?? firstFarm;
+  }
+  if (activeStage === "evidence") {
+    return byData(workspace.evidenceCards.map((card) => card.farmId)) ?? byData(workspace.weatherCards.map((card) => card.farmId)) ?? current ?? completeFarm ?? firstFarm;
+  }
+  if (activeStage === "crop_ranking") {
+    return byData(workspace.rankingCards.map((card) => card.farmId)) ?? byData(workspace.evidenceCards.map((card) => card.farmId)) ?? current ?? completeFarm ?? firstFarm;
+  }
+  if (["season_plan", "scheduler", "financials", "scenario"].includes(activeStage)) {
+    return byData(workspace.planCards.map((card) => card.farmId)) ?? byData(workspace.rankingCards.map((card) => card.farmId)) ?? current ?? completeFarm ?? firstFarm;
+  }
+  return current ?? completeFarm ?? firstFarm;
+}
+
+function actionsForFarm(
+  farm: WorkspaceFarmCard,
+  hasWeather: boolean,
+  hasEvidence: boolean,
+): WorkspaceSuggestedAction[] {
+  const base = { farmId: farm.farmId, farmerId: farm.farmerId, sessionId: farm.sessionId };
+  if (farm.completion === "incomplete") {
+    return [{
+      id: "complete_intake",
+      label: "Complete intake",
+      workflowStage: "intake",
+      ...base,
+      reason: `${farm.missingFields.length} required field(s) missing.`,
+    }];
+  }
+  return [
+    {
+      id: "run_weather",
+      label: hasWeather ? "Refresh weather" : "Fetch weather",
+      workflowStage: "weather",
+      ...base,
+      reason: "Use saved profile to call live weather directly.",
+    },
+    {
+      id: "run_evidence",
+      label: hasEvidence ? "Refresh evidence" : "Retrieve evidence",
+      workflowStage: "evidence",
+      ...base,
+      reason: hasWeather ? "Use profile plus weather for RAG retrieval." : "Weather will run first, then evidence retrieval.",
+    },
+    {
+      id: "continue_crop_ranking",
+      label: "Continue crop ranking",
+      workflowStage: "crop_ranking",
+      ...base,
+      reason: "Rank crops after weather and evidence are available.",
+    },
+    {
+      id: "run_season_plan",
+      label: "Generate season plan",
+      workflowStage: "full",
+      ...base,
+      reason: "Produce dated work, finance math, and scheduler tasks from the ranked plan.",
+    },
+  ];
+}
+
+function profileSummary(profile: IntakeProfile): string {
+  return [
+    profile.locationText,
+    profile.sizeAcres ? `${profile.sizeAcres} acres` : undefined,
+    profile.soilType,
+    profile.waterAvailability,
+    profile.budgetBdt ? formatMoney(profile.budgetBdt) : undefined,
+    profile.targetSeason,
+  ].filter(Boolean).join(" · ") || "Saved farm";
+}
+
 function normalizeStage(value: string | null): ViewStage {
   return workflowStages.some((stage) => stage.id === value) ? (value as ViewStage) : "full";
 }
+
+const successPillClass = "rounded-full bg-success-50 px-2.5 py-1 text-[11px] font-semibold text-success-700 dark:bg-success-500/15 dark:text-success-400";
+const warningPillClass = "rounded-full bg-warning-50 px-2.5 py-1 text-[11px] font-semibold text-warning-700 dark:bg-warning-500/15 dark:text-warning-400";

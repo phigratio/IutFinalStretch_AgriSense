@@ -16,6 +16,7 @@ import { financeRouter } from "./routes/finance.js";
 import { contextRouter } from "./routes/context.js";
 import { pestRiskRouter } from "./routes/pestRisk.js";
 import { voiceRouter } from "./routes/voice.js";
+import { voiceSpeechmaticsRouter } from "./routes/voiceSpeechmatics.js";
 import { visionRouter } from "./routes/vision.js";
 // NOTE: parallel Tier 0 implementation (navid) — mounted under /api/tier0 to avoid
 // colliding with agrisenseRouter/agentIntakeRouter. Team to pick one before submission.
@@ -68,6 +69,7 @@ export function createApp(): Application {
   app.use("/api/finance", financeRouter);
   app.use("/api/pest-risk", pestRiskRouter);
   app.use("/api/voice", voiceRouter);
+  app.use("/api/voice/speechmatics", voiceSpeechmaticsRouter);
   // Leaf disease detection from a photo (Tier-2 T2-4): HuggingFace classifier
   // primary, OpenAI vision fallback with a caution message.
   app.use("/api/vision", visionRouter);

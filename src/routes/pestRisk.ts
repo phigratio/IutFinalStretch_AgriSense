@@ -43,6 +43,19 @@ export function createPestRiskRouter(service: PestRiskService = pestRiskService)
     }
   });
 
+  router.get("/assessments/:id", async (req: Request, res: Response): Promise<void> => {
+    try {
+      const assessment = await service.getAssessment(String(req.params.id));
+      if (!assessment) {
+        res.status(404).json({ error: "Pest risk assessment not found" });
+        return;
+      }
+      res.json(assessment);
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
+
   return router;
 }
 

@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 import { useSidebar } from "../context/SidebarContext.js";
+import { useAuth } from "../context/AuthContext.js";
 import {
   CalendarIcon,
   BoxIcon,
@@ -23,17 +24,19 @@ const mainNav: NavItem[] = [
   { name: "Dashboard", path: "/admin/dashboard", icon: <GridIcon /> },
   { name: "AgriSense Full", path: "/agrisense", icon: <BoxIcon /> },
   { name: "Pest Risk", path: "/pest-risk", icon: <SearchSidebarIcon /> },
-  { name: "Agri Weather", path: "/agrisense?stage=weather", icon: <SearchSidebarIcon /> },
-  { name: "Agri Evidence", path: "/agrisense?stage=evidence", icon: <SearchSidebarIcon /> },
+  { name: "Live Weather", path: "/agrisense?stage=weather", icon: <SearchSidebarIcon /> },
+  { name: "RAG Evidence", path: "/agrisense?stage=evidence", icon: <SearchSidebarIcon /> },
   { name: "Crop Ranking", path: "/agrisense?stage=crop_ranking", icon: <BoxIcon /> },
   { name: "Season Plan", path: "/agrisense?stage=season_plan", icon: <CalendarIcon /> },
-  { name: "Financial Math", path: "/agrisense?stage=financials", icon: <CreditCardIcon /> },
-  { name: "Finance Management", path: "/finance", icon: <CreditCardIcon /> },
+  { name: "Fertilizer Scheduler", path: "/agrisense?stage=scheduler", icon: <CalendarIcon /> },
+  { name: "Financial Projection", path: "/finance?view=math", icon: <CreditCardIcon /> },
+  { name: "Finance Management", path: "/finance?view=management", icon: <CreditCardIcon /> },
+  { name: "Scenario Simulation", path: "/agrisense?stage=scenario", icon: <ListIcon /> },
   { name: "Marketplace Intel", path: "/marketplace", icon: <MarketplaceIcon /> },
   { name: "Agent Trace", path: "/agrisense?stage=trace", icon: <ListIcon /> },
   { name: "Agent Intake", path: "/agent-intake", icon: <ListIcon /> },
-  { name: "Temporal", path: "/temporal", icon: <CalendarIcon /> },
-  { name: "Payments", path: "/payments", icon: <CreditCardIcon /> },
+  { name: "Proactive Advice", path: "/temporal", icon: <CalendarIcon /> },
+  { name: "BDApps Payments", path: "/payments", icon: <CreditCardIcon /> },
   { name: "BDApps", path: "/bdapps", icon: <PhoneIcon /> },
   { name: "Knowledge Base", path: "/knowledge-base", icon: <BoxIcon /> },
   { name: "Onboarding Requests", path: "/admin/onboarding", icon: <UserGroupIcon /> },
@@ -45,9 +48,30 @@ const otherNav: NavItem[] = [
   { name: "Season Calendar", path: "/calendar", icon: <CalendarIcon /> },
 ];
 
+// Farmer (user) — the dashboard tabs live in the sidebar.
+const userNav: NavItem[] = [
+  { name: "হোম", path: "/user/dashboard", icon: <GridIcon /> },
+  { name: "আবহাওয়া", path: "/user/dashboard?tab=weather", icon: <SearchSidebarIcon /> },
+  { name: "ফসল", path: "/user/dashboard?tab=crops", icon: <BoxIcon /> },
+  { name: "পরিকল্পনা", path: "/user/dashboard?tab=plan", icon: <CalendarIcon /> },
+  { name: "লাভ-খরচ", path: "/user/dashboard?tab=money", icon: <CreditCardIcon /> },
+  { name: "কেন", path: "/user/dashboard?tab=why", icon: <ListIcon /> },
+  { name: "আমার তথ্য", path: "/user/dashboard?tab=profile", icon: <UserIcon /> },
+];
+
+// Tenant — the tenant workbench.
+const tenantNav: NavItem[] = [
+  { name: "টেন্যান্ট ড্যাশবোর্ড", path: "/tenant/dashboard", icon: <GridIcon /> },
+];
+
 export default function AppSidebar() {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
+  const { user } = useAuth();
   const location = useLocation();
+
+  const role = user?.role ?? "user";
+  const primaryNav = role === "admin" ? mainNav : role === "tenant" ? tenantNav : userNav;
+  const showOthers = role === "admin";
 
   const showText = isExpanded || isHovered || isMobileOpen;
   const currentPath = `${location.pathname}${location.search}`;
@@ -112,18 +136,20 @@ export default function AppSidebar() {
           >
             {showText ? "Menu" : <HorizontalDotsIcon width={16} height={16} />}
           </h3>
-          {renderItems(mainNav)}
+          {renderItems(primaryNav)}
         </div>
-        <div>
-          <h3
-            className={`mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400 ${
-              showText ? "px-3" : "flex justify-center"
-            }`}
-          >
-            {showText ? "Others" : <HorizontalDotsIcon width={16} height={16} />}
-          </h3>
-          {renderItems(otherNav)}
-        </div>
+        {showOthers && (
+          <div>
+            <h3
+              className={`mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400 ${
+                showText ? "px-3" : "flex justify-center"
+              }`}
+            >
+              {showText ? "Others" : <HorizontalDotsIcon width={16} height={16} />}
+            </h3>
+            {renderItems(otherNav)}
+          </div>
+        )}
       </nav>
     </aside>
   );

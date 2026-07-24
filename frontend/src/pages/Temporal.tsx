@@ -103,8 +103,8 @@ export default function Temporal() {
 
   return (
     <>
-      <PageMeta title="Proactive Cron Advice · ICT Fest Admin" description="Weather-triggered AgriSense plan adjustment console" />
-      <PageBreadcrumb pageTitle="Proactive Cron Advice" />
+      <PageMeta title="Proactive Advice · ICT Fest Admin" description="Weather-triggered AgriSense plan adjustment console" />
+      <PageBreadcrumb pageTitle="Proactive Advice" />
 
       {error && <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-500">{error}</div>}
 
@@ -116,7 +116,7 @@ export default function Temporal() {
                 <BellIcon />
               </span>
               <div>
-                <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Weather-Triggered Plan Adjustments</h1>
+                <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Proactive Weather Advice</h1>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   Temporal watches active farm plans, checks the forecast, and writes proactive advice back to the database.
                 </p>

@@ -27,7 +27,49 @@ export function createMarketplaceRouter(service: MarketplaceService = marketplac
     }
   });
 
+  router.get("/runs", async (req: Request, res: Response): Promise<void> => {
+    try {
+      res.json(
+        await service.listRuns({
+          userId: stringQuery(req.query.userId),
+          tenantId: stringQuery(req.query.tenantId),
+          farmerId: stringQuery(req.query.farmerId),
+          farmId: stringQuery(req.query.farmId),
+          sessionId: stringQuery(req.query.sessionId),
+          limit: optionalNumber(req.query.limit),
+        }),
+      );
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
+
+  router.get("/runs/:id", async (req: Request, res: Response): Promise<void> => {
+    try {
+      const run = await service.getRun(String(req.params.id));
+      if (!run) {
+        res.status(404).json({ error: "Marketplace comparison run not found" });
+        return;
+      }
+      res.json(run);
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
+
   return router;
 }
 
 export const marketplaceRouter = createMarketplaceRouter();
+
+function optionalNumber(value: unknown): number | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const parsed = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function stringQuery(value: unknown): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
+}

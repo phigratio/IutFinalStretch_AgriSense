@@ -1,10 +1,10 @@
 varietyId,cropId,name,yield_t_ha,durationDays,notes,source_name,source_url,source_doc,page,retrieved_date,data_origin,verification_status
-brri_dhan49,rice_t_aman,BRRI dhan49,4.5,140,Popular rainfed Aman variety,BRRI,http://brri.gov.bd,BRRI Released Varieties,TODO,2026-07-24,manual,unverified
-brri_dhan29,rice_boro,BRRI dhan29,7.0,160,High-yield Boro variety,BRRI,http://brri.gov.bd,BRRI Released Varieties,TODO,2026-07-24,manual,unverified
-bari_gom33,wheat,BARI Gom-33,4.0,110,"Heat-tolerant, zinc-enriched wheat",BARI,https://bari.gov.bd,BARI Released Varieties,TODO,2026-07-24,manual,unverified
-hybrid_generic,maize,Hybrid Maize (generic),8.5,145,Representative hybrid baseline,BARI,https://bari.gov.bd,BARI Released Varieties,TODO,2026-07-24,manual,unverified
-bari_alu7,potato,BARI Alu-7 (Diamant),25.0,90,Widely grown table potato,BARI,https://bari.gov.bd,BARI Released Varieties,TODO,2026-07-24,manual,unverified
+brri_dhan49,rice_t_aman,BRRI dhan49,5.29,140,Yield = Bangladesh national rice avg (OWID/FAOSTAT),OWID/FAOSTAT,https://ourworldindata.org/grapher/rice-yields,OWID crop yields (FAOSTAT),2024,2026-07-25,real,cross_checked
+brri_dhan29,rice_boro,BRRI dhan29,5.29,160,Yield = Bangladesh national rice avg (OWID/FAOSTAT),OWID/FAOSTAT,https://ourworldindata.org/grapher/rice-yields,OWID crop yields (FAOSTAT),2024,2026-07-25,real,cross_checked
+bari_gom33,wheat,BARI Gom-33,3.76,110,Yield = Bangladesh national wheat avg (OWID/FAOSTAT),OWID/FAOSTAT,https://ourworldindata.org/grapher/wheat-yields,OWID crop yields (FAOSTAT),2024,2026-07-25,real,cross_checked
+hybrid_generic,maize,Hybrid Maize (generic),9.25,145,Yield = Bangladesh national maize avg (OWID/FAOSTAT),OWID/FAOSTAT,https://ourworldindata.org/grapher/maize-yields,OWID crop yields (FAOSTAT),2024,2026-07-25,real,cross_checked
+bari_alu7,potato,BARI Alu-7 (Diamant),23.2,90,Yield = Bangladesh national potato avg (OWID/FAOSTAT),OWID/FAOSTAT,https://ourworldindata.org/grapher/potato-yields,OWID crop yields (FAOSTAT),2024,2026-07-25,real,cross_checked
 bari_tomato15,tomato,BARI Tomato-15,55.0,100,Representative winter tomato baseline,BARI,https://bari.gov.bd,BARI Released Varieties,TODO,2026-07-24,manual,unverified
-bari_sarisha14,mustard,BARI Sarisha-14,1.5,85,Short-duration mustard,BARI,https://bari.gov.bd,BARI Released Varieties,TODO,2026-07-24,manual,unverified
-bari_masur8,lentil,BARI Masur-8,1.8,110,High-yield lentil,BARI,https://bari.gov.bd,BARI Released Varieties,TODO,2026-07-24,manual,unverified
-bari_piaj1,onion,BARI Piaj-1 (Taherpuri),12.0,120,Winter onion,BARI,https://bari.gov.bd,BARI Released Varieties,TODO,2026-07-24,manual,unverified
+bari_sarisha14,mustard,BARI Sarisha-14,1.38,85,Yield = Bangladesh national rapeseed/mustard avg (OWID/FAOSTAT),OWID/FAOSTAT,https://ourworldindata.org/grapher/rapeseed-yields,OWID crop yields (FAOSTAT),2024,2026-07-25,real,cross_checked
+bari_masur8,lentil,BARI Masur-8,1.8,110,No OWID series; national lentil yield pending transcription,BARI,https://bari.gov.bd,BARI Released Varieties,TODO,2026-07-25,manual,unverified
+bari_piaj1,onion,BARI Piaj-1 (Taherpuri),12.0,120,No OWID series; national onion yield pending transcription,BARI,https://bari.gov.bd,BARI Released Varieties,TODO,2026-07-25,manual,unverified

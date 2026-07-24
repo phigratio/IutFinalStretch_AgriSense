@@ -4,17 +4,13 @@ import { useAuth } from "../context/AuthContext.js";
 import {
   getOnboardingMe,
   requestTenant,
-  saveOwnProfile,
   requestAssist,
   type UserRole,
-  type OnboardingProfile,
   type OnboardingMe,
 } from "../api/onboarding.js";
 import LocationAutofill, { EditableDistrictSelect } from "../components/onboarding/LocationAutofill.js";
+import SelfOnboardChat from "../components/onboarding/SelfOnboardChat.js";
 
-const SOILS = [{ v: "sandy", bn: "বেলে" }, { v: "loam", bn: "দোআঁশ" }, { v: "clay", bn: "এঁটেল" }, { v: "silt", bn: "পলি" }];
-const WATERS = [{ v: "rainfed", bn: "বৃষ্টিনির্ভর" }, { v: "limited_irrigation", bn: "সীমিত সেচ" }, { v: "reliable_irrigation", bn: "নিশ্চিত সেচ" }];
-const SEASONS = [{ v: "kharif1", bn: "আউশ" }, { v: "kharif2_aman", bn: "আমন" }, { v: "rabi", bn: "রবি" }, { v: "boro", bn: "বোরো" }];
 
 const ROLE_BN: Record<UserRole, string> = { user: "ব্যবহারকারী", tenant: "টেন্যান্ট", admin: "অ্যাডমিন" };
 const FIELD_BN: Record<OnboardingMe["missingFields"][number], string> = {
@@ -123,13 +119,13 @@ export default function Onboarding() {
 
       <p className="mt-6 text-base font-medium text-gray-700 dark:text-gray-300">আপনি কী করতে চান?</p>
       <div className="mt-3 grid gap-3">
-        <ChoiceCard active={choice === "self"} onClick={() => setChoice("self")} title="আমি নিজেই আমার তথ্য দেব" desc="নিজের খামারের তথ্য পূরণ করুন।" />
+        <ChoiceCard active={choice === "self"} onClick={() => setChoice("self")} title="আমি নিজেই আমার তথ্য দেব" desc="AgriSense আপনাকে প্রশ্ন করে সহজে তথ্য নেবে।" />
         <ChoiceCard active={choice === "assist"} onClick={() => setChoice("assist")} title="একজন টেন্যান্টকে দিয়ে পূরণ করাব" desc="আপনার এলাকার টেন্যান্ট আপনার হয়ে তথ্য পূরণ করবেন।" />
         <ChoiceCard active={choice === "tenant"} onClick={() => setChoice("tenant")} title="আমি টেন্যান্ট হতে চাই" desc="অ্যাডমিনের অনুমোদন সাপেক্ষে আপনি টেন্যান্ট হবেন।" />
       </div>
 
       <div className="mt-5">
-        {choice === "self" && <SelfProfileForm initial={status?.onboarding} defaultName={user?.name} busy={busy} onSubmit={(b) => run(() => saveOwnProfile(b), "আপনার প্রোফাইল সংরক্ষিত হয়েছে।")} />}
+        {choice === "self" && <SelfOnboardChat />}
         {choice === "assist" && <AssistForm defaultName={user?.name} defaultPhone={status?.onboarding?.phone} busy={busy} onSubmit={(b) => run(() => requestAssist(b), "আপনার অনুরোধ পাঠানো হয়েছে। একজন টেন্যান্ট শীঘ্রই তথ্য পূরণ করবেন।")} />}
         {choice === "tenant" && <TenantForm defaultPhone={status?.onboarding?.phone} busy={busy} onSubmit={(b) => run(() => requestTenant(b), "টেন্যান্ট হওয়ার আবেদন জমা হয়েছে। অ্যাডমিন পর্যালোচনা করবেন।")} />}
       </div>
@@ -218,68 +214,6 @@ function AssistForm({ defaultName, defaultPhone, busy, onSubmit }: { defaultName
       <button type="button" disabled={busy || !district || !phone.trim()} onClick={() => onSubmit({ district, upazila: upazila || undefined, fullName: fullName || undefined, phone: phone.trim(), note: note || undefined })}
         className="mt-4 w-full rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-50">
         {busy ? "অপেক্ষা করুন…" : "অনুরোধ পাঠান"}
-      </button>
-    </Card>
-  );
-}
-
-function SelfProfileForm({ initial, defaultName, busy, onSubmit }: { initial?: OnboardingProfile | null; defaultName?: string; busy: boolean; onSubmit: (b: OnboardingProfile) => void }) {
-  const [fullName, setFullName] = useState(initial?.fullName ?? defaultName ?? "");
-  const [phone, setPhone] = useState(initial?.phone ?? "");
-  const [district, setDistrict] = useState(initial?.district ?? "");
-  const [upazila, setUpazila] = useState(initial?.upazila ?? "");
-  const [farmSizeDecimals, setSize] = useState(initial?.farmSizeDecimals?.toString() ?? "");
-  const [soilTexture, setSoil] = useState(initial?.soilTexture ?? "");
-  const [waterAvailability, setWater] = useState(initial?.waterAvailability ?? "");
-  const [budgetBdt, setBudget] = useState(initial?.budgetBdt?.toString() ?? "");
-  const [targetSeason, setSeason] = useState(initial?.targetSeason ?? "");
-  const valid = Boolean(
-    fullName.trim() && phone.trim() && district && Number(farmSizeDecimals) > 0 &&
-    soilTexture && waterAvailability && budgetBdt !== "" && Number(budgetBdt) >= 0 && targetSeason,
-  );
-  return (
-    <Card>
-      <LocationAutofill className="mb-4" onDetected={(found) => { setDistrict(found.district); setUpazila(found.upazila ?? ""); }} />
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="আপনার নাম"><input required className={inputCls} value={fullName} onChange={(e) => setFullName(e.target.value)} /></Field>
-        <Field label="মোবাইল নম্বর"><input required className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
-        <Field label="জেলা"><DistrictSelect value={district} onChange={setDistrict} /></Field>
-        <Field label="উপজেলা (পরিবর্তনযোগ্য)"><input className={inputCls} value={upazila} onChange={(e) => setUpazila(e.target.value)} /></Field>
-        <Field label="জমির পরিমাণ (শতক)"><input type="number" className={inputCls} value={farmSizeDecimals} onChange={(e) => setSize(e.target.value)} /></Field>
-        <Field label="মাটির ধরন">
-          <select className={inputCls} value={soilTexture} onChange={(e) => setSoil(e.target.value)}>
-            <option value="">— নির্বাচন —</option>
-            {SOILS.map((s) => <option key={s.v} value={s.v}>{s.bn}</option>)}
-          </select>
-        </Field>
-        <Field label="সেচ সুবিধা">
-          <select className={inputCls} value={waterAvailability} onChange={(e) => setWater(e.target.value)}>
-            <option value="">— নির্বাচন —</option>
-            {WATERS.map((w) => <option key={w.v} value={w.v}>{w.bn}</option>)}
-          </select>
-        </Field>
-        <Field label="বাজেট (টাকা)"><input type="number" className={inputCls} value={budgetBdt} onChange={(e) => setBudget(e.target.value)} /></Field>
-        <Field label="মৌসুম">
-          <select className={inputCls} value={targetSeason} onChange={(e) => setSeason(e.target.value)}>
-            <option value="">— নির্বাচন —</option>
-            {SEASONS.map((s) => <option key={s.v} value={s.v}>{s.bn}</option>)}
-          </select>
-        </Field>
-      </div>
-      <button
-        type="button"
-        disabled={busy || !valid}
-        onClick={() =>
-          onSubmit({
-            district, upazila: upazila || undefined, fullName: fullName || undefined, phone: phone || undefined,
-            farmSizeDecimals: farmSizeDecimals ? Number(farmSizeDecimals) : undefined,
-            soilTexture: soilTexture || undefined, waterAvailability: waterAvailability || undefined,
-            budgetBdt: budgetBdt ? Number(budgetBdt) : undefined, targetSeason: targetSeason || undefined,
-          })
-        }
-        className="mt-4 w-full rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-50"
-      >
-        {busy ? "সংরক্ষণ হচ্ছে…" : "সংরক্ষণ করুন"}
       </button>
     </Card>
   );

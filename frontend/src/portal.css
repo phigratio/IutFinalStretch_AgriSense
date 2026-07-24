@@ -92,6 +92,7 @@ html, body { overflow-x: clip; }
   border: var(--rule-portal) solid var(--color-portal-rule);
   border-radius: var(--radius-portal-panel);
   background: var(--color-portal-surface);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); /* match admin card shadow-sm */
 }
 
 .portal-section-heading {

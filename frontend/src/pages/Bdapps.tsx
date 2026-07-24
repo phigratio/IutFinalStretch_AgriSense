@@ -56,10 +56,27 @@ export default function Bdapps() {
 
   return (
     <>
-      <PageMeta title="BDApps · ICT Fest Admin" description="BDApps API test console" />
+      <PageMeta title="BDApps · ICT Fest Admin" description="BDApps SMS, USSD, OTP, subscription, and listener console" />
       <PageBreadcrumb pageTitle="BDApps" />
 
       {error && <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-500">{error}</div>}
+
+      <section className="mb-4 rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">BDApps Channel Console</h1>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-gray-500 dark:text-gray-400">
+              Verify the official TAP surfaces used by the demo: SMS, USSD, OTP, subscription capture, subscriber status, and CaaS support.
+            </p>
+          </div>
+          <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-500">SMS + USSD + OTP</span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <ListenerCard title="SMS listener" path="/bdapps/sms" detail="Inbound farmer commands and weather replies." />
+          <ListenerCard title="USSD listener" path="/bdapps/ussd" detail="Menu access for plan, weather, and alerts." />
+          <ListenerCard title="Subscription listener" path="/bdapps/subscription" detail="Captures masked subscriber IDs for alerts." />
+        </div>
+      </section>
 
       <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
@@ -97,7 +114,12 @@ export default function Bdapps() {
         </section>
 
         <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-          <h2 className="mb-3 text-base font-semibold text-gray-900 dark:text-white">Response</h2>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-white">Raw TAP Response</h2>
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-white/[0.06] dark:text-gray-300">
+              {action}
+            </span>
+          </div>
           <pre className="custom-scrollbar min-h-[420px] overflow-auto rounded-lg bg-gray-950 p-4 text-xs leading-5 text-gray-100">
             {result ? JSON.stringify(result, null, 2) : "No response yet."}
           </pre>
@@ -109,6 +131,16 @@ export default function Bdapps() {
 
 const inputClass = "h-11 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-100";
 const labelClass = "mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300";
+
+function ListenerCard({ title, path, detail }: { title: string; path: string; detail: string }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-white/[0.04]">
+      <p className="text-sm font-semibold text-gray-900 dark:text-white">{title}</p>
+      <p className="mt-1 font-mono text-xs text-brand-600 dark:text-brand-300">{path}</p>
+      <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">{detail}</p>
+    </div>
+  );
+}
 
 function TextField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (

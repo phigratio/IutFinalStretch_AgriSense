@@ -41,6 +41,7 @@ Thumbs.db
 
 # Local GitHub workflow drafts are managed manually for this project.
 .github/
+.github/workflows/ci-cd.yml
 
 # Added by code-review-graph
 .code-review-graph/

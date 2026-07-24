@@ -22,6 +22,7 @@ services:
       GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:3000/auth/google/callback}
       FRONTEND_AUTH_SUCCESS_URL: ${FRONTEND_AUTH_SUCCESS_URL:-http://localhost:5173/}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SPEECHMATIC_API_KEY: ${SPEECHMATIC_API_KEY:-}
       OPENAI_INTAKE_MODEL: ${OPENAI_INTAKE_MODEL:-gpt-4.1-mini}
       OPENAI_STT_MODEL: ${OPENAI_STT_MODEL:-whisper-1}
       MEM0_API_URL: http://mem0-api:8000
@@ -93,6 +94,7 @@ services:
         condition: service_healthy
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SPEECHMATIC_API_KEY: ${SPEECHMATIC_API_KEY:-}
       JWT_SECRET: ${MEM0_JWT_SECRET:-dev-only-change-this-mem0-jwt-secret}
       ADMIN_API_KEY: ${MEM0_API_KEY:-dev-only-mem0-admin-key}
       AUTH_DISABLED: ${MEM0_AUTH_DISABLED:-true}
@@ -208,6 +210,7 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       DATABASE_URL: postgresql://${POSTGRES_USER:-iut_ict_fest}:${POSTGRES_PASSWORD:-iut_ict_fest}@postgres:5432/${POSTGRES_DB:-iut_ict_fest}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SPEECHMATIC_API_KEY: ${SPEECHMATIC_API_KEY:-}
       OPENAI_STT_MODEL: ${OPENAI_STT_MODEL:-whisper-1}
       MEM0_API_URL: http://mem0-api:8000
       MEM0_API_KEY: ${MEM0_API_KEY:-}

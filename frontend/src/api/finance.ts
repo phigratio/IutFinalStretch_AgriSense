@@ -25,6 +25,12 @@ export interface FinanceMonthlyRow {
   incomeBdt: number;
   expenseBdt: number;
   profitBdt: number;
+  projectedIncomeBdt?: number;
+  projectedExpenseBdt?: number;
+  actualIncomeBdt?: number;
+  actualExpenseBdt?: number;
+  status?: "projected" | "actual" | "mixed" | "empty";
+  drivers?: string[];
   entryCount: number;
 }
 

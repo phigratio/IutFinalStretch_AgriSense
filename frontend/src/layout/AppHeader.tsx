@@ -1,5 +1,6 @@
 import { useSidebar } from "../context/SidebarContext.js";
 import ThemeToggleButton from "../components/common/ThemeToggleButton.js";
+import LanguageToggle from "../components/common/LanguageToggle.js";
 import NotificationDropdown from "../components/header/NotificationDropdown.js";
 import UserDropdown from "../components/header/UserDropdown.js";
 import { CloseIcon, ListIcon, SearchIcon } from "../icons/index.js";
@@ -35,6 +36,7 @@ export default function AppHeader() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          <LanguageToggle compact />
           <ThemeToggleButton />
           <NotificationDropdown />
           <UserDropdown />
