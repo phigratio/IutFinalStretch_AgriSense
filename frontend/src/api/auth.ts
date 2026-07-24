@@ -5,6 +5,7 @@ export interface AuthUser {
   email: string;
   name: string;
   emailVerified: boolean;
+  role: "user" | "tenant" | "admin";
 }
 
 export interface AuthResponse {

@@ -7,6 +7,7 @@ import { AuthProvider } from "./context/AuthContext.js";
 import ProtectedRoute from "./components/common/ProtectedRoute.js";
 import AppLayout from "./layout/AppLayout.js";
 import Dashboard from "./pages/Dashboard.js";
+import HomeRedirect from "./components/common/HomeRedirect.js";
 import Users from "./pages/Users.js";
 import Profile from "./pages/Profile.js";
 import Calendar from "./pages/Calendar.js";
@@ -37,7 +38,8 @@ createRoot(rootEl).render(
               {/* Everything inside the panel requires a valid session. */}
               <Route element={<ProtectedRoute />}>
                 <Route element={<AppLayout />}>
-                  <Route index path="/" element={<Dashboard />} />
+                  <Route index path="/" element={<HomeRedirect />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/users" element={<Users />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/calendar" element={<Calendar />} />
