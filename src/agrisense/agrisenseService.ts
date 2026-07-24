@@ -63,9 +63,16 @@ export class AgriSenseService {
 
     if (request.useMemory !== false) {
       const memoryStarted = Date.now();
+      const serviceMemory = await this.memoryOutcomes.list({
+        userId: request.userId,
+        farmerId: intake.farmerId,
+        farmId: intake.farmId,
+        bdappsMobile: intake.profile.bdappsMobile ?? request.bdappsMobile,
+        limit: 8,
+      });
       const memoryResult = {
-        outcomes: context.memory.outcomes,
-        sessions: context.memory.sessions,
+        outcomes: uniqueById([...serviceMemory.outcomes, ...context.memory.outcomes]),
+        sessions: uniqueById([...serviceMemory.sessions, ...context.memory.sessions]),
       };
       rememberedOutcomes = filterIgnored(memoryResult.outcomes, request.ignoredOutcomeIds);
       const searchTrace = await this.trace(intake.sessionId, trace, {
@@ -503,6 +510,10 @@ function mapContextKbHits(context: ContextBundle | undefined) {
 }
 
 function uniqueEvidence<T extends { id: string }>(items: T[]): T[] {
+  return uniqueById(items);
+}
+
+function uniqueById<T extends { id: string }>(items: T[]): T[] {
   const seen = new Set<string>();
   return items.filter((item) => {
     if (seen.has(item.id)) return false;

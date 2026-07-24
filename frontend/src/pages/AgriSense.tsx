@@ -94,6 +94,25 @@ export default function AgriSense() {
   const activeStage = normalizeStage(searchParams.get("stage"));
 
   useEffect(() => {
+    const raw = localStorage.getItem("agrisense.sessionContext");
+    if (!raw) return;
+    try {
+      const stored = JSON.parse(raw) as { sessionId?: string; farmerId?: string; farmId?: string; language?: Language };
+      setSessionId(stored.sessionId);
+      setFarmerId(stored.farmerId);
+      setFarmId(stored.farmId);
+      if (stored.language) setLanguage(stored.language);
+    } catch {
+      localStorage.removeItem("agrisense.sessionContext");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!sessionId && !farmerId && !farmId) return;
+    localStorage.setItem("agrisense.sessionContext", JSON.stringify({ sessionId, farmerId, farmId, language }));
+  }, [sessionId, farmerId, farmId, language]);
+
+  useEffect(() => {
     if (!useMemory) return;
     if (!user?.id && !farmerId && !farmId) return;
     let cancelled = false;
@@ -198,7 +217,12 @@ export default function AgriSense() {
   }
 
   function useOutcome(outcome: MemoryOutcome) {
-    void submitMessage(`Use remembered context: ${outcome.title}`, activeStage === "trace" ? "full" : activeStage, [outcome.id]);
+    const workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" ? "full" : activeStage;
+    void submitMessage(
+      `Use remembered context: ${outcome.title}`,
+      workflowStage,
+      [outcome.id],
+    );
   }
 
   return (
