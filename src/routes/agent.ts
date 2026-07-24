@@ -8,6 +8,8 @@ import {
   type Extractor,
 } from "../agent/intake.js";
 import { runPipeline, type OrchestratorProfile } from "../agent/orchestrator.js";
+import { getKbRuntime } from "../kb/runtime.js";
+import { HUB } from "../kb/tenancy.js";
 import { runTraced } from "../tools/trace.js";
 import { getDefaultExtractor } from "../llm/provider.js";
 import {
@@ -22,12 +24,19 @@ import type { FertilityClass, SoilTexture } from "../data/loader.js";
 import type { WaterAvailability } from "../agent/ranking.js";
 import type { Season } from "../agent/normalize.js";
 
+export interface PriceContext {
+  district?: string;
+  farmLat?: number;
+  farmLon?: number;
+}
+
 /** Injectable runtime so the route is testable without network/keys. */
 export interface AgentRuntime {
   extractor: Extractor;
   geocode: (text: string) => Promise<GeocodeResult>;
   getForecast: (lat: number, lon: number) => Promise<ForecastResult>;
   getNormals: (lat: number, lon: number, months: number[]) => Promise<NormalsResult>;
+  resolvePrice: (cropId: string, ctx: PriceContext) => Promise<{ pricePerKg: number; provenance?: unknown } | null>;
 }
 
 let runtime: AgentRuntime = {
@@ -35,6 +44,17 @@ let runtime: AgentRuntime = {
   geocode: (t) => geocodeLocation(t),
   getForecast: (lat, lon) => getForecast(lat, lon),
   getNormals: (lat, lon, months) => getClimateNormals(lat, lon, months),
+  resolvePrice: async (cropId, ctx) => {
+    const { priceStore, tenantStore } = getKbRuntime();
+    const tenantId = ctx.district ? await tenantStore.resolveTenantIdForDistrict(ctx.district) : HUB;
+    return priceStore.resolve({
+      cropId,
+      district: ctx.district,
+      tenantId,
+      farmLat: ctx.farmLat,
+      farmLon: ctx.farmLon,
+    });
+  },
 };
 
 /** Override runtime (tests / DI). */
@@ -96,6 +116,12 @@ agentRouter.post("/agent/message", async (req, res, next) => {
       writer: session.writer,
       getForecast: () => runtime.getForecast(profile.lat!, profile.lon!),
       getNormals: (months) => runtime.getNormals(profile.lat!, profile.lon!, months),
+      resolvePrice: (cropId) =>
+        runtime.resolvePrice(cropId, {
+          district: profile.district,
+          farmLat: profile.lat ?? undefined,
+          farmLon: profile.lon ?? undefined,
+        }),
       chosenCropId: state.currentCrop,
     });
     session.result = result;
