@@ -247,6 +247,21 @@
   these endpoints). NOTE: keep running `prisma generate && migrate deploy` after pulls —
   teammates keep evolving the schema (imageUrl, tenant phone, voice route, etc).
 
+- 24Jul ~22:15 — Claude session (with Labib) — **Mobile BDApps phone sign-in shipped
+  (f60b92f)** — completes the backend→web→mobile build order. Mobile had NO auth; phone-OTP
+  now signs the farmer in on the SHARED backend identity (`/auth/bdapps/otp/*`), giving
+  mobile the login + Tier-1 persistent identity it lacked. Added: cross-platform token store
+  (`mobile/src/api/tokenStore.ts` — localStorage web / in-memory native, no new dep),
+  `apiFetch` now attaches the bearer token, `mobile/src/api/auth.ts`, `mobile/src/state/
+  auth.tsx` AuthProvider (bootstraps from stored token via /auth/me → returning farmer stays
+  in), and an **Account tab** (phone→OTP→verified, shows farmer + SMS-channel status + sign
+  out). 8 mobile tabs now; tsc + expo web export green. NOTE: phigratio upgraded the weather
+  sweep to emit a proper "Delay nitrogen application by N days → move window to <dates>"
+  alert (impacted-task aware) — flows straight into the P2 SMS dispatcher. BDApps integration
+  now spans identity (web verify + mobile sign-in), reach (weather/plan/pest alerts → real
+  SMS), and payment (CaaS checkout, blocked only on bdapps activation). Remaining: P4 inbound
+  SMS keywords, P5 USSD menu (both need ngrok), P6 premium gating, P7 marketplace CaaS buy.
+
 ## 8. Session log (append-only: `HH:MM — <who> — <what changed>`)
 
 - 24Jul 11:00 — Claude session 1 (with A) — Read problem statement, bdapps cheatsheet/DGD/
