@@ -11,7 +11,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import type { IntakeTraceEvent } from '@/api/types';
+import type { TraceEvent } from '@/api/types';
 
 function pretty(value: unknown): string {
   try {
@@ -21,7 +21,7 @@ function pretty(value: unknown): string {
   }
 }
 
-export function TraceChip({ event }: { event: IntakeTraceEvent }) {
+export function TraceChip({ event }: { event: TraceEvent }) {
   const [open, setOpen] = useState(false);
   const theme = useTheme();
   const failed = event.status === 'error';
@@ -61,7 +61,7 @@ export function TraceChip({ event }: { event: IntakeTraceEvent }) {
   );
 }
 
-export function TraceChipRow({ trace }: { trace?: IntakeTraceEvent[] }) {
+export function TraceChipRow({ trace }: { trace?: TraceEvent[] }) {
   if (!trace || trace.length === 0) return null;
   return (
     <View style={styles.row}>
