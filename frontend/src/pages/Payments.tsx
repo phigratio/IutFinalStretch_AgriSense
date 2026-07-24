@@ -53,10 +53,30 @@ export default function Payments() {
 
   return (
     <>
-      <PageMeta title="Payments · ICT Fest Admin" description="BDApps checkout and receipt lookup" />
-      <PageBreadcrumb pageTitle="Payments" />
+      <PageMeta title="BDApps Payments · ICT Fest Admin" description="BDApps CaaS checkout, balance deduction, and receipt flow" />
+      <PageBreadcrumb pageTitle="BDApps Payments" />
 
       {error && <Alert tone="error">{error}</Alert>}
+
+      <section className="mb-4 rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">BDApps CaaS Checkout</h1>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-gray-500 dark:text-gray-400">
+              Demonstrates payment instruments, operator balance query, direct debit, balance deduction, receipt persistence, and SMS receipt evidence.
+            </p>
+          </div>
+          <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-500">
+            Tier 2 payment gateway
+          </span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <FlowStep index="1" title="Payment instruments" detail="Check available mobile account rails." />
+          <FlowStep index="2" title="Balance before" detail="Read operator balance before debit." />
+          <FlowStep index="3" title="Direct debit" detail="Charge the sandbox subscriber." />
+          <FlowStep index="4" title="Receipt + SMS" detail="Persist receipt and send confirmation." />
+        </div>
+      </section>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
         <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
@@ -91,6 +111,7 @@ export default function Payments() {
         </section>
 
         <section className="space-y-4">
+          {checkout && <CheckoutSummary checkout={checkout} />}
           <form onSubmit={lookupReceipt} className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
             <h2 className="mb-4 text-base font-semibold text-gray-900 dark:text-white">Receipt Lookup</h2>
             <div className="flex gap-2">
@@ -101,7 +122,7 @@ export default function Payments() {
             </div>
           </form>
 
-          {checkout && <Result title="Checkout Result" value={checkout} />}
+          {checkout && <Result title="Raw Checkout Result" value={checkout} />}
           {receipt && <Result title="Receipt" value={receipt} />}
         </section>
       </div>
@@ -123,6 +144,50 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function Alert({ children }: { children: ReactNode; tone: "error" }) {
   return <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-500">{children}</div>;
+}
+
+function FlowStep({ index, title, detail }: { index: string; title: string; detail: string }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-white/[0.04]">
+      <div className="flex items-center gap-2">
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-500 text-xs font-semibold text-white">{index}</span>
+        <p className="text-sm font-semibold text-gray-900 dark:text-white">{title}</p>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">{detail}</p>
+    </div>
+  );
+}
+
+function CheckoutSummary({ checkout }: { checkout: CheckoutResult }) {
+  const balanceAfter = checkout.balanceBeforeBdt != null ? checkout.balanceBeforeBdt - checkout.amountBdt : undefined;
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-gray-900 dark:text-white">Checkout Evidence</h2>
+        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${checkout.ok ? "bg-success-50 text-success-700 dark:bg-success-500/15 dark:text-success-400" : "bg-error-50 text-error-600 dark:bg-error-500/15 dark:text-error-400"}`}>
+          {checkout.status}
+        </span>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <SummaryMetric label="Charged" value={`৳${checkout.amountBdt}`} />
+        <SummaryMetric label="Balance before" value={checkout.balanceBeforeBdt != null ? `৳${checkout.balanceBeforeBdt}` : "n/a"} />
+        <SummaryMetric label="Balance after" value={balanceAfter != null ? `৳${balanceAfter}` : "n/a"} />
+        <SummaryMetric label="SMS receipt" value={checkout.smsSent ? "sent" : "not sent"} />
+      </div>
+      <p className="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">
+        Payment ID {checkout.paymentId}. Transaction {checkout.internalTrxId ?? checkout.externalTrxId ?? "pending"}.
+      </p>
+    </section>
+  );
+}
+
+function SummaryMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-800">
+      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{value}</p>
+    </div>
+  );
 }
 
 function Result({ title, value }: { title: string; value: unknown }) {
