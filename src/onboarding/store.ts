@@ -20,6 +20,7 @@ export interface TenantRequestRecord {
   orgName: string;
   district: string;
   upazila?: string;
+  phone?: string;
   note?: string;
   status: RequestStatus;
   createdAt: string;
@@ -73,9 +74,10 @@ export interface OnboardingInput {
 }
 
 export interface OnboardingStore {
-  createTenantRequest(input: { userId: string; orgName: string; district: string; upazila?: string; note?: string }): Promise<TenantRequestRecord>;
+  createTenantRequest(input: { userId: string; orgName: string; district: string; upazila?: string; phone?: string; note?: string }): Promise<TenantRequestRecord>;
   listTenantRequests(status?: RequestStatus): Promise<TenantRequestRecord[]>;
   getTenantRequest(id: string): Promise<TenantRequestRecord | undefined>;
+  getLatestTenantRequestByUser(userId: string): Promise<TenantRequestRecord | undefined>;
   decideTenantRequest(id: string, status: "approved" | "rejected", decidedBy: string): Promise<TenantRequestRecord | undefined>;
 
   upsertOnboarding(input: OnboardingInput): Promise<FarmerOnboardingRecord>;
@@ -83,11 +85,35 @@ export interface OnboardingStore {
 
   createAssistRequest(input: { userId: string; fullName?: string; phone?: string; district: string; upazila?: string; note?: string }): Promise<AssistRequestRecord>;
   getAssistRequest(id: string): Promise<AssistRequestRecord | undefined>;
+  getLatestAssistRequestByUser(userId: string): Promise<AssistRequestRecord | undefined>;
   listAssistRequests(filter?: { district?: string; status?: AssistStatus }): Promise<AssistRequestRecord[]>;
   claimAssistRequest(id: string, tenantSlug: string, userId: string): Promise<AssistRequestRecord | undefined>;
   fulfillAssistRequest(id: string): Promise<AssistRequestRecord | undefined>;
 
   reset?(): Promise<void>;
+}
+
+/** A farmer dashboard is available only after the complete agronomic profile exists. */
+export type OnboardingRequiredField =
+  | "fullName" | "phone" | "district" | "farmSizeDecimals"
+  | "soilTexture" | "waterAvailability" | "budgetBdt" | "targetSeason";
+
+export function getOnboardingMissingFields(profile: FarmerOnboardingRecord | undefined): OnboardingRequiredField[] {
+  if (!profile) return ["fullName", "phone", "district", "farmSizeDecimals", "soilTexture", "waterAvailability", "budgetBdt", "targetSeason"];
+  const missing: OnboardingRequiredField[] = [];
+  if (!profile.fullName?.trim()) missing.push("fullName");
+  if (!profile.phone?.trim()) missing.push("phone");
+  if (!profile.district.trim()) missing.push("district");
+  if (profile.farmSizeDecimals == null || profile.farmSizeDecimals <= 0) missing.push("farmSizeDecimals");
+  if (!profile.soilTexture?.trim()) missing.push("soilTexture");
+  if (!profile.waterAvailability?.trim()) missing.push("waterAvailability");
+  if (profile.budgetBdt == null || profile.budgetBdt < 0) missing.push("budgetBdt");
+  if (!profile.targetSeason?.trim()) missing.push("targetSeason");
+  return missing;
+}
+
+export function isOnboardingComplete(profile: FarmerOnboardingRecord | undefined): boolean {
+  return getOnboardingMissingFields(profile).length === 0;
 }
 
 const now = (): string => new Date().toISOString();
@@ -97,7 +123,7 @@ export class InMemoryOnboardingStore implements OnboardingStore {
   private onboardings = new Map<string, FarmerOnboardingRecord>(); // by userId
   private assists = new Map<string, AssistRequestRecord>();
 
-  async createTenantRequest(input: { userId: string; orgName: string; district: string; upazila?: string; note?: string }): Promise<TenantRequestRecord> {
+  async createTenantRequest(input: { userId: string; orgName: string; district: string; upazila?: string; phone?: string; note?: string }): Promise<TenantRequestRecord> {
     const rec: TenantRequestRecord = { id: randomUUID(), status: "pending", createdAt: now(), ...input };
     this.tenantReqs.set(rec.id, rec);
     return rec;
@@ -107,6 +133,11 @@ export class InMemoryOnboardingStore implements OnboardingStore {
   }
   async getTenantRequest(id: string): Promise<TenantRequestRecord | undefined> {
     return this.tenantReqs.get(id);
+  }
+  async getLatestTenantRequestByUser(userId: string): Promise<TenantRequestRecord | undefined> {
+    return [...this.tenantReqs.values()]
+      .filter((request) => request.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   }
   async decideTenantRequest(id: string, status: "approved" | "rejected"): Promise<TenantRequestRecord | undefined> {
     const r = this.tenantReqs.get(id);
@@ -138,6 +169,11 @@ export class InMemoryOnboardingStore implements OnboardingStore {
   }
   async getAssistRequest(id: string): Promise<AssistRequestRecord | undefined> {
     return this.assists.get(id);
+  }
+  async getLatestAssistRequestByUser(userId: string): Promise<AssistRequestRecord | undefined> {
+    return [...this.assists.values()]
+      .filter((request) => request.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   }
   async listAssistRequests(filter?: { district?: string; status?: AssistStatus }): Promise<AssistRequestRecord[]> {
     return [...this.assists.values()]
@@ -174,7 +210,7 @@ export class PrismaOnboardingStore implements OnboardingStore {
     this.prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
   }
 
-  async createTenantRequest(input: { userId: string; orgName: string; district: string; upazila?: string; note?: string }): Promise<TenantRequestRecord> {
+  async createTenantRequest(input: { userId: string; orgName: string; district: string; upazila?: string; phone?: string; note?: string }): Promise<TenantRequestRecord> {
     const r = await this.prisma.tenantRequest.create({ data: { ...input } });
     return this.mapTenantReq(r);
   }
@@ -184,6 +220,10 @@ export class PrismaOnboardingStore implements OnboardingStore {
   }
   async getTenantRequest(id: string): Promise<TenantRequestRecord | undefined> {
     const r = await this.prisma.tenantRequest.findUnique({ where: { id } });
+    return r ? this.mapTenantReq(r) : undefined;
+  }
+  async getLatestTenantRequestByUser(userId: string): Promise<TenantRequestRecord | undefined> {
+    const r = await this.prisma.tenantRequest.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } });
     return r ? this.mapTenantReq(r) : undefined;
   }
   async decideTenantRequest(id: string, status: "approved" | "rejected", decidedBy: string): Promise<TenantRequestRecord | undefined> {
@@ -230,6 +270,10 @@ export class PrismaOnboardingStore implements OnboardingStore {
     const r = await this.prisma.profileAssistRequest.findUnique({ where: { id } });
     return r ? this.mapAssist(r) : undefined;
   }
+  async getLatestAssistRequestByUser(userId: string): Promise<AssistRequestRecord | undefined> {
+    const r = await this.prisma.profileAssistRequest.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } });
+    return r ? this.mapAssist(r) : undefined;
+  }
   async listAssistRequests(filter?: { district?: string; status?: AssistStatus }): Promise<AssistRequestRecord[]> {
     const rows = await this.prisma.profileAssistRequest.findMany({
       where: {
@@ -258,8 +302,8 @@ export class PrismaOnboardingStore implements OnboardingStore {
     }
   }
 
-  private mapTenantReq(r: { id: string; userId: string; orgName: string; district: string; upazila: string | null; note: string | null; status: string; createdAt: Date }): TenantRequestRecord {
-    return { id: r.id, userId: r.userId, orgName: r.orgName, district: r.district, upazila: r.upazila ?? undefined, note: r.note ?? undefined, status: r.status as RequestStatus, createdAt: r.createdAt.toISOString() };
+  private mapTenantReq(r: { id: string; userId: string; orgName: string; district: string; upazila: string | null; phone: string | null; note: string | null; status: string; createdAt: Date }): TenantRequestRecord {
+    return { id: r.id, userId: r.userId, orgName: r.orgName, district: r.district, upazila: r.upazila ?? undefined, phone: r.phone ?? undefined, note: r.note ?? undefined, status: r.status as RequestStatus, createdAt: r.createdAt.toISOString() };
   }
   private mapOnboarding(r: Record<string, unknown>): FarmerOnboardingRecord {
     return {

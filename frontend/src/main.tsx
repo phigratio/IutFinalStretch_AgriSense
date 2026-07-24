@@ -22,6 +22,11 @@ import SignIn from "./pages/SignIn.js";
 import NotFound from "./pages/NotFound.js";
 import KnowledgeBase from "./pages/KnowledgeBase.js";
 import Onboarding from "./pages/Onboarding.js";
+import DashboardLanding from "./components/common/DashboardLanding.js";
+import PortalLayout from "./layout/PortalLayout.js";
+import UserDashboard from "./pages/UserDashboard.js";
+import TenantDashboard from "./pages/TenantDashboard.js";
+import TenantRequests from "./pages/TenantRequests.js";
 import "./index.css";
 
 const rootEl = document.getElementById("root");
@@ -38,13 +43,26 @@ createRoot(rootEl).render(
             <Routes>
               {/* Everything inside the panel requires a valid session. */}
               <Route element={<ProtectedRoute />}>
+                <Route index path="/" element={<DashboardLanding />} />
                 {/* Standalone (no admin chrome) — the farmer's onboarding landing. */}
                 <Route path="/onboarding" element={<Onboarding />} />
+                <Route element={<RoleRoute allow={["user"]} redirectTo="/" />}>
+                  <Route element={<PortalLayout />}>
+                    <Route path="/user/dashboard" element={<UserDashboard />} />
+                  </Route>
+                </Route>
+                <Route element={<RoleRoute allow={["tenant"]} redirectTo="/" />}>
+                  <Route element={<PortalLayout />}>
+                    <Route path="/tenant/dashboard" element={<TenantDashboard />} />
+                  </Route>
+                </Route>
                 {/* The whole admin panel is admin-only; non-admins are sent to onboarding. */}
-                <Route element={<RoleRoute allow={["admin"]} redirectTo="/onboarding" />}>
+                <Route element={<RoleRoute allow={["admin"]} redirectTo="/" />}>
                 <Route element={<AppLayout />}>
-                  <Route index path="/" element={<Dashboard />} />
+                  <Route path="/admin/dashboard" element={<Dashboard />} />
                   <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/tenant-requests" element={<TenantRequests />} />
+                  <Route path="/admin/onboarding" element={<TenantRequests />} />
                   <Route path="/users" element={<Users />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/calendar" element={<Calendar />} />

@@ -1,0 +1,9 @@
+{
+  "date": "2026-07-24",
+  "framework": "React 19 + Vite 6",
+  "styles": "Tailwind CSS 4",
+  "font": "Outfit with Bengali system fallbacks",
+  "palette": "existing cobalt blue and cool grey tokens",
+  "motion": "motion-cut; no animation library",
+  "spacing": "Tailwind 4-point-compatible scale"
+}

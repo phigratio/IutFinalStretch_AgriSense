@@ -6,7 +6,7 @@
  * — never invent numbers (spec §2). Tracing is applied by the orchestrator via `withTrace`.
  */
 
-export type FetchFn = (url: string) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
+export type FetchFn = (url: string, init?: { headers?: Record<string, string> }) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
 
 export interface WeatherDeps {
   fetchFn?: FetchFn;
@@ -27,6 +27,16 @@ export interface GeocodeResult {
   lon: number;
   matchedName: string;
   admin1: string;
+  sourceUrl: string;
+  retrievedAt: string;
+}
+
+export interface ReverseGeocodeResult {
+  district: string;
+  upazila?: string;
+  matchedName: string;
+  lat: number;
+  lon: number;
   sourceUrl: string;
   retrievedAt: string;
 }
@@ -80,6 +90,35 @@ export function parseGeocode(json: unknown, sourceUrl: string, retrievedAt: stri
     lon: Number(top.longitude),
     matchedName: String(top.name ?? ""),
     admin1: String(top.admin1 ?? ""),
+    sourceUrl,
+    retrievedAt,
+  };
+}
+
+export function parseReverseGeocode(
+  json: unknown,
+  lat: number,
+  lon: number,
+  sourceUrl: string,
+  retrievedAt: string,
+): ReverseGeocodeResult | null {
+  const payload = json as { display_name?: unknown; address?: Record<string, unknown> };
+  const address = payload?.address;
+  if (!address) return null;
+  const rawDistrict = address.state_district ?? address.district ?? address.city ?? address.county;
+  if (typeof rawDistrict !== "string" || !rawDistrict.trim()) return null;
+  const district = rawDistrict.replace(/\s+(district|zila)$/i, "").trim();
+  // In Bangladesh, Nominatim commonly exposes "Sadar Upazila" as county.
+  const rawUpazila = address.county ?? address.subdistrict ?? address.municipality ?? address.town ?? address.village;
+  const upazila = typeof rawUpazila === "string"
+    ? rawUpazila.replace(/\s+(upazila|subdistrict)$/i, "").trim()
+    : "";
+  return {
+    district,
+    upazila: upazila || undefined,
+    matchedName: typeof payload.display_name === "string" ? payload.display_name : district,
+    lat,
+    lon,
     sourceUrl,
     retrievedAt,
   };
@@ -170,11 +209,11 @@ export function parseNormals(
 
 // ---- Fetch layer (retry once, stale cache, never invent) --------------------
 
-async function fetchJson(url: string, fetchFn: FetchFn): Promise<unknown> {
+async function fetchJson(url: string, fetchFn: FetchFn, init?: { headers?: Record<string, string> }): Promise<unknown> {
   let lastErr: unknown;
   for (let attempt = 0; attempt <= 1; attempt++) {
     try {
-      const res = await fetchFn(url);
+      const res = await fetchFn(url, init);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (err) {
@@ -187,7 +226,7 @@ async function fetchJson(url: string, fetchFn: FetchFn): Promise<unknown> {
 const forecastCache = new Map<string, ForecastResult>();
 const normalsCache = new Map<string, NormalsResult>();
 
-const defaultFetch: FetchFn = (url) => fetch(url) as unknown as ReturnType<FetchFn>;
+const defaultFetch: FetchFn = (url, init) => fetch(url, init) as unknown as ReturnType<FetchFn>;
 
 export async function geocodeLocation(text: string, deps: WeatherDeps = {}): Promise<GeocodeResult> {
   const fetchFn = deps.fetchFn ?? defaultFetch;
@@ -196,6 +235,17 @@ export async function geocodeLocation(text: string, deps: WeatherDeps = {}): Pro
   const json = await fetchJson(url, fetchFn);
   const parsed = parseGeocode(json, url, now().toISOString());
   if (!parsed) throw new WeatherUnavailableError(`No geocoding match for "${text}"`);
+  return parsed;
+}
+
+/** Resolve browser coordinates to an editable Bangladesh district/upazila suggestion. */
+export async function reverseGeocodeLocation(lat: number, lon: number, deps: WeatherDeps = {}): Promise<ReverseGeocodeResult> {
+  const fetchFn = deps.fetchFn ?? defaultFetch;
+  const now = deps.now ?? (() => new Date());
+  const url = `https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&format=jsonv2&addressdetails=1&accept-language=en`;
+  const json = await fetchJson(url, fetchFn, { headers: { "user-agent": "AgriSense/1.0 (onboarding location defaults)" } });
+  const parsed = parseReverseGeocode(json, lat, lon, url, now().toISOString());
+  if (!parsed) throw new WeatherUnavailableError("Could not determine a district for this location");
   return parsed;
 }
 

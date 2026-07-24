@@ -20,7 +20,7 @@ interface NavItem {
 }
 
 const mainNav: NavItem[] = [
-  { name: "Dashboard", path: "/", icon: <GridIcon /> },
+  { name: "Dashboard", path: "/admin/dashboard", icon: <GridIcon /> },
   { name: "AgriSense Full", path: "/agrisense", icon: <BoxIcon /> },
   { name: "Agri Weather", path: "/agrisense?stage=weather", icon: <SearchSidebarIcon /> },
   { name: "Agri Evidence", path: "/agrisense?stage=evidence", icon: <SearchSidebarIcon /> },
@@ -35,7 +35,7 @@ const mainNav: NavItem[] = [
   { name: "Payments", path: "/payments", icon: <CreditCardIcon /> },
   { name: "BDApps", path: "/bdapps", icon: <PhoneIcon /> },
   { name: "Knowledge Base", path: "/knowledge-base", icon: <BoxIcon /> },
-  { name: "নিবন্ধন (Onboarding)", path: "/onboarding", icon: <UserIcon /> },
+  { name: "Onboarding Requests", path: "/admin/onboarding", icon: <UserGroupIcon /> },
   { name: "Users", path: "/users", icon: <UserGroupIcon /> },
   { name: "Profile", path: "/profile", icon: <UserIcon /> },
 ];

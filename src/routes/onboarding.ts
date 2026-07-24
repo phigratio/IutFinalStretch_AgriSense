@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { authenticate, requireRole, type AuthenticatedRequest } from "../middleware/authenticate.js";
-import { getDefaultOnboardingStore, type OnboardingStore, type OnboardingInput } from "../onboarding/store.js";
+import { getDefaultOnboardingStore, getOnboardingMissingFields, isOnboardingComplete, type OnboardingStore, type OnboardingInput } from "../onboarding/store.js";
 import { getDefaultAuthStore, type AuthStore } from "../auth/store.js";
 import { getKbRuntime } from "../kb/runtime.js";
+import { reverseGeocodeLocation } from "../tools/weather.js";
 
 /** Injectable runtime so the routes are testable with in-memory stores. */
 export interface OnboardingRuntime {
@@ -45,9 +46,36 @@ export const onboardingRouter: Router = Router();
 /** Current user's role + onboarding status (drives the Bengali onboarding screen). */
 onboardingRouter.get("/onboarding/me", authenticate, async (req, res, next) => {
   try {
-    const user = await rt().auth.findUserById(uid(req));
-    const onboarding = await rt().onboarding.getOnboardingByUser(uid(req));
-    res.json({ role: user?.role ?? "user", onboarding: onboarding ?? null });
+    const userId = uid(req);
+    const [user, onboarding, tenantRequest, assistRequest] = await Promise.all([
+      rt().auth.findUserById(userId),
+      rt().onboarding.getOnboardingByUser(userId),
+      rt().onboarding.getLatestTenantRequestByUser(userId),
+      rt().onboarding.getLatestAssistRequestByUser(userId),
+    ]);
+    res.json({
+      role: user?.role ?? "user",
+      onboarding: onboarding ?? null,
+      profileComplete: isOnboardingComplete(onboarding),
+      missingFields: getOnboardingMissingFields(onboarding),
+      tenantRequest: tenantRequest ?? null,
+      assistRequest: assistRequest ?? null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Browser coordinates -> editable district/upazila defaults for onboarding forms. */
+onboardingRouter.get("/onboarding/location-defaults", authenticate, async (req, res, next) => {
+  try {
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      res.status(400).json({ error: "Valid lat and lon query parameters are required" });
+      return;
+    }
+    res.json(await reverseGeocodeLocation(lat, lon));
   } catch (err) {
     next(err);
   }
@@ -57,8 +85,8 @@ onboardingRouter.get("/onboarding/me", authenticate, async (req, res, next) => {
 onboardingRouter.post("/onboarding/tenant-request", authenticate, async (req, res, next) => {
   try {
     const b = req.body as Record<string, unknown>;
-    if (typeof b.orgName !== "string" || typeof b.district !== "string" || !b.orgName.trim() || !b.district.trim()) {
-      res.status(400).json({ error: "orgName and district are required" });
+    if (typeof b.orgName !== "string" || typeof b.district !== "string" || typeof b.phone !== "string" || !b.orgName.trim() || !b.district.trim() || !b.phone.trim()) {
+      res.status(400).json({ error: "orgName, district and phone are required" });
       return;
     }
     const created = await rt().onboarding.createTenantRequest({
@@ -66,6 +94,7 @@ onboardingRouter.post("/onboarding/tenant-request", authenticate, async (req, re
       orgName: b.orgName.trim(),
       district: b.district.trim(),
       upazila: typeof b.upazila === "string" ? b.upazila : undefined,
+      phone: b.phone.trim(),
       note: typeof b.note === "string" ? b.note : undefined,
     });
     res.status(201).json(created);
@@ -78,8 +107,8 @@ onboardingRouter.post("/onboarding/tenant-request", authenticate, async (req, re
 onboardingRouter.post("/onboarding/profile", authenticate, async (req, res, next) => {
   try {
     const b = req.body as Record<string, unknown>;
-    if (typeof b.district !== "string" || !b.district.trim()) {
-      res.status(400).json({ error: "district is required" });
+    if (typeof b.district !== "string" || typeof b.phone !== "string" || !b.district.trim() || !b.phone.trim()) {
+      res.status(400).json({ error: "district and phone are required" });
       return;
     }
     const saved = await rt().onboarding.upsertOnboarding({
@@ -98,14 +127,14 @@ onboardingRouter.post("/onboarding/profile", authenticate, async (req, res, next
 onboardingRouter.post("/onboarding/assist-request", authenticate, async (req, res, next) => {
   try {
     const b = req.body as Record<string, unknown>;
-    if (typeof b.district !== "string" || !b.district.trim()) {
-      res.status(400).json({ error: "district is required" });
+    if (typeof b.district !== "string" || typeof b.phone !== "string" || !b.district.trim() || !b.phone.trim()) {
+      res.status(400).json({ error: "district and phone are required" });
       return;
     }
     const created = await rt().onboarding.createAssistRequest({
       userId: uid(req),
       fullName: typeof b.fullName === "string" ? b.fullName : undefined,
-      phone: typeof b.phone === "string" ? b.phone : undefined,
+      phone: b.phone.trim(),
       district: b.district.trim(),
       upazila: typeof b.upazila === "string" ? b.upazila : undefined,
       note: typeof b.note === "string" ? b.note : undefined,
@@ -183,8 +212,18 @@ onboardingRouter.post("/admin/users/:id/role", authenticate, requireRole("admin"
 // ---- Tenant -----------------------------------------------------------------
 
 /** Assist requests a tenant can fulfil (optionally filtered by district). */
-onboardingRouter.get("/tenant/assist-requests", authenticate, requireRole("tenant", "admin"), async (req, res, next) => {
+async function requireEffectiveTenant(req: unknown, res: { status(code: number): { json(body: unknown): void } }): Promise<boolean> {
+  const user = await rt().auth.findUserById(uid(req));
+  if (user?.role !== "tenant" && user?.role !== "admin") {
+    res.status(403).json({ error: "Your tenant request must be approved before you can access this dashboard" });
+    return false;
+  }
+  return true;
+}
+
+onboardingRouter.get("/tenant/assist-requests", authenticate, async (req, res, next) => {
   try {
+    if (!(await requireEffectiveTenant(req, res))) return;
     const district = req.query.district ? String(req.query.district) : undefined;
     res.json(await rt().onboarding.listAssistRequests({ district, status: "pending" }));
   } catch (err) {
@@ -193,8 +232,9 @@ onboardingRouter.get("/tenant/assist-requests", authenticate, requireRole("tenan
 });
 
 /** Fulfil an assist request by filling the farmer's profile on their behalf. */
-onboardingRouter.post("/tenant/assist-requests/:id/fulfill", authenticate, requireRole("tenant", "admin"), async (req, res, next) => {
+onboardingRouter.post("/tenant/assist-requests/:id/fulfill", authenticate, async (req, res, next) => {
   try {
+    if (!(await requireEffectiveTenant(req, res))) return;
     const assist = await rt().onboarding.getAssistRequest(String(req.params.id));
     if (!assist) {
       res.status(404).json({ error: "Assist request not found" });
@@ -207,9 +247,9 @@ onboardingRouter.post("/tenant/assist-requests/:id/fulfill", authenticate, requi
       district,
       filledBy: "tenant",
       filledByUserId: uid(req),
+      ...readProfileFields(b),
       fullName: (typeof b.fullName === "string" ? b.fullName : undefined) ?? assist.fullName,
       phone: (typeof b.phone === "string" ? b.phone : undefined) ?? assist.phone,
-      ...readProfileFields(b),
     });
     await rt().onboarding.fulfillAssistRequest(assist.id);
     res.json({ ok: true, onboarding: saved });

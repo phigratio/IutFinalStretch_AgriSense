@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   parseGeocode,
+  parseReverseGeocode,
   parseForecast,
   parseNormals,
   getForecast,
@@ -39,6 +40,16 @@ describe("pure parsers", () => {
 
   it("parseGeocode returns null when no match", () => {
     expect(parseGeocode({ results: [] }, "url", "ts")).toBeNull();
+  });
+
+  it("parseReverseGeocode maps OSM district/upazila and strips the District suffix", () => {
+    expect(parseReverseGeocode(
+      { display_name: "Mymensingh, Bangladesh", address: { state_district: "Mymensingh District", county: "Mymensingh Sadar Upazila" } },
+      24.75,
+      90.4,
+      "url",
+      "ts",
+    )).toMatchObject({ district: "Mymensingh", upazila: "Mymensingh Sadar", lat: 24.75, lon: 90.4 });
   });
 
   it("parseForecast computes 7/16-day totals and mean temp", () => {
