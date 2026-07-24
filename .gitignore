@@ -38,3 +38,6 @@ Thumbs.db
 .cache/
 .tmp/
 *.tsbuildinfo
+
+# Local GitHub workflow drafts are managed manually for this project.
+.github/
