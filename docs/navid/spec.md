@@ -30,10 +30,13 @@ If a feature is not on this path, it waits. Everything else is decoration.
 
 ## 1. Conversational intake (T0-1 · A3 gap-handling)
 
-### State — persisted to `FarmProfile` + `AgentSession`
+### State — persisted to `AgentSession.metadata` during intake, then `FarmProfile` when complete
 
-`AgentSession.missingFields: String[]` holds the live gap list; the six required fields map to
-`FarmProfile` columns. In-memory intake state (one turn):
+`AgentSession.missingFields: String[]` holds the live gap list. Because current `FarmProfile`
+columns are non-null, **do not create a partial farm row** while gaps remain. Persist the draft
+state in `AgentSession.metadata.intakeState`; once all six required fields are present, create or
+update `FarmProfile`. Store canonical `areaHa` for engines and also populate existing `sizeAcres`
+for back-compat display/API code. One-turn/intake state:
 
 ```ts
 interface IntakeState {
@@ -57,17 +60,21 @@ const REQUIRED = ["district", "areaHa", "soilTexture",
 ```
 
 > **Schema gap to patch (see plan.md §Migrations):** `FarmProfile` today has a single
-> `soilType` string and no fertility columns. Add `soilTexture`, `fertilityClass`,
-> `fertilitySource`, `district`, `upazila`. Until migrated, hold them in `FarmProfile.metadata` (Json).
+> `soilType` string, `sizeAcres`, and no fertility/district split. Add `areaHa`, `district`,
+> `upazila`, `soilTexture`, `fertilityClass`, `fertilitySource`. Also add
+> `AgentSession.metadata` for draft intake state and `AgentSession.selectedCrop` for the choose
+> step. Until migrated, hold draft intake in `AgentSession.summary` only as an emergency fallback;
+> prefer doing the migration first.
 
 ### Loop
 
 1. Each farmer message → LLM extractor (function call) fills any fields it can, **including from
    Bangla** ("২ বিঘা", "দোআঁশ মাটি").
-2. `missing = REQUIRED.filter(f => state[f] == null)` → write to `AgentSession.missingFields`.
+2. Merge extracted fields into `AgentSession.metadata.intakeState`, then
+   `missing = REQUIRED.filter(f => state[f] == null)` → write to `AgentSession.missingFields`.
 3. If `missing.length`: ask **one** follow-up covering ≤2–3 missing fields, phrased for a farmer.
    **Never re-ask a filled field** (context pins known fields — A4).
-4. When complete → confirm a one-line summary back (session-memory demo for free), then proceed.
+4. When complete → confirm a one-line summary back, persist the complete `FarmProfile`, then proceed.
 
 ### Normalization (once, at intake)
 
@@ -233,7 +240,8 @@ function normalizePricePerKg(price: number, unit: Unit): number {
 ```
 
 Yield comes from the chosen variety's `varieties.csv` row (cite it). Every input-price row
-carries `source, date, unit, dataOrigin`.
+carries `source, date, unit, dataOrigin`. Persist both break-even values on `SeasonPlan`:
+`breakEvenPriceBdtPerKg` and `breakEvenYieldKg` (current schema has only yield; patch it).
 
 **Freebie:** because it is pure, Tier 1 `simulate(changes)` is a re-call with modified inputs +
 a diff of the two outputs.
@@ -254,6 +262,8 @@ Wrap every tool in a decorator that writes one `AgentToolCall` row (already in s
 
 UI: an expandable panel grouped by stage — intake fields · geocode · forecast · normals · soil ·
 fertilizer · calendar · variety · price · mem0 RAG hits (snippet + source metadata) · financial in/out.
+`WeatherSnapshot.snapshotType` must distinguish `forecast` vs `historical_normal` rows; geocode
+and failed calls are trace rows only unless a successful weather payload exists.
 
 **Number provenance:** attach the trace row id to every number the renderer prints (a small
 source chip / `[weather_001]` ref). Minimum viable = the raw grouped JSON log; chips are polish.

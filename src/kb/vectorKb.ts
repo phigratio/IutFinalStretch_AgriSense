@@ -1,0 +1,148 @@
+/**
+ * Vector (prose) KB over mem0 (navid/kb §5). Agronomy prose is namespaced per tenant + a shared
+ * hub. Because mem0 v2's single filtered search is unreliable, retrieval runs TWO scoped searches
+ * (hub + tenant) and merges in code with a tenant boost and docKey override, producing
+ * source-cited hits. Storage-agnostic via a minimal Mem0Like client (injected in tests).
+ */
+
+import { mem0Client } from "../rag/mem0Client.js";
+import { config } from "../config.js";
+import { HUB } from "./tenancy.js";
+
+export interface Mem0Like {
+  add(input: {
+    messages: { role: "user" | "assistant" | "system"; content: string }[];
+    userId: string;
+    agentId?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<unknown>;
+  search(input: {
+    query: string;
+    userId: string;
+    agentId?: string;
+    limit?: number;
+    filters?: Record<string, unknown>;
+  }): Promise<unknown>;
+}
+
+export interface KbChunkMeta {
+  scope: "hub" | "tenant";
+  tenantId?: string;
+  docKey: string;
+  docType: string; // fertilizer | pest | disease | practice | advisory | variety
+  cropId?: string;
+  season?: string;
+  source: string;
+  sourceUrl?: string;
+  page?: string;
+  dataOrigin: string; // real | manual | mock
+}
+
+export interface KbHit {
+  text: string;
+  score: number;
+  docKey?: string;
+  scope?: "hub" | "tenant";
+  tenantId?: string;
+  source?: string;
+  page?: string;
+  citation: string;
+}
+
+const TENANT_BOOST = 0.1;
+
+function hubUserId(): string {
+  return config.mem0KbUserId;
+}
+function tenantUserId(tenantId: string): string {
+  return `tenant:${tenantId}`;
+}
+
+/** Ingest one prose chunk into the hub or a tenant namespace. */
+export async function addChunk(
+  text: string,
+  meta: KbChunkMeta,
+  client: Mem0Like = mem0Client,
+): Promise<unknown> {
+  const userId = meta.scope === "hub" ? hubUserId() : tenantUserId(meta.tenantId ?? "");
+  return client.add({
+    messages: [{ role: "user", content: text }],
+    userId,
+    agentId: config.mem0KbAgentId,
+    metadata: { ...meta },
+  });
+}
+
+/** Normalize a mem0 search response (shape varies) into raw hits. */
+function toRawHits(raw: unknown): { text: string; score: number; metadata: KbChunkMeta }[] {
+  const arr =
+    Array.isArray(raw) ? raw
+    : (raw as { results?: unknown[] })?.results ??
+      (raw as { memories?: unknown[] })?.memories ??
+      [];
+  return (arr as Record<string, unknown>[]).map((h) => ({
+    text: String(h.memory ?? h.text ?? h.content ?? ""),
+    score: typeof h.score === "number" ? h.score : 0,
+    metadata: (h.metadata ?? {}) as KbChunkMeta,
+  }));
+}
+
+function citationOf(m: KbChunkMeta): string {
+  const base = `[KB:${m.source}${m.page ? ` p.${m.page}` : ""}]`;
+  return m.scope === "tenant" && m.tenantId ? `${base} (local: ${m.tenantId})` : base;
+}
+
+export interface SearchKbOptions {
+  tenantId?: string;
+  cropId?: string;
+  limit?: number;
+}
+
+/**
+ * Two-search-merge retrieval: hub + tenant, tenant-boosted, deduped/overridden by docKey.
+ * Returns cited hits. Never throws on a mem0 error for one side — degrades to the other.
+ */
+export async function searchKB(
+  query: string,
+  opts: SearchKbOptions = {},
+  client: Mem0Like = mem0Client,
+): Promise<KbHit[]> {
+  const limit = opts.limit ?? 5;
+  const cropFilter = opts.cropId ? { cropId: opts.cropId } : {};
+
+  const runSearch = async (userId: string, filters: Record<string, unknown>, boost: number) => {
+    try {
+      const raw = await client.search({ query, userId, agentId: config.mem0KbAgentId, limit, filters });
+      return toRawHits(raw).map((h) => ({ ...h, score: h.score + boost }));
+    } catch {
+      return [];
+    }
+  };
+
+  const hub = await runSearch(hubUserId(), { scope: "hub", ...cropFilter }, 0);
+  const tenant =
+    opts.tenantId && opts.tenantId !== HUB
+      ? await runSearch(tenantUserId(opts.tenantId), { scope: "tenant", tenantId: opts.tenantId, ...cropFilter }, TENANT_BOOST)
+      : [];
+
+  // docKey override: a tenant chunk with the same docKey replaces the hub one.
+  const tenantDocKeys = new Set(tenant.map((h) => h.metadata.docKey).filter(Boolean));
+  const merged = [
+    ...tenant,
+    ...hub.filter((h) => !h.metadata.docKey || !tenantDocKeys.has(h.metadata.docKey)),
+  ]
+    .filter((h) => h.metadata.dataOrigin !== "mock")
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  return merged.map((h) => ({
+    text: h.text,
+    score: h.score,
+    docKey: h.metadata.docKey,
+    scope: h.metadata.scope,
+    tenantId: h.metadata.tenantId,
+    source: h.metadata.source,
+    page: h.metadata.page,
+    citation: citationOf(h.metadata),
+  }));
+}

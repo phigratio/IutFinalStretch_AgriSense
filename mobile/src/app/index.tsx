@@ -12,11 +12,13 @@ import { pingBackend } from '@/api/client';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 
 type Conn = { state: 'checking' } | { state: 'ok'; detail: string } | { state: 'down'; detail: string };
 
 export default function HomeScreen() {
   const [conn, setConn] = useState<Conn>({ state: 'checking' });
+  const theme = useTheme();
 
   const check = useCallback(async () => {
     setConn({ state: 'checking' });
@@ -35,29 +37,37 @@ export default function HomeScreen() {
           <ThemedText type="title" style={styles.title}>
             AgriSense 🌾
           </ThemedText>
-          <ThemedText style={styles.title}>
+          <ThemedText themeColor="textSecondary" style={styles.title}>
             Your season, planned: weather-aware crops, dated tasks, honest numbers.
           </ThemedText>
         </ThemedView>
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
+        <ThemedView
+          type="backgroundElement"
+          style={[styles.stepContainer, { borderColor: theme.border }]}>
           <ThemedText type="subtitle">Backend connection</ThemedText>
           {conn.state === 'checking' ? (
-            <ActivityIndicator />
+            <ActivityIndicator color={theme.brand} />
           ) : (
             <>
-              <ThemedText>{conn.state === 'ok' ? '✅ Connected' : '❌ Not reachable'}</ThemedText>
-              <ThemedText type="small">{conn.detail}</ThemedText>
+              <ThemedText themeColor={conn.state === 'ok' ? 'success' : 'error'}>
+                {conn.state === 'ok' ? '✅ Connected' : '❌ Not reachable'}
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {conn.detail}
+              </ThemedText>
               {conn.state === 'down' && (
-                <ThemedText type="small">
+                <ThemedText type="small" themeColor="textSecondary">
                   Phone and laptop must share one network (use the hotspot). Override with
                   EXPO_PUBLIC_API_URL in mobile/.env if the auto-detected host is wrong.
                 </ThemedText>
               )}
             </>
           )}
-          <Pressable onPress={check} style={styles.button}>
-            <ThemedText type="subtitle">Re-check</ThemedText>
+          <Pressable onPress={check} style={[styles.button, { backgroundColor: theme.brand }]}>
+            <ThemedText type="smallBold" style={styles.buttonLabel}>
+              Re-check
+            </ThemedText>
           </Pressable>
         </ThemedView>
       </SafeAreaView>
@@ -84,7 +94,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flex: 1,
     paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+    gap: Spacing.three,
+    backgroundColor: 'transparent',
   },
   title: {
     textAlign: 'center',
@@ -92,15 +103,16 @@ const styles = StyleSheet.create({
   stepContainer: {
     gap: Spacing.three,
     alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+    borderRadius: Spacing.three,
+    borderWidth: 1,
   },
   button: {
     alignSelf: 'flex-start',
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.two,
-    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: Spacing.two + Spacing.half,
+    paddingHorizontal: Spacing.three + Spacing.one,
+    borderRadius: Spacing.two + Spacing.half,
   },
+  buttonLabel: { color: '#ffffff' },
 });

@@ -59,11 +59,15 @@ export default function TraceScreen() {
         <ThemedText type="title" style={styles.heading}>
           Agent trace
         </ThemedText>
-        <ThemedText type="small" style={styles.heading}>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.heading}>
           Every tool call behind the advice — parameters and raw responses, straight from the
           server. {sessionId ? `Session ${sessionId.slice(0, 8)}…` : 'No session yet — say hello in Chat first.'}
         </ThemedText>
-        {error && <ThemedText style={styles.error}>⚠️ {error}</ThemedText>}
+        {error && (
+          <ThemedText type="small" themeColor="error" style={styles.heading}>
+            ⚠️ {error}
+          </ThemedText>
+        )}
         <FlatList
           data={events}
           keyExtractor={(_, i) => String(i)}
@@ -87,11 +91,6 @@ const styles = StyleSheet.create({
   heading: {
     paddingHorizontal: Spacing.three,
     paddingTop: Spacing.two,
-  },
-  error: {
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.two,
-    color: '#cc4444',
   },
   listContent: {
     padding: Spacing.three,

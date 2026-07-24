@@ -58,29 +58,45 @@ Wire `agent.ts` into `src/app.ts` next to the existing `/api/*` routers.
 
 ---
 
-## 2. Migrations (the one real schema change)
+## 2. Migrations (small but necessary schema patch)
 
-`FarmProfile` has a single `soilType` and no fertility/district split that spec §1.3 requires.
+`FarmProfile` has a single `soilType`, only `sizeAcres`, and no fertility/district split that
+spec §1.3 requires. `AgentSession` also needs a place for draft intake before a complete non-null
+`FarmProfile` can be created, and `SeasonPlan` is missing break-even price.
 
-**Plan:** add a Prisma migration `add_soil_fertility_split`:
+**Plan:** add a Prisma migration `add_agent_tier0_fields`:
 
 ```prisma
 model FarmProfile {
   // ...existing...
+  areaHa          Decimal? @map("area_ha") @db.Decimal(10, 4) // canonical engine area
   district        String?
   upazila         String?
   soilTexture     String?   @map("soil_texture")   // sandy|loam|clay|silt|unknown
   fertilityClass  String?   @map("fertility_class") // low|medium|high
   fertilitySource String?   @map("fertility_source")// user_soil_test|user_override|srdi_default
 }
+
+model AgentSession {
+  // ...existing...
+  selectedCrop String? @map("selected_crop")
+  metadata     Json    @default("{}")
+}
+
+model SeasonPlan {
+  // ...existing...
+  breakEvenPriceBdtPerKg Decimal? @map("break_even_price_bdt_per_kg") @db.Decimal(12, 2)
+}
+
+model WeatherSnapshot {
+  // ...existing...
+  snapshotType String @default("forecast") @map("snapshot_type") // forecast|historical_normal
+}
 ```
 
-`soilType` stays (back-compat); new code reads `soilTexture` + `fertilityClass`.
-**Interim (before migration lands):** stash the four fields in `FarmProfile.metadata` (Json) so
-intake is unblocked. Do the migration first if DB is up; fall back to metadata if not.
-
-No other schema change needed — `AgentSession.missingFields`, `AgentToolCall`, `WeatherSnapshot`,
-`SeasonPlan(+Item)` already cover intake state, trace, weather, plan, and financials.
+`soilType` and `sizeAcres` stay for back-compat; new engines read `areaHa`, `soilTexture`, and
+`fertilityClass`. During intake, persist partial state in `AgentSession.metadata.intakeState`;
+only create/update `FarmProfile` when all required fields are complete. Do the migration first.
 
 ---
 
@@ -91,13 +107,13 @@ lives in code; the LLM only extracts fields and writes narrative.
 
 | Step | Module | Persists to |
 |------|--------|-------------|
-| 1 Intake | `agent/intake.ts` (LLM extractor + `requiredFieldGaps`) | `FarmProfile`, `AgentSession.missingFields` |
-| 2 Normalize | `agent/normalize.ts` + `tools/weather.geocodeLocation` | `FarmProfile.lat/lon/district` |
+| 1 Intake | `agent/intake.ts` (LLM extractor + `requiredFieldGaps`) | draft in `AgentSession.metadata.intakeState`, then complete `FarmProfile`; `AgentSession.missingFields` |
+| 2 Normalize | `agent/normalize.ts` + `tools/weather.geocodeLocation` | `FarmProfile.latitude/longitude/district`, `areaHa` + back-compat `sizeAcres` |
 | 3 Ground | `tools/weather.ts`, `tools/soil.ts`, `tools/kb.ts` | `WeatherSnapshot`, `AgentToolCall` |
 | 4 Rank | `agent/ranking.ts` | trace rows; candidate list in response |
-| 5 Choose | `orchestrator.ts` | selected crop on `AgentSession` |
+| 5 Choose | `orchestrator.ts` | `AgentSession.selectedCrop` |
 | 6 Plan | `agent/seasonPlan.ts` | `SeasonPlan` + `SeasonPlanItem[]` |
-| 7 Financials | `engines/financials.ts` | `SeasonPlan` money fields |
+| 7 Financials | `engines/financials.ts` | `SeasonPlan` money fields incl. break-even price + yield |
 | 8 Explain | `agent/prompts.ts` narrator + code-built basis block | response payload |
 
 **Recommendation-basis rule:** the basis block is **built in code** from `FarmProfile` +
@@ -121,7 +137,10 @@ basis itself (spec §7-original / PRD A5).
   (`llm/provider.ts`), function-calling. Two roles only: **extractor** (intake → JSON fields,
   Bangla-aware) and **narrator** (prose around the code-built basis).
 - Default chat model `gpt-4o` (function calling + streaming + vision, so it also covers the
-  Tier 2 leaf-photo feature); `gpt-4o-mini` as the cheap swap. Model + key via `src/config.ts`.
+  Tier 2 leaf-photo feature); `gpt-4o-mini` as the cheap swap. Add `openaiApiKey` and
+  `openaiChatModel` to `src/config.ts`; pass `OPENAI_API_KEY` and `OPENAI_CHAT_MODEL` to the
+  **app** service in both compose files, not only to `mem0-api`. Implement with raw `fetch` unless
+  you deliberately add the `openai` npm package.
 - **RAG / embeddings / vectors are NOT the app's job — they go through mem0** (already set up:
   `mem0-api` + Neo4j + pgvector). The app calls `src/rag/mem0Client.ts`: `add()` to ingest KB
   chunks, `search()` to retrieve. mem0 embeds with OpenAI `text-embedding-3-small` (1536-dim,
@@ -141,7 +160,10 @@ CSV + a tiny loader is fine (original §8). Each row carries the standard source
 `dataOrigin=mock`. Files: `crops.csv`, `crop_calendar.csv`, `crop_water.csv`, `fertilizer_frg.csv`,
 `varieties.csv`, `prices_dam.csv`, `srdi_fertility.csv`, plus `crop_aliases.json` and
 `soil_fit_matrix.json`. RAG prose (agronomy text chunks) lives in **mem0**, ingested via
-`mem0Client.add` — not in `src/data/` and not embedded by the app.
+`mem0Client.add` — not in `src/data/` and not embedded by the app. Use a fixed KB identity for
+global knowledge, e.g. `MEM0_KB_USER_ID=agrisense-kb` plus `agentId="agrisense-kb"`; ingestion and
+`tools/kb.ts` search must use the same identity. Do **not** use `src/rag/mem0Store.ts` for Tier 0
+KB retrieval; it is an unused local pgvector helper and conflicts with the mem0-only boundary.
 
 ---
 
@@ -154,8 +176,13 @@ CSV + a tiny loader is fine (original §8). Each row carries the standard source
   retriever — `mem0Client.add`/`search` only.
 - **Prices/agronomy tables as CSV in `src/data/`**, RAG prose in mem0 — split by shape: numbers
   in tables (deterministic engines), prose in mem0 (retrieval + citation).
-- **Interim metadata-Json** unblocks intake before the migration; migrate when DB is reachable.
-- **Weather cache** = `WeatherSnapshot` rows + in-memory last-good per location.
+- **AgentSession metadata** holds draft intake after the migration; before migration, avoid starting
+  implementation work except a throwaway summary fallback.
+- **Route decision for navid slice:** expose `POST /api/agent/message` and
+  `GET /api/sessions/:id/trace`; treat older `POST /api/chat` in ARCHITECTURE.md as stale unless
+  the frontend owner explicitly asks for compatibility.
+- **Weather cache** = `WeatherSnapshot` rows (`snapshotType=forecast|historical_normal`) + in-memory
+  last-good per location.
 
 ---
 

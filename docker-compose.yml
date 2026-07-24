@@ -61,6 +61,10 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-iut_ict_fest}
       POSTGRES_USER: ${POSTGRES_USER:-iut_ict_fest}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-iut_ict_fest}
+    ports:
+      # Host mapping so the backend can run via `npm run dev` on the host
+      # (DATABASE_URL=localhost:5432) instead of inside the compose stack.
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:

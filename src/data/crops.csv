@@ -1,0 +1,9 @@
+cropId,displayName,category,riskLevel,defaultVarietyId,notes,source_name,source_url,source_doc,page,retrieved_date,data_origin,verification_status
+rice_t_aman,Transplanted Aman Rice,cereal,low,brri_dhan49,Rainfed kharif-2 rice; low input risk,BARC,https://barc.gov.bd,Krishi Projukti Handbook,TODO,2026-07-24,manual,unverified
+rice_boro,Boro Rice,cereal,medium,brri_dhan29,Irrigated dry-season rice; high water + irrigation cost,BARC,https://barc.gov.bd,Krishi Projukti Handbook,TODO,2026-07-24,manual,unverified
+wheat,Wheat,cereal,medium,bari_gom33,Rabi cereal; heat-stress risk if sown late,BARI,https://bari.gov.bd,Wheat Production Guide,TODO,2026-07-24,manual,unverified
+maize,Maize,cereal,medium,hybrid_generic,Rabi maize; high yield, needs assured drainage,BARI,https://bari.gov.bd,Maize Production Guide,TODO,2026-07-24,manual,unverified
+potato,Potato,tuber,high,bari_alu7,Rabi tuber; price-volatile, cold-storage dependent,BARI,https://bari.gov.bd,Potato Production Guide,TODO,2026-07-24,manual,unverified
+mustard,Mustard,oilseed,low,bari_sarisha14,Short-duration rabi oilseed; fits rice-fallow,BARI,https://bari.gov.bd,Oilseed Production Guide,TODO,2026-07-24,manual,unverified
+lentil,Lentil,pulse,low,bari_masur8,Rabi pulse; low input, nitrogen-fixing,BARI,https://bari.gov.bd,Pulse Production Guide,TODO,2026-07-24,manual,unverified
+onion,Onion,spice,high,bari_piaj1,Rabi spice; price-volatile, labour-intensive,BARI,https://bari.gov.bd,Spice Production Guide,TODO,2026-07-24,manual,unverified
