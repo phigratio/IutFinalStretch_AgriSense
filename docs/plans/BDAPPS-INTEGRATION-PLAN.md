@@ -346,3 +346,36 @@ durable column (survives restarts, replaces the env-seed for real users).
 **P1 then P2.** P1 makes "channel activation" real and captures the credential the correct
 (canonical, webhook) way; P2 turns that into the headline "agent texts the farmer real advice"
 demo — both on BDApps capabilities already proven live, no CaaS activation required.
+
+### 7.7 Refinements from teammate features (surveyed 24 Jul ~21:30)
+
+Since the plan was written, the team shipped role-based dashboards, a **pest-risk engine**,
+**scenario/pest Temporal workflows**, and phone fields across onboarding/tenant/assist forms.
+Impact on this plan (backend P1–P3 already done — these guide the frontend + remaining phases):
+
+- **R1 — Pest-risk & scenario are NEW proactive-alert sources.** `src/pest/pestRiskService.ts`
+  inserts into `proactive_alerts` (and scenario workflows exist). P2's `smsDispatcher` already
+  delivers *any* pending alert regardless of type, so **pest/disease and scenario alerts get SMS
+  delivery for free** — a great feature ("we detected blast risk at your rice's vegetative stage,
+  scout now"). **But those paths don't currently *trigger* delivery** (only the weather/plan
+  Temporal sweeps + the dev route do). Fix: add a `dispatchAlertsSafely()` call after pest/
+  scenario alert creation (coordinate with phigratio, or a small shared post-insert hook). Low
+  effort, high demo value — makes P2 cover 4 alert types, not 2.
+- **R2 — Web verify-phone integration point = `UserDashboard`** (the farmer's role home), which
+  already shows their phone from `GET /api/onboarding/me` (`OnboardingProfile.phone`,
+  `missingFields` includes `"phone"`). Web flow: dashboard "Verify phone / Enable SMS alerts"
+  button → `/auth/bdapps/otp/request(phone)` → OTP modal → `/auth/bdapps/otp/verify` → channel
+  active; show status. **The farmer never retypes their number — reuse the onboarding phone.**
+- **R2a — `/api/channel/status` refinement:** currently takes `?mobile=`. For the authenticated
+  web farmer, add an auth-derived variant (token → onboarding phone → status) so the dashboard
+  needs no phone param. Keep the `?mobile=` form for the dev/mobile pre-login case.
+- **R3 — Phone-as-canonical-link is now urgent, not optional.** Phone is collected in onboarding
+  self-profile, assist requests, AND tenant requests. A farmer can arrive at an `AppUser` via
+  email/Google + onboarding phone, then BDApps-verify the same phone. Before P3 hits the web,
+  agree with Navid: on `verifyOtp`, if an `AppUser` already exists whose onboarding/farmer phone
+  matches, **link to it** (set the bdapps `AuthIdentity` on the existing user) rather than
+  minting a second user. (Backend hook: extend `bdappsAuth.verifyOtp` to look up an existing
+  user by phone before `upsertOAuthUser`.)
+
+**Net:** the P1–P7 structure holds. Add **R1** (pest/scenario alerts → SMS, a quick P2 extension)
+and fold **R2/R2a/R3** into the web phase (next). Nothing in the plan needs to be rethought.
