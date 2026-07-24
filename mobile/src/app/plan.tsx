@@ -179,10 +179,49 @@ function CostBreakdown({ plan }: { plan: SeasonPlanResult }) {
   );
 }
 
+function formatInputTotal(plan: SeasonPlanResult, label: string): string {
+  const value = plan.schedulerSummary?.fertilizerTotals[label] ?? 0;
+  return `${Math.round(value).toLocaleString('en-IN')} kg`;
+}
+
+function SchedulerSummaryCard({ plan }: { plan: SeasonPlanResult }) {
+  const summary = plan.schedulerSummary;
+
+  if (!summary) {
+    return null;
+  }
+
+  return (
+    <View style={styles.stack}>
+      <ThemedText type="smallBold" style={styles.subhead}>Fertilizer & irrigation</ThemedText>
+      <View style={styles.metricGrid}>
+        <Metric label="Fertilizer" value={tk(summary.totalFertilizerCostBdt)} />
+        <Metric label="Irrigation" value={tk(summary.totalIrrigationCostBdt)} />
+        <Metric label="Water events" value={summary.irrigationEvents} />
+        <Metric label="Rain warnings" value={summary.rainDelayWarnings} />
+        <Metric label="Fertility" value={summary.fertilityClass} />
+        <Metric label="Urea" value={formatInputTotal(plan, 'Urea (top-dress)')} />
+        <Metric label="TSP" value={formatInputTotal(plan, 'TSP')} />
+        <Metric label="MoP" value={formatInputTotal(plan, 'MoP')} />
+      </View>
+      <ThemedText type="small" themeColor="textSecondary">
+        Source: {summary.sources.join(' · ')}
+      </ThemedText>
+    </View>
+  );
+}
+
 function TaskRow({ task }: { task: SeasonPlanResult['tasks'][number] }) {
   const theme = useTheme();
   return (
-    <View style={[styles.task, { borderColor: theme.border }]}>
+    <View
+      style={[
+        styles.task,
+        {
+          borderColor: task.delayRecommended ? theme.warning : theme.border,
+          backgroundColor: task.delayRecommended ? theme.warningSoft : theme.backgroundElement,
+        },
+      ]}>
       <ThemedText type="small" themeColor="brand">
         {task.startDate}
         {task.endDate !== task.startDate ? ` → ${task.endDate}` : ''}
@@ -190,12 +229,34 @@ function TaskRow({ task }: { task: SeasonPlanResult['tasks'][number] }) {
         {task.totalCostBdt != null ? ` · ${tk(task.totalCostBdt)}` : ''}
       </ThemedText>
       <ThemedText type="smallBold">{task.title}</ThemedText>
+      {(task.growthStage || task.source) && (
+        <ThemedText type="small" themeColor="textSecondary">
+          {task.growthStage ? `stage ${task.growthStage}` : ''}
+          {task.growthStage && task.source ? ' · ' : ''}
+          {task.source ?? ''}
+        </ThemedText>
+      )}
       <ThemedText type="small" themeColor="textSecondary">
         {task.description}
       </ThemedText>
+      {task.inputs && task.inputs.length > 0 && (
+        <View style={styles.inputStack}>
+          {task.inputs.map((input) => (
+            <ThemedText key={`${task.title}-${input.item}`} type="small">
+              {input.item}: {Math.round(input.quantity).toLocaleString('en-IN')} {input.unit}
+              {input.totalCostBdt != null ? ` · ${tk(input.totalCostBdt)}` : ''}
+            </ThemedText>
+          ))}
+        </View>
+      )}
       {task.organicAlternative && (
         <ThemedText type="small" themeColor="success">
           🌿 organic: {task.organicAlternative}
+        </ThemedText>
+      )}
+      {task.weatherNote && (
+        <ThemedText type="small" themeColor={task.delayRecommended ? 'warning' : 'textSecondary'}>
+          {task.weatherNote}
         </ThemedText>
       )}
     </View>
@@ -219,6 +280,7 @@ function SeasonPlanPanel({ plan }: { plan: SeasonPlanResult }) {
         <Metric label="Price/kg" value={tk(f.pricePerKgBdt)} />
         <Metric label="Budget gap" value={tk(f.budgetSurplusBdt)} />
       </View>
+      <SchedulerSummaryCard plan={plan} />
       <ThemedText type="smallBold" style={styles.subhead}>Itemized costs</ThemedText>
       <CostBreakdown plan={plan} />
       <ThemedText type="smallBold" style={styles.subhead}>Calendar</ThemedText>
@@ -359,8 +421,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Spacing.two,
     padding: Spacing.two + Spacing.half,
-    gap: 2,
+    gap: Spacing.one,
   },
+  inputStack: { gap: Spacing.half },
   subhead: { marginTop: Spacing.one },
   formula: {
     borderWidth: 1,

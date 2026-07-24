@@ -11,6 +11,7 @@ export const CROP_IDS = [
   "wheat",
   "maize",
   "potato",
+  "tomato",
   "mustard",
   "lentil",
   "onion",
