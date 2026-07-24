@@ -46,6 +46,19 @@ export function createAuthRouter(store: AuthStore = getDefaultAuthStore()): Rout
     );
   });
 
+  // Web: logged-in user verifies their phone to enable BDApps features.
+  // Activates the channel on the CURRENT user — no new user/token (R3).
+  router.post("/bdapps/verify-phone", authenticate, async (req, res) => {
+    const auth = (req as typeof req & AuthenticatedRequest).auth!;
+    res.json(
+      await bdappsAuthService.activatePhoneForUser(auth.sub, {
+        referenceNo: req.body?.referenceNo,
+        otp: req.body?.otp,
+        mobile: req.body?.mobile,
+      }),
+    );
+  });
+
   router.get("/google", (_req, res) => {
     googleOAuthService.createAuthorizationRedirect(res);
   });

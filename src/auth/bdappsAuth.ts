@@ -90,6 +90,37 @@ export class BdappsAuthService {
     const auth = new AuthService(this.store).createResponse(user);
     return { ...auth, channelActive, subscriptionStatus: res.subscriptionStatus };
   }
+
+  /**
+   * Web path: an ALREADY-logged-in user (email/Google) verifies their phone to
+   * enable BDApps features. Activates the channel on THEIR existing user — no
+   * new user, no new token — so it never forks a second account (R3). Returns
+   * whether the channel went active.
+   */
+  async activatePhoneForUser(
+    userId: string,
+    input: { referenceNo: unknown; otp: unknown; mobile: unknown },
+  ): Promise<{ channelActive: boolean; mobile: string; subscriptionStatus?: string }> {
+    const referenceNo = parseString(input.referenceNo, "referenceNo");
+    const otp = parseString(input.otp, "otp");
+    const mobile = parseMobile(input.mobile);
+
+    const res = await this.client.verifyOtp(referenceNo, otp);
+    if (!isSuccess(res)) {
+      throw new HttpError(401, `OTP verification failed: ${res.statusDetail ?? res.statusCode}`);
+    }
+
+    let channelActive = false;
+    if (res.subscriberId) {
+      rememberMaskedSubscriber(referenceNo, res.subscriberId);
+      await activateChannel(
+        { mobile, maskedSubscriberId: res.subscriberId, source: "otp_verify", userId },
+        this.channelStore,
+      );
+      channelActive = true;
+    }
+    return { channelActive, mobile, subscriptionStatus: res.subscriptionStatus };
+  }
 }
 
 function parseMobile(value: unknown): string {
