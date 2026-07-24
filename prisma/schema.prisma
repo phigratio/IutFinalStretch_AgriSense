@@ -293,3 +293,102 @@ model BdappsPayment {
   @@index([status])
   @@map("bdapps_payments")
 }
+
+// ---- Multi-tenant knowledge base (navid/kb) --------------------------------
+
+model Tenant {
+  id            String               @id @default(uuid()) @db.Uuid
+  slug          String               @unique
+  name          String
+  kind          String               @default("district") // district | ngo | coop | hub
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  jurisdictions TenantJurisdiction[]
+  members       TenantMember[]
+
+  @@map("tenants")
+}
+
+model TenantJurisdiction {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @map("tenant_id") @db.Uuid
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  district String
+  upazila  String?
+
+  @@unique([tenantId, district, upazila])
+  @@index([district])
+  @@map("tenant_jurisdictions")
+}
+
+model TenantMember {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId   String @map("user_id") @db.Uuid
+  role     String // hub_admin | tenant_admin
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@map("tenant_members")
+}
+
+model PriceObservation {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") // "hub" sentinel or a tenant id
+  cropId         String   @map("crop_id")
+  commodityLabel String?  @map("commodity_label")
+  district       String?
+  market         String?
+  latitude       Decimal? @db.Decimal(9, 6)
+  longitude      Decimal? @db.Decimal(9, 6)
+  price          Decimal  @db.Decimal(12, 4)
+  unit           String
+  priceType      String   @map("price_type") // retail | wholesale
+  currency       String   @default("BDT")
+  observedAt     DateTime @map("observed_at") @db.Date
+  source         String
+  sourceUrl      String?  @map("source_url")
+  dataOrigin     String   @map("data_origin") // real | manual | mock
+  verification   String   @default("unverified")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([cropId, district, observedAt])
+  @@index([tenantId])
+  @@map("price_observations")
+}
+
+model KbTableOverride {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id")
+  kind       String // fertilizer | calendar | water | variety | srdi
+  cropId     String   @map("crop_id")
+  district   String?
+  payload    Json
+  source     String
+  dataOrigin String   @map("data_origin")
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([kind, cropId, district])
+  @@index([tenantId])
+  @@map("kb_table_overrides")
+}
+
+model KbDocument {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id")
+  scope      String // hub | tenant
+  docKey     String   @map("doc_key")
+  title      String
+  source     String
+  sourceUrl  String?  @map("source_url")
+  page       String?
+  cropId     String?  @map("crop_id")
+  mem0Ids    String[] @default([]) @map("mem0_ids")
+  dataOrigin String   @map("data_origin")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, docKey])
+  @@index([scope])
+  @@map("kb_documents")
+}

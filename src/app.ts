@@ -11,6 +11,7 @@ import { paymentsRouter } from "./routes/payments.js";
 // NOTE: parallel Tier 0 implementation (navid) — mounted under /api/tier0 to avoid
 // colliding with agrisenseRouter/agentIntakeRouter. Team to pick one before submission.
 import { agentRouter } from "./routes/agent.js";
+import { kbRouter } from "./routes/kb.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { notFoundHandler } from "./middleware/notFound.js";
 import { observabilityMiddleware } from "./middleware/observability.js";
@@ -53,6 +54,8 @@ export function createApp(): Application {
   app.use("/api/payments", paymentsRouter);
   // Parallel Tier 0 pipeline (navid): /api/tier0/agent/message, /api/tier0/sessions/:id/trace.
   app.use("/api/tier0", agentRouter);
+  // Multi-tenant knowledge base (navid/kb): prices resolve tenant-over-hub with provenance.
+  app.use("/api/kb", kbRouter);
 
   // BDApps webhooks — register these URLs in provisioning (BDApps -> you).
   app.use("/bdapps", bdappsListenerRouter);
