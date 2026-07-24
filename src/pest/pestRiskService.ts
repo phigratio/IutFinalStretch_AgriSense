@@ -3,6 +3,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { config } from "../config.js";
 import { getWeatherForecast, mockWeatherForecast } from "../agrisense/weatherTool.js";
+import { deliverPendingAlerts } from "../notifications/smsDispatcher.js";
 import type { IntakeTraceEvent, IntakeProfile } from "../agent/intakeSchema.js";
 import type { WeatherForecast } from "../agrisense/types.js";
 import {
@@ -368,6 +369,11 @@ export class PestRiskService {
       }
       if (alertsCreated > 0) {
         trace.push(traceEvent("pest.alert.create", { severity: "high" }, { alertsCreated }, 0));
+        // Deliver the new pest/disease alert(s) by SMS to reachable farmers
+        // (BDApps channel). Best-effort; never blocks the pest assessment.
+        void deliverPendingAlerts().catch((err: unknown) =>
+          console.error("[pest.alert] SMS dispatch failed:", (err as Error).message),
+        );
       }
     }
 
