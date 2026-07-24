@@ -26,6 +26,20 @@ export function createApp(): Application {
   });
   app.use(observabilityMiddleware);
 
+  // CORS for the mobile app's web build (Expo web on :8081 calling us on :3000).
+  // Native apps don't enforce CORS; browsers do. Open policy is fine for a
+  // hackathon demo backend with no cookies/session auth on these routes.
+  app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    if (req.method === "OPTIONS") {
+      res.sendStatus(204);
+      return;
+    }
+    next();
+  });
+
   app.use("/health", healthRouter);
   app.use("/auth", authRouter);
   app.use("/api/users", usersRouter);
