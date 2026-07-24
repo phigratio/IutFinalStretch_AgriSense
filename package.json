@@ -12,6 +12,7 @@
     "test": "prisma generate && vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "e2e:docker": "node scripts/e2e-docker-smoke.mjs",
     "typecheck": "prisma generate && tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate:dev": "prisma migrate dev",
@@ -32,6 +33,9 @@
     "@opentelemetry/semantic-conventions": "^1.43.0",
     "@prisma/adapter-pg": "^7.9.0",
     "@prisma/client": "^7.9.0",
+    "@temporalio/client": "^1.21.0",
+    "@temporalio/worker": "^1.21.0",
+    "@temporalio/workflow": "^1.21.0",
     "express": "^5.1.0",
     "prisma": "^7.9.0"
   },

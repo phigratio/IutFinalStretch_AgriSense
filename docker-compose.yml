@@ -27,6 +27,8 @@ services:
       MEM0_API_KEY: ${MEM0_API_KEY:-}
       MEM0_PERSISTENCE_ENABLED: ${MEM0_PERSISTENCE_ENABLED:-true}
       RAG_EMBEDDING_DIMENSIONS: ${RAG_EMBEDDING_DIMENSIONS:-1536}
+      TEMPORAL_ADDRESS: ${TEMPORAL_ADDRESS:-temporal:7233}
+      TEMPORAL_TASK_QUEUE: ${TEMPORAL_TASK_QUEUE:-agrisense-cron}
       OTEL_SERVICE_NAME: iut-ict-fest-backend
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_METRIC_EXPORT_INTERVAL_MS: 5000
@@ -136,6 +138,82 @@ services:
     networks:
       - observability
 
+  temporal-postgres:
+    image: postgres:16-alpine
+    container_name: temporal-postgres
+    environment:
+      POSTGRES_DB: temporal
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: ${TEMPORAL_POSTGRES_PASSWORD:-temporal}
+    volumes:
+      - temporal-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U temporal -d temporal
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - observability
+
+  temporal:
+    image: temporalio/auto-setup:1.27.2
+    container_name: temporal
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: ${TEMPORAL_POSTGRES_PASSWORD:-temporal}
+      POSTGRES_SEEDS: temporal-postgres
+    ports:
+      - "${TEMPORAL_GRPC_PORT:-7233}:7233"
+    networks:
+      - observability
+
+  temporal-ui:
+    image: temporalio/ui:2.40.1
+    container_name: temporal-ui
+    depends_on:
+      temporal:
+        condition: service_started
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:5173
+    ports:
+      - "${TEMPORAL_UI_PORT:-8080}:8080"
+    networks:
+      - observability
+
+  temporal-worker:
+    build:
+      context: .
+    container_name: temporal-worker
+    command: ["sh", "-c", "node scripts/prisma-migrate-deploy.mjs && node dist/temporal/worker.js"]
+    depends_on:
+      app:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      mem0-api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-iut_ict_fest}:${POSTGRES_PASSWORD:-iut_ict_fest}@postgres:5432/${POSTGRES_DB:-iut_ict_fest}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      MEM0_API_URL: http://mem0-api:8000
+      MEM0_API_KEY: ${MEM0_API_KEY:-}
+      MEM0_PERSISTENCE_ENABLED: ${MEM0_PERSISTENCE_ENABLED:-true}
+      TEMPORAL_ADDRESS: ${TEMPORAL_ADDRESS:-temporal:7233}
+      TEMPORAL_TASK_QUEUE: ${TEMPORAL_TASK_QUEUE:-agrisense-cron}
+      TEMPORAL_ENSURE_SCHEDULES: ${TEMPORAL_ENSURE_SCHEDULES:-true}
+    restart: unless-stopped
+    networks:
+      - observability
+
   grafana:
     build:
       context: .
@@ -223,6 +301,7 @@ networks:
 volumes:
   tempo-data:
   postgres-data:
+  temporal-postgres-data:
   mem0-history:
   mem0-neo4j-data:
   mem0-neo4j-logs:

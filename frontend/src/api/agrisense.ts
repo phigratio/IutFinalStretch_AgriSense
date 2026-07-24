@@ -29,6 +29,9 @@ export interface WeatherDaily {
   rainfallMm: number;
   temperatureMinC: number;
   temperatureMaxC: number;
+  humidityPct?: number;
+  referenceEvapotranspirationMm?: number;
+  soilMoisture0To9cm?: number;
 }
 
 export interface WeatherForecast {
@@ -57,9 +60,27 @@ export interface CropRecommendation {
     waterFit: number;
     tempFit: number;
     budgetFit: number;
+    evidenceFit?: number;
   };
   reasoning: string;
   citations: string[];
+}
+
+export interface RetrievedEvidence {
+  id: string;
+  source: "seeded-baseline" | "mem0" | "rag";
+  title: string;
+  content: string;
+  citation?: string;
+  crop?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CostBreakdownItem {
+  category: string;
+  label: string;
+  amountBdt: number;
+  reasoning: string;
 }
 
 export interface SeasonPlanTask {
@@ -68,6 +89,8 @@ export interface SeasonPlanTask {
   description: string;
   startDate: string;
   endDate: string;
+  growthStage?: string;
+  organicAlternative?: string;
   quantity?: number;
   unit?: string;
   unitCostBdt?: number;
@@ -89,11 +112,20 @@ export interface SeasonPlanResult {
     netProfitBdt: number;
     roiPct: number;
     breakEvenYieldKg: number;
+    pricePerKgBdt: number;
+    budgetBdt: number;
+    budgetSurplusBdt: number;
+    costBreakdown: CostBreakdownItem[];
   };
   reasoning: string;
+  selectedCropReason: string;
+  sourceTraceIds: string[];
+  automationTrigger: string;
+  retrievedEvidence: RetrievedEvidence[];
 }
 
 export interface TraceEvent {
+  traceId?: string;
   kind: "tool" | "plan" | "error";
   toolName: string;
   parameters: Record<string, unknown>;
@@ -107,14 +139,19 @@ export interface AgriSenseMessageResult {
   sessionId: string;
   farmerId: string;
   farmId: string;
+  workflowStage?: WorkflowStage;
+  nextAvailableStages?: string[];
   assistantMessage: string;
   missingFields: string[];
   farmProfile: IntakeProfile;
   weather?: WeatherForecast;
+  retrievedEvidence?: RetrievedEvidence[];
   cropRankings?: CropRecommendation[];
   seasonPlan?: SeasonPlanResult;
   trace: TraceEvent[];
 }
+
+export type WorkflowStage = "intake" | "weather" | "evidence" | "crop_ranking" | "season_plan" | "financials" | "full";
 
 export function sendAgriSenseMessage(input: {
   message: string;
@@ -123,6 +160,9 @@ export function sendAgriSenseMessage(input: {
   farmId?: string;
   bdappsMobile?: string;
   preferredLanguage?: "en" | "bn" | "banglish";
+  selectedCrop?: string;
+  workflowStage?: WorkflowStage;
+  triggerReason?: "intake_completed" | "profile_updated" | "weather_refreshed" | "crop_selected" | "user_requested_replan" | "daily_forecast_check";
 }): Promise<AgriSenseMessageResult> {
   return apiFetch<AgriSenseMessageResult>("/api/agrisense/message", {
     method: "POST",

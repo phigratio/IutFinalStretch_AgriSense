@@ -59,6 +59,9 @@ interface ForecastResponse {
     precipitation_sum: number[];
     temperature_2m_min: number[];
     temperature_2m_max: number[];
+    relative_humidity_2m_mean?: number[];
+    et0_fao_evapotranspiration?: number[];
+    soil_moisture_0_to_10cm_mean?: number[];
   };
 }
 
@@ -68,7 +71,10 @@ export async function getWeatherForecast(locationText: string): Promise<WeatherF
   const forecastUrl = new URL("https://api.open-meteo.com/v1/forecast");
   forecastUrl.searchParams.set("latitude", String(result.latitude));
   forecastUrl.searchParams.set("longitude", String(result.longitude));
-  forecastUrl.searchParams.set("daily", "temperature_2m_max,temperature_2m_min,precipitation_sum");
+  forecastUrl.searchParams.set(
+    "daily",
+    "temperature_2m_max,temperature_2m_min,precipitation_sum,relative_humidity_2m_mean,et0_fao_evapotranspiration,soil_moisture_0_to_10cm_mean",
+  );
   forecastUrl.searchParams.set("timezone", "Asia/Dhaka");
   forecastUrl.searchParams.set("forecast_days", "7");
 
@@ -88,6 +94,9 @@ export async function getWeatherForecast(locationText: string): Promise<WeatherF
       rainfallMm: Number(daily.precipitation_sum[index] ?? 0),
       temperatureMinC: Number(daily.temperature_2m_min[index] ?? 0),
       temperatureMaxC: Number(daily.temperature_2m_max[index] ?? 0),
+      humidityPct: toOptionalNumber(daily.relative_humidity_2m_mean?.[index]),
+      referenceEvapotranspirationMm: toOptionalNumber(daily.et0_fao_evapotranspiration?.[index]),
+      soilMoisture0To9cm: toOptionalNumber(daily.soil_moisture_0_to_10cm_mean?.[index]),
     })),
     raw: { geocode: result, forecast },
   };
@@ -117,9 +126,15 @@ export function mockWeatherForecast(locationText: string): WeatherForecast {
         rainfallMm: [4.2, 0, 2.1, 8, 1.5, 0, 3][index]!,
         temperatureMinC: [25, 25.5, 26, 25.8, 26.2, 25.9, 26.1][index]!,
         temperatureMaxC: [32, 33, 32.5, 31.2, 32.8, 33.1, 32.7][index]!,
+        humidityPct: [82, 78, 80, 86, 79, 76, 81][index]!,
+        referenceEvapotranspirationMm: [3.4, 3.8, 3.5, 2.9, 3.6, 3.9, 3.4][index]!,
+        soilMoisture0To9cm: [0.31, 0.29, 0.3, 0.34, 0.31, 0.28, 0.3][index]!,
       };
     }),
     raw: { mock: true },
   };
 }
 
+function toOptionalNumber(value: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? Number(value) : undefined;
+}

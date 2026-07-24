@@ -8,10 +8,10 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // Forward API calls to the Express backend during development.
-      "/api": "http://localhost:3000",
+      "/api": process.env.VITE_API_PROXY_TARGET ?? "http://localhost:3000",
       // Auth endpoints, including the Google OAuth redirect handshake.
-      "/auth": "http://localhost:3000",
-      "/health": "http://localhost:3000",
+      "/auth": process.env.VITE_API_PROXY_TARGET ?? "http://localhost:3000",
+      "/health": process.env.VITE_API_PROXY_TARGET ?? "http://localhost:3000",
     },
   },
 });
