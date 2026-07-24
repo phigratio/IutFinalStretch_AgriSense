@@ -27,6 +27,12 @@ export default function AppTabs() {
           <TabTrigger name="chat" href="/chat" asChild>
             <TabButton>Chat</TabButton>
           </TabTrigger>
+          <TabTrigger name="plan" href="/plan" asChild>
+            <TabButton>Plan</TabButton>
+          </TabTrigger>
+          <TabTrigger name="money" href="/money" asChild>
+            <TabButton>Money</TabButton>
+          </TabTrigger>
           <TabTrigger name="trace" href="/trace" asChild>
             <TabButton>Trace</TabButton>
           </TabTrigger>
