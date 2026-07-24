@@ -1,7 +1,39 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+build/
+
+# Prisma generated client (see prisma/schema.prisma generator output)
 src/generated/
+
+# Environment / secrets
 .env
 .env.*
+!.env.example
+
+# Test & coverage output
+coverage/
+*.lcov
+.vitest/
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+
+# Editor / OS
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Tooling caches
+.cache/
+.tmp/
+*.tsbuildinfo
