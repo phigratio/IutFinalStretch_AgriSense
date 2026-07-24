@@ -7,6 +7,7 @@ import { AuthProvider } from "./context/AuthContext.js";
 import ProtectedRoute from "./components/common/ProtectedRoute.js";
 import AppLayout from "./layout/AppLayout.js";
 import Dashboard from "./pages/Dashboard.js";
+import RoleRoute from "./components/common/RoleRoute.js";
 import Users from "./pages/Users.js";
 import Profile from "./pages/Profile.js";
 import Calendar from "./pages/Calendar.js";
@@ -36,19 +37,24 @@ createRoot(rootEl).render(
             <Routes>
               {/* Everything inside the panel requires a valid session. */}
               <Route element={<ProtectedRoute />}>
+                {/* Standalone (no admin chrome) — the farmer's onboarding landing. */}
+                <Route path="/onboarding" element={<Onboarding />} />
+                {/* The whole admin panel is admin-only; non-admins are sent to onboarding. */}
+                <Route element={<RoleRoute allow={["admin"]} redirectTo="/onboarding" />}>
                 <Route element={<AppLayout />}>
                   <Route index path="/" element={<Dashboard />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/users" element={<Users />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/calendar" element={<Calendar />} />
                   <Route path="/agrisense" element={<AgriSense />} />
                   <Route path="/knowledge-base" element={<KnowledgeBase />} />
-                  <Route path="/onboarding" element={<Onboarding />} />
                   <Route path="/agent-intake" element={<AgentIntake />} />
                   <Route path="/temporal" element={<Temporal />} />
                   <Route path="/marketplace" element={<Marketplace />} />
                   <Route path="/payments" element={<Payments />} />
                   <Route path="/bdapps" element={<Bdapps />} />
+                </Route>
                 </Route>
               </Route>
               <Route path="/signin" element={<SignIn />} />
