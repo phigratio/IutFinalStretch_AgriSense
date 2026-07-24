@@ -143,6 +143,16 @@
 - bdapps TAP doc (dev.bdapps.com/API_Documentation/bdapps_tap_api.html) — confirm CaaS flow
   matches DGD v1.1.3 shapes (C, during P3-C2).
 
+- 24Jul ~15:15 — Claude session (with Labib) — **Local infra live via docker:** postgres
+  (pgvector) up with host port 5432 mapped (compose change), all Prisma migrations applied
+  incl. multitenant KB; mem0-api + neo4j building. `.env` fixes: leading space in
+  OPENAI_API_KEY (broke auth silently — heuristic fallback masked it), MEM0_API_URL
+  8888→8890 (compose default). **Cross-boundary edit announced:** fixed demo-critical bug in
+  Mujahid's `weatherTool.ts` — geocoder resolved "Bogura" to Rostov Oblast, RUSSIA
+  (count=1, no country bias); now BD-first with renamed-district aliases; verified e2e
+  (Bogra, Rajshahi 24.85/89.37; Banglish intake parsed; full plan returned). Mujahid please
+  review c40228e. Chat now works end-to-end against Postgres + OpenAI.
+
 ## 8. Session log (append-only: `HH:MM — <who> — <what changed>`)
 
 - 24Jul 11:00 — Claude session 1 (with A) — Read problem statement, bdapps cheatsheet/DGD/
