@@ -50,12 +50,13 @@ describe("choice A — request to become a tenant (admin decides)", () => {
     const reqRes = await request(app)
       .post("/api/onboarding/tenant-request")
       .set("authorization", bearer(uid, "user"))
-      .send({ orgName: "Kushtia Agri Office", district: "Kushtia" });
+      .send({ orgName: "Kushtia Agri Office", district: "Kushtia", phone: "01700000001" });
     expect(reqRes.status).toBe(201);
     const reqId = reqRes.body.id;
 
     const pendingMe = await request(app).get("/api/onboarding/me").set("authorization", bearer(uid, "user"));
     expect(pendingMe.body.tenantRequest.status).toBe("pending");
+    expect(pendingMe.body.tenantRequest.phone).toBe("01700000001");
 
     // a non-admin cannot list requests
     const forbidden = await request(app).get("/api/admin/tenant-requests").set("authorization", bearer(uid, "user"));

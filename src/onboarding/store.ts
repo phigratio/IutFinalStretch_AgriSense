@@ -20,6 +20,7 @@ export interface TenantRequestRecord {
   orgName: string;
   district: string;
   upazila?: string;
+  phone?: string;
   note?: string;
   status: RequestStatus;
   createdAt: string;
@@ -73,7 +74,7 @@ export interface OnboardingInput {
 }
 
 export interface OnboardingStore {
-  createTenantRequest(input: { userId: string; orgName: string; district: string; upazila?: string; note?: string }): Promise<TenantRequestRecord>;
+  createTenantRequest(input: { userId: string; orgName: string; district: string; upazila?: string; phone?: string; note?: string }): Promise<TenantRequestRecord>;
   listTenantRequests(status?: RequestStatus): Promise<TenantRequestRecord[]>;
   getTenantRequest(id: string): Promise<TenantRequestRecord | undefined>;
   getLatestTenantRequestByUser(userId: string): Promise<TenantRequestRecord | undefined>;
@@ -122,7 +123,7 @@ export class InMemoryOnboardingStore implements OnboardingStore {
   private onboardings = new Map<string, FarmerOnboardingRecord>(); // by userId
   private assists = new Map<string, AssistRequestRecord>();
 
-  async createTenantRequest(input: { userId: string; orgName: string; district: string; upazila?: string; note?: string }): Promise<TenantRequestRecord> {
+  async createTenantRequest(input: { userId: string; orgName: string; district: string; upazila?: string; phone?: string; note?: string }): Promise<TenantRequestRecord> {
     const rec: TenantRequestRecord = { id: randomUUID(), status: "pending", createdAt: now(), ...input };
     this.tenantReqs.set(rec.id, rec);
     return rec;
@@ -209,7 +210,7 @@ export class PrismaOnboardingStore implements OnboardingStore {
     this.prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
   }
 
-  async createTenantRequest(input: { userId: string; orgName: string; district: string; upazila?: string; note?: string }): Promise<TenantRequestRecord> {
+  async createTenantRequest(input: { userId: string; orgName: string; district: string; upazila?: string; phone?: string; note?: string }): Promise<TenantRequestRecord> {
     const r = await this.prisma.tenantRequest.create({ data: { ...input } });
     return this.mapTenantReq(r);
   }
@@ -301,8 +302,8 @@ export class PrismaOnboardingStore implements OnboardingStore {
     }
   }
 
-  private mapTenantReq(r: { id: string; userId: string; orgName: string; district: string; upazila: string | null; note: string | null; status: string; createdAt: Date }): TenantRequestRecord {
-    return { id: r.id, userId: r.userId, orgName: r.orgName, district: r.district, upazila: r.upazila ?? undefined, note: r.note ?? undefined, status: r.status as RequestStatus, createdAt: r.createdAt.toISOString() };
+  private mapTenantReq(r: { id: string; userId: string; orgName: string; district: string; upazila: string | null; phone: string | null; note: string | null; status: string; createdAt: Date }): TenantRequestRecord {
+    return { id: r.id, userId: r.userId, orgName: r.orgName, district: r.district, upazila: r.upazila ?? undefined, phone: r.phone ?? undefined, note: r.note ?? undefined, status: r.status as RequestStatus, createdAt: r.createdAt.toISOString() };
   }
   private mapOnboarding(r: Record<string, unknown>): FarmerOnboardingRecord {
     return {

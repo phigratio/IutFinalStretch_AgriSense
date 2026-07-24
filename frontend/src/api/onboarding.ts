@@ -26,6 +26,7 @@ export interface TenantRequest {
   orgName: string;
   district: string;
   upazila?: string;
+  phone?: string;
   note?: string;
   status: "pending" | "approved" | "rejected";
   createdAt: string;
@@ -56,10 +57,23 @@ export function getOnboardingMe(): Promise<OnboardingMe> {
   return apiFetch<OnboardingMe>("/api/onboarding/me");
 }
 
+export interface LocationDefaults {
+  district: string;
+  upazila?: string;
+  matchedName: string;
+  lat: number;
+  lon: number;
+}
+
+export function getLocationDefaults(lat: number, lon: number): Promise<LocationDefaults> {
+  return apiFetch(`/api/onboarding/location-defaults?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`);
+}
+
 export interface TenantRequestInput {
   orgName: string;
   district: string;
   upazila?: string;
+  phone: string;
   note?: string;
 }
 export function requestTenant(body: TenantRequestInput): Promise<{ id: string; status: string }> {
@@ -73,7 +87,7 @@ export function saveOwnProfile(body: OnboardingProfile): Promise<OnboardingProfi
 export interface AssistRequestInput {
   district: string;
   fullName?: string;
-  phone?: string;
+  phone: string;
   upazila?: string;
   note?: string;
 }

@@ -3,6 +3,7 @@ import { authenticate, requireRole, type AuthenticatedRequest } from "../middlew
 import { getDefaultOnboardingStore, getOnboardingMissingFields, isOnboardingComplete, type OnboardingStore, type OnboardingInput } from "../onboarding/store.js";
 import { getDefaultAuthStore, type AuthStore } from "../auth/store.js";
 import { getKbRuntime } from "../kb/runtime.js";
+import { reverseGeocodeLocation } from "../tools/weather.js";
 
 /** Injectable runtime so the routes are testable with in-memory stores. */
 export interface OnboardingRuntime {
@@ -65,12 +66,27 @@ onboardingRouter.get("/onboarding/me", authenticate, async (req, res, next) => {
   }
 });
 
+/** Browser coordinates -> editable district/upazila defaults for onboarding forms. */
+onboardingRouter.get("/onboarding/location-defaults", authenticate, async (req, res, next) => {
+  try {
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      res.status(400).json({ error: "Valid lat and lon query parameters are required" });
+      return;
+    }
+    res.json(await reverseGeocodeLocation(lat, lon));
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** Choice A — request to become a tenant (admin decides). */
 onboardingRouter.post("/onboarding/tenant-request", authenticate, async (req, res, next) => {
   try {
     const b = req.body as Record<string, unknown>;
-    if (typeof b.orgName !== "string" || typeof b.district !== "string" || !b.orgName.trim() || !b.district.trim()) {
-      res.status(400).json({ error: "orgName and district are required" });
+    if (typeof b.orgName !== "string" || typeof b.district !== "string" || typeof b.phone !== "string" || !b.orgName.trim() || !b.district.trim() || !b.phone.trim()) {
+      res.status(400).json({ error: "orgName, district and phone are required" });
       return;
     }
     const created = await rt().onboarding.createTenantRequest({
@@ -78,6 +94,7 @@ onboardingRouter.post("/onboarding/tenant-request", authenticate, async (req, re
       orgName: b.orgName.trim(),
       district: b.district.trim(),
       upazila: typeof b.upazila === "string" ? b.upazila : undefined,
+      phone: b.phone.trim(),
       note: typeof b.note === "string" ? b.note : undefined,
     });
     res.status(201).json(created);
@@ -90,8 +107,8 @@ onboardingRouter.post("/onboarding/tenant-request", authenticate, async (req, re
 onboardingRouter.post("/onboarding/profile", authenticate, async (req, res, next) => {
   try {
     const b = req.body as Record<string, unknown>;
-    if (typeof b.district !== "string" || !b.district.trim()) {
-      res.status(400).json({ error: "district is required" });
+    if (typeof b.district !== "string" || typeof b.phone !== "string" || !b.district.trim() || !b.phone.trim()) {
+      res.status(400).json({ error: "district and phone are required" });
       return;
     }
     const saved = await rt().onboarding.upsertOnboarding({
@@ -110,14 +127,14 @@ onboardingRouter.post("/onboarding/profile", authenticate, async (req, res, next
 onboardingRouter.post("/onboarding/assist-request", authenticate, async (req, res, next) => {
   try {
     const b = req.body as Record<string, unknown>;
-    if (typeof b.district !== "string" || !b.district.trim()) {
-      res.status(400).json({ error: "district is required" });
+    if (typeof b.district !== "string" || typeof b.phone !== "string" || !b.district.trim() || !b.phone.trim()) {
+      res.status(400).json({ error: "district and phone are required" });
       return;
     }
     const created = await rt().onboarding.createAssistRequest({
       userId: uid(req),
       fullName: typeof b.fullName === "string" ? b.fullName : undefined,
-      phone: typeof b.phone === "string" ? b.phone : undefined,
+      phone: b.phone.trim(),
       district: b.district.trim(),
       upazila: typeof b.upazila === "string" ? b.upazila : undefined,
       note: typeof b.note === "string" ? b.note : undefined,

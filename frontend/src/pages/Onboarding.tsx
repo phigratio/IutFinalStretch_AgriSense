@@ -10,13 +10,8 @@ import {
   type OnboardingProfile,
   type OnboardingMe,
 } from "../api/onboarding.js";
+import LocationAutofill, { EditableDistrictSelect } from "../components/onboarding/LocationAutofill.js";
 
-// Bengali option maps -> canonical backend values.
-const DISTRICTS = ["Kushtia", "Bogura", "Dhaka", "Rangpur", "Rajshahi", "Dinajpur", "Cumilla", "Jashore", "Mymensingh", "Barishal"];
-const DISTRICT_BN: Record<string, string> = {
-  Kushtia: "কুষ্টিয়া", Bogura: "বগুড়া", Dhaka: "ঢাকা", Rangpur: "রংপুর", Rajshahi: "রাজশাহী",
-  Dinajpur: "দিনাজপুর", Cumilla: "কুমিল্লা", Jashore: "যশোর", Mymensingh: "ময়মনসিংহ", Barishal: "বরিশাল",
-};
 const SOILS = [{ v: "sandy", bn: "বেলে" }, { v: "loam", bn: "দোআঁশ" }, { v: "clay", bn: "এঁটেল" }, { v: "silt", bn: "পলি" }];
 const WATERS = [{ v: "rainfed", bn: "বৃষ্টিনির্ভর" }, { v: "limited_irrigation", bn: "সীমিত সেচ" }, { v: "reliable_irrigation", bn: "নিশ্চিত সেচ" }];
 const SEASONS = [{ v: "kharif1", bn: "আউশ" }, { v: "kharif2_aman", bn: "আমন" }, { v: "rabi", bn: "রবি" }, { v: "boro", bn: "বোরো" }];
@@ -134,9 +129,9 @@ export default function Onboarding() {
       </div>
 
       <div className="mt-5">
-        {choice === "self" && <SelfProfileForm initial={status?.onboarding} busy={busy} onSubmit={(b) => run(() => saveOwnProfile(b), "আপনার প্রোফাইল সংরক্ষিত হয়েছে।")} />}
-        {choice === "assist" && <AssistForm busy={busy} onSubmit={(b) => run(() => requestAssist(b), "আপনার অনুরোধ পাঠানো হয়েছে। একজন টেন্যান্ট শীঘ্রই তথ্য পূরণ করবেন।")} />}
-        {choice === "tenant" && <TenantForm busy={busy} onSubmit={(b) => run(() => requestTenant(b), "টেন্যান্ট হওয়ার আবেদন জমা হয়েছে। অ্যাডমিন পর্যালোচনা করবেন।")} />}
+        {choice === "self" && <SelfProfileForm initial={status?.onboarding} defaultName={user?.name} busy={busy} onSubmit={(b) => run(() => saveOwnProfile(b), "আপনার প্রোফাইল সংরক্ষিত হয়েছে।")} />}
+        {choice === "assist" && <AssistForm defaultName={user?.name} defaultPhone={status?.onboarding?.phone} busy={busy} onSubmit={(b) => run(() => requestAssist(b), "আপনার অনুরোধ পাঠানো হয়েছে। একজন টেন্যান্ট শীঘ্রই তথ্য পূরণ করবেন।")} />}
+        {choice === "tenant" && <TenantForm defaultPhone={status?.onboarding?.phone} busy={busy} onSubmit={(b) => run(() => requestTenant(b), "টেন্যান্ট হওয়ার আবেদন জমা হয়েছে। অ্যাডমিন পর্যালোচনা করবেন।")} />}
       </div>
       </div>
     </div>
@@ -173,32 +168,30 @@ const inputCls =
   "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
 
 function DistrictSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return (
-    <select className={inputCls} value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="">— জেলা নির্বাচন করুন —</option>
-      {DISTRICTS.map((d) => (
-        <option key={d} value={d}>{DISTRICT_BN[d]} ({d})</option>
-      ))}
-    </select>
-  );
+  return <EditableDistrictSelect className={inputCls} value={value} onChange={onChange} />;
 }
 
 function Card({ children }: { children: ReactNode }) {
   return <form onSubmit={(e) => e.preventDefault()} className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">{children}</form>;
 }
 
-function TenantForm({ busy, onSubmit }: { busy: boolean; onSubmit: (b: { orgName: string; district: string; note?: string }) => void }) {
+function TenantForm({ defaultPhone, busy, onSubmit }: { defaultPhone?: string; busy: boolean; onSubmit: (b: { orgName: string; district: string; upazila?: string; phone: string; note?: string }) => void }) {
   const [orgName, setOrgName] = useState("");
   const [district, setDistrict] = useState("");
+  const [upazila, setUpazila] = useState("");
+  const [phone, setPhone] = useState(defaultPhone ?? "");
   const [note, setNote] = useState("");
   return (
     <Card>
+      <LocationAutofill className="mb-4" onDetected={(found) => { setDistrict(found.district); setUpazila(found.upazila ?? ""); }} />
       <div className="grid gap-4">
         <Field label="প্রতিষ্ঠানের নাম"><input className={inputCls} value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="যেমন: কুষ্টিয়া কৃষি অফিস" /></Field>
         <Field label="জেলা"><DistrictSelect value={district} onChange={setDistrict} /></Field>
+        <Field label="উপজেলা (পরিবর্তনযোগ্য)"><input className={inputCls} value={upazila} onChange={(e) => setUpazila(e.target.value)} /></Field>
+        <Field label="মোবাইল নম্বর"><input required className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="017XXXXXXXX" /></Field>
         <Field label="মন্তব্য (ঐচ্ছিক)"><textarea className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} rows={2} /></Field>
       </div>
-      <button type="button" disabled={busy || !orgName || !district} onClick={() => onSubmit({ orgName, district, note: note || undefined })}
+      <button type="button" disabled={busy || !orgName || !district || !phone.trim()} onClick={() => onSubmit({ orgName, district, upazila: upazila || undefined, phone: phone.trim(), note: note || undefined })}
         className="mt-4 w-full rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-50">
         {busy ? "অপেক্ষা করুন…" : "আবেদন জমা দিন"}
       </button>
@@ -206,20 +199,23 @@ function TenantForm({ busy, onSubmit }: { busy: boolean; onSubmit: (b: { orgName
   );
 }
 
-function AssistForm({ busy, onSubmit }: { busy: boolean; onSubmit: (b: { district: string; fullName?: string; phone?: string; note?: string }) => void }) {
-  const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
+function AssistForm({ defaultName, defaultPhone, busy, onSubmit }: { defaultName?: string; defaultPhone?: string; busy: boolean; onSubmit: (b: { district: string; upazila?: string; fullName?: string; phone: string; note?: string }) => void }) {
+  const [fullName, setFullName] = useState(defaultName ?? "");
+  const [phone, setPhone] = useState(defaultPhone ?? "");
   const [district, setDistrict] = useState("");
+  const [upazila, setUpazila] = useState("");
   const [note, setNote] = useState("");
   return (
     <Card>
+      <LocationAutofill className="mb-4" onDetected={(found) => { setDistrict(found.district); setUpazila(found.upazila ?? ""); }} />
       <div className="grid gap-4">
         <Field label="আপনার নাম"><input className={inputCls} value={fullName} onChange={(e) => setFullName(e.target.value)} /></Field>
-        <Field label="মোবাইল নম্বর"><input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="017XXXXXXXX" /></Field>
+        <Field label="মোবাইল নম্বর"><input required type="tel" className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="017XXXXXXXX" /></Field>
         <Field label="জেলা"><DistrictSelect value={district} onChange={setDistrict} /></Field>
+        <Field label="উপজেলা (পরিবর্তনযোগ্য)"><input className={inputCls} value={upazila} onChange={(e) => setUpazila(e.target.value)} /></Field>
         <Field label="মন্তব্য (ঐচ্ছিক)"><textarea className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} rows={2} /></Field>
       </div>
-      <button type="button" disabled={busy || !district} onClick={() => onSubmit({ district, fullName: fullName || undefined, phone: phone || undefined, note: note || undefined })}
+      <button type="button" disabled={busy || !district || !phone.trim()} onClick={() => onSubmit({ district, upazila: upazila || undefined, fullName: fullName || undefined, phone: phone.trim(), note: note || undefined })}
         className="mt-4 w-full rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-50">
         {busy ? "অপেক্ষা করুন…" : "অনুরোধ পাঠান"}
       </button>
@@ -227,10 +223,11 @@ function AssistForm({ busy, onSubmit }: { busy: boolean; onSubmit: (b: { distric
   );
 }
 
-function SelfProfileForm({ initial, busy, onSubmit }: { initial?: OnboardingProfile | null; busy: boolean; onSubmit: (b: OnboardingProfile) => void }) {
-  const [fullName, setFullName] = useState(initial?.fullName ?? "");
+function SelfProfileForm({ initial, defaultName, busy, onSubmit }: { initial?: OnboardingProfile | null; defaultName?: string; busy: boolean; onSubmit: (b: OnboardingProfile) => void }) {
+  const [fullName, setFullName] = useState(initial?.fullName ?? defaultName ?? "");
   const [phone, setPhone] = useState(initial?.phone ?? "");
   const [district, setDistrict] = useState(initial?.district ?? "");
+  const [upazila, setUpazila] = useState(initial?.upazila ?? "");
   const [farmSizeDecimals, setSize] = useState(initial?.farmSizeDecimals?.toString() ?? "");
   const [soilTexture, setSoil] = useState(initial?.soilTexture ?? "");
   const [waterAvailability, setWater] = useState(initial?.waterAvailability ?? "");
@@ -242,10 +239,12 @@ function SelfProfileForm({ initial, busy, onSubmit }: { initial?: OnboardingProf
   );
   return (
     <Card>
+      <LocationAutofill className="mb-4" onDetected={(found) => { setDistrict(found.district); setUpazila(found.upazila ?? ""); }} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="আপনার নাম"><input required className={inputCls} value={fullName} onChange={(e) => setFullName(e.target.value)} /></Field>
         <Field label="মোবাইল নম্বর"><input required className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
         <Field label="জেলা"><DistrictSelect value={district} onChange={setDistrict} /></Field>
+        <Field label="উপজেলা (পরিবর্তনযোগ্য)"><input className={inputCls} value={upazila} onChange={(e) => setUpazila(e.target.value)} /></Field>
         <Field label="জমির পরিমাণ (শতক)"><input type="number" className={inputCls} value={farmSizeDecimals} onChange={(e) => setSize(e.target.value)} /></Field>
         <Field label="মাটির ধরন">
           <select className={inputCls} value={soilTexture} onChange={(e) => setSoil(e.target.value)}>
@@ -272,7 +271,7 @@ function SelfProfileForm({ initial, busy, onSubmit }: { initial?: OnboardingProf
         disabled={busy || !valid}
         onClick={() =>
           onSubmit({
-            district, fullName: fullName || undefined, phone: phone || undefined,
+            district, upazila: upazila || undefined, fullName: fullName || undefined, phone: phone || undefined,
             farmSizeDecimals: farmSizeDecimals ? Number(farmSizeDecimals) : undefined,
             soilTexture: soilTexture || undefined, waterAvailability: waterAvailability || undefined,
             budgetBdt: budgetBdt ? Number(budgetBdt) : undefined, targetSeason: targetSeason || undefined,
