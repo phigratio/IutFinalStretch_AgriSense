@@ -18,6 +18,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed:tenants": "tsx scripts/seed-tenants.ts",
     "kb:import:dam": "tsx scripts/kb-import-dam.ts",
+    "kb:audit": "tsx scripts/kb-audit.ts",
+    "kb:audit:strict": "tsx scripts/kb-audit.ts --strict",
     "lint": "eslint . --ext .ts",
     "bdapps": "tsx src/bdapps/cli.ts"
   },
