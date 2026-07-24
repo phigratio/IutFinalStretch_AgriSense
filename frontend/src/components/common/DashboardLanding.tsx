@@ -24,7 +24,7 @@ export default function DashboardLanding() {
   if (status.role === "tenant") {
     return user?.role === "tenant" ? <Navigate to="/tenant/dashboard" replace /> : <PortalLoader />;
   }
-  return <Navigate to={status.profileComplete ? "/user/dashboard" : "/onboarding"} replace />;
+  return <Navigate to={status.profileComplete ? "/agrisense" : "/onboarding"} replace />;
 }
 
 export function PortalLoader() {

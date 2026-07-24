@@ -25,7 +25,6 @@ import NotFound from "./pages/NotFound.js";
 import KnowledgeBase from "./pages/KnowledgeBase.js";
 import Onboarding from "./pages/Onboarding.js";
 import DashboardLanding from "./components/common/DashboardLanding.js";
-import UserDashboard from "./pages/UserDashboard.js";
 import TenantDashboard from "./pages/TenantDashboard.js";
 import TenantRequests from "./pages/TenantRequests.js";
 import "./index.css";
@@ -49,10 +48,22 @@ createRoot(rootEl).render(
                 <Route index path="/" element={<DashboardLanding />} />
                 {/* Standalone (no admin chrome) — the farmer's onboarding landing. */}
                 <Route path="/onboarding" element={<Onboarding />} />
-                {/* Farmer + tenant now share the admin shell (sidebar + header). */}
-                <Route element={<RoleRoute allow={["user"]} redirectTo="/" />}>
+                {/* Feature pages — shared by admin + farmer (user). Same UI for both. */}
+                <Route element={<RoleRoute allow={["admin", "user"]} redirectTo="/" />}>
                   <Route element={<AppLayout />}>
-                    <Route path="/user/dashboard" element={<UserDashboard />} />
+                    {/* Old farmer dashboard is gone — send it to the AgriSense workbench. */}
+                    <Route path="/user/dashboard" element={<Navigate to="/agrisense" replace />} />
+                    <Route path="/agrisense" element={<AgriSense />} />
+                    <Route path="/pest-risk" element={<PestRisk />} />
+                    <Route path="/finance" element={<Finance />} />
+                    <Route path="/marketplace" element={<Marketplace />} />
+                    <Route path="/temporal" element={<Temporal />} />
+                    <Route path="/knowledge-base" element={<KnowledgeBase />} />
+                    <Route path="/agent-intake" element={<AgentIntake />} />
+                    <Route path="/payments" element={<Payments />} />
+                    <Route path="/bdapps" element={<Bdapps />} />
+                    <Route path="/calendar" element={<Calendar />} />
+                    <Route path="/profile" element={<Profile />} />
                   </Route>
                 </Route>
                 <Route element={<RoleRoute allow={["tenant"]} redirectTo="/" />}>
@@ -60,24 +71,13 @@ createRoot(rootEl).render(
                     <Route path="/tenant/dashboard" element={<TenantDashboard />} />
                   </Route>
                 </Route>
-                {/* The whole admin panel is admin-only; non-admins are sent to onboarding. */}
+                {/* Admin-only management surfaces. */}
                 <Route element={<RoleRoute allow={["admin"]} redirectTo="/" />}>
                 <Route element={<AppLayout />}>
                   <Route path="/admin/dashboard" element={<Dashboard />} />
                   <Route path="/tenant-requests" element={<TenantRequests />} />
                   <Route path="/admin/onboarding" element={<TenantRequests />} />
                   <Route path="/users" element={<Users />} />
-                  <Route path="/profile" element={<Profile />} />
-                  <Route path="/calendar" element={<Calendar />} />
-                  <Route path="/agrisense" element={<AgriSense />} />
-                  <Route path="/pest-risk" element={<PestRisk />} />
-                  <Route path="/knowledge-base" element={<KnowledgeBase />} />
-                  <Route path="/agent-intake" element={<AgentIntake />} />
-                  <Route path="/temporal" element={<Temporal />} />
-                  <Route path="/marketplace" element={<Marketplace />} />
-                  <Route path="/finance" element={<Finance />} />
-                  <Route path="/payments" element={<Payments />} />
-                  <Route path="/bdapps" element={<Bdapps />} />
                 </Route>
                 </Route>
               </Route>

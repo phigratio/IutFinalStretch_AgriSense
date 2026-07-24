@@ -48,15 +48,21 @@ const otherNav: NavItem[] = [
   { name: "Season Calendar", path: "/calendar", icon: <CalendarIcon /> },
 ];
 
-// Farmer (user) — the dashboard tabs live in the sidebar.
+// Farmer (user) — same feature pages as the admin, minus admin-only management.
 const userNav: NavItem[] = [
-  { name: "হোম", path: "/user/dashboard", icon: <GridIcon /> },
-  { name: "আবহাওয়া", path: "/user/dashboard?tab=weather", icon: <SearchSidebarIcon /> },
-  { name: "ফসল", path: "/user/dashboard?tab=crops", icon: <BoxIcon /> },
-  { name: "পরিকল্পনা", path: "/user/dashboard?tab=plan", icon: <CalendarIcon /> },
-  { name: "লাভ-খরচ", path: "/user/dashboard?tab=money", icon: <CreditCardIcon /> },
-  { name: "কেন", path: "/user/dashboard?tab=why", icon: <ListIcon /> },
-  { name: "আমার তথ্য", path: "/user/dashboard?tab=profile", icon: <UserIcon /> },
+  { name: "AgriSense Full", path: "/agrisense", icon: <BoxIcon /> },
+  { name: "Pest Risk", path: "/pest-risk", icon: <SearchSidebarIcon /> },
+  { name: "Live Weather", path: "/agrisense?stage=weather", icon: <SearchSidebarIcon /> },
+  { name: "RAG Evidence", path: "/agrisense?stage=evidence", icon: <SearchSidebarIcon /> },
+  { name: "Crop Ranking", path: "/agrisense?stage=crop_ranking", icon: <BoxIcon /> },
+  { name: "Season Plan", path: "/agrisense?stage=season_plan", icon: <CalendarIcon /> },
+  { name: "Fertilizer Scheduler", path: "/agrisense?stage=scheduler", icon: <CalendarIcon /> },
+  { name: "Financial Projection", path: "/finance?view=math", icon: <CreditCardIcon /> },
+  { name: "Finance Management", path: "/finance?view=management", icon: <CreditCardIcon /> },
+  { name: "Scenario Simulation", path: "/agrisense?stage=scenario", icon: <ListIcon /> },
+  { name: "Marketplace Intel", path: "/marketplace", icon: <MarketplaceIcon /> },
+  { name: "Proactive Advice", path: "/temporal", icon: <CalendarIcon /> },
+  { name: "Profile", path: "/profile", icon: <UserIcon /> },
 ];
 
 // Tenant — the tenant workbench.
