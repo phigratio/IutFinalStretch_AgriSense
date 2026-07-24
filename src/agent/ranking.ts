@@ -96,13 +96,19 @@ const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 /** Dry land-prep crops penalized by heavy rain right now. */
 const DRY_PREP_CROPS: CropId[] = ["wheat", "mustard", "lentil", "potato"];
 
-function quickFinancials(cropId: CropId, profile: RankProfile) {
+/** Injected price source (KB PriceStore). Returns null → fall back to the CSV baseline. */
+export type PriceLookup = (cropId: string) => { pricePerKg: number } | null;
+
+function quickFinancials(cropId: CropId, profile: RankProfile, priceLookup?: PriceLookup) {
   const variety = getVarietyForCrop(cropId);
   const fert = getFertilizer(cropId, profile.fertilityClass);
-  const price = getPrice(cropId);
-  const priceBdtPerKg = price
-    ? normalizePricePerKg(price.price, (price.unit as PriceUnit) ?? "kg")
-    : 0;
+  const injected = priceLookup?.(cropId);
+  const csvPrice = injected ? null : getPrice(cropId);
+  const priceBdtPerKg = injected
+    ? injected.pricePerKg
+    : csvPrice
+      ? normalizePricePerKg(csvPrice.price, (csvPrice.unit as PriceUnit) ?? "kg")
+      : 0;
   const events = IRRIGATION_EVENTS[profile.waterAvailability];
   return computeFinancials({
     cropId,
@@ -128,6 +134,7 @@ export function rankCrops(
   weather: WeatherSummary,
   normals: NormalsSummary,
   candidates: CropId[] = [...CROP_IDS],
+  priceLookup?: PriceLookup,
 ): RankedCrop[] {
   const cropsMeta = loadTable("crops.csv");
 
@@ -137,7 +144,7 @@ export function rankCrops(
     const waterNeedMm = getWaterNeedMm(cropId) ?? 0;
     const variety = getVarietyForCrop(cropId);
     const price = getPrice(cropId);
-    const fin = quickFinancials(cropId, profile);
+    const fin = quickFinancials(cropId, profile, priceLookup);
 
     const fitsTargetSeason = calendar?.season === profile.targetSeason;
     const seasonFit = fitsTargetSeason ? 1 : 0;

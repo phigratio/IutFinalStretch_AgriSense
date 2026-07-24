@@ -33,12 +33,26 @@ export interface OrchestratorProfile extends IntakeState {
   fertilityClass: FertilityClass;
 }
 
+export interface ResolvedCropPrice {
+  pricePerKg: number;
+  provenance?: unknown;
+}
+
 export interface OrchestratorDeps {
   writer: TraceWriter;
   getForecast: () => Promise<ForecastResult>;
   getNormals: (months: number[]) => Promise<NormalsResult>;
   /** Optional pre-chosen crop; otherwise the top-ranked crop is the recommendation. */
   chosenCropId?: string;
+  /** Optional KB price resolver; when absent, prices come from the CSV baseline. */
+  resolvePrice?: (cropId: string) => Promise<ResolvedCropPrice | null>;
+  /** Optional prose KB retriever; when present, the chosen crop's advice is cited from it. */
+  queryKb?: (query: string, cropId: string) => Promise<KbCitation[]>;
+}
+
+export interface KbCitation {
+  citation: string;
+  text: string;
 }
 
 export interface NumberProvenance {
@@ -54,6 +68,7 @@ export interface OrchestratorResult {
   financials: FinancialResult;
   basis: string;
   numbers: NumberProvenance[];
+  kbCitations: string[];
   weatherAvailable: boolean;
   trace: TraceEvent[];
 }
@@ -107,6 +122,30 @@ export async function runPipeline(
   const seasonRainMm = normals.monthly.reduce((a, m) => a + m.avgRainMm, 0);
   numbers.push({ label: "seasonRainMm", value: Math.round(seasonRainMm), stepId: normalsT.event.stepId });
 
+  // --- Step 3c: resolve KB prices (tenant-over-hub) for all candidate crops ---
+  const priceMap = new Map<string, ResolvedCropPrice>();
+  let priceStep = "";
+  if (deps.resolvePrice) {
+    const pT = await runTraced(writer, {
+      toolName: "resolve_prices",
+      purpose: "crop_ranking.profitPotential,financials",
+      parameters: { crops: [...CROP_IDS], district: profile.district },
+    }, async () => {
+      const out: Record<string, ResolvedCropPrice> = {};
+      for (const cropId of CROP_IDS) {
+        const r = await deps.resolvePrice!(cropId);
+        if (r) out[cropId] = r;
+      }
+      return out;
+    });
+    for (const [k, v] of Object.entries(pT.result)) priceMap.set(k, v);
+    priceStep = pT.event.stepId;
+  }
+  const priceLookup = (cropId: string): { pricePerKg: number } | null => {
+    const r = priceMap.get(cropId);
+    return r ? { pricePerKg: r.pricePerKg } : null;
+  };
+
   // --- Step 4: rank (deterministic) ---
   const rankProfile: RankProfile = {
     areaHa: profile.areaHa,
@@ -125,6 +164,8 @@ export async function runPipeline(
       rankProfile,
       { totalRainNext7Mm: forecast?.totalRainNext7Mm, tmeanNext7C: forecast?.tmeanNext7C },
       { seasonRainMm },
+      [...CROP_IDS],
+      priceLookup,
     ),
   );
   const ranking = rankingT.result;
@@ -159,8 +200,17 @@ export async function runPipeline(
   // --- Step 7: financials (pure) ---
   const variety = getVarietyForCrop(picked);
   const fert = getFertilizer(picked, profile.fertilityClass);
+  // Prefer the resolved KB price; fall back to the CSV baseline for crops WFP doesn't cover.
+  const kbPrice = priceMap.get(picked);
   const priceRow = getPrice(picked);
-  const priceBdtPerKg = priceRow ? normalizePricePerKg(priceRow.price, (priceRow.unit as PriceUnit) ?? "kg") : 0;
+  const priceBdtPerKg = kbPrice
+    ? kbPrice.pricePerKg
+    : priceRow
+      ? normalizePricePerKg(priceRow.price, (priceRow.unit as PriceUnit) ?? "kg")
+      : 0;
+  if (kbPrice && priceStep) {
+    numbers.push({ label: "priceBdtPerKg", value: round2(priceBdtPerKg), stepId: priceStep });
+  }
   const events = IRRIGATION_EVENTS[profile.waterAvailability];
 
   const finT = await runTraced(writer, {
@@ -197,9 +247,22 @@ export async function runPipeline(
     { label: "breakEvenPriceBdtPerKg", value: round2(financials.breakEvenPriceBdtPerKg), stepId: finStep },
   );
 
-  // --- Step 8: basis block (code-built) ---
   const cropDisplay = loadTable("crops.csv").find((r) => r.cropId === picked)?.displayName ?? picked;
-  const basis = buildRecommendationBasis({
+
+  // --- Step 7b: prose KB retrieval for the chosen crop (grounds advice + citations) ---
+  let kbCitations: string[] = [];
+  if (deps.queryKb) {
+    const q = `${cropDisplay} cultivation, fertilizer and pest management`;
+    const kbT = await runTraced(writer, {
+      toolName: "query_knowledge_base",
+      purpose: "explanation.citations",
+      parameters: { query: q, cropId: picked },
+    }, () => deps.queryKb!(q, picked));
+    kbCitations = [...new Set(kbT.result.map((c) => c.citation))];
+  }
+
+  // --- Step 8: basis block (code-built) ---
+  const basisCore = buildRecommendationBasis({
     profile,
     chosenCropDisplay: cropDisplay,
     fertilityAssumption: undefined,
@@ -208,9 +271,12 @@ export async function runPipeline(
     seasonRainMm,
     financials,
     priceBdtPerKg,
-    priceSource: priceRow?.source.source_name ?? "n/a",
+    priceSource: kbPrice ? "KB (tenant/hub resolved)" : priceRow?.source.source_name ?? "n/a",
     priceDate: priceRow?.date ?? "n/a",
   });
+  const basis = kbCitations.length
+    ? `${basisCore}\n- Knowledge base: ${kbCitations.join("; ")}`
+    : basisCore;
 
   return {
     ranking,
@@ -219,6 +285,7 @@ export async function runPipeline(
     financials,
     basis,
     numbers,
+    kbCitations,
     weatherAvailable: forecast !== null,
     trace: (writer as { events?: TraceEvent[] }).events ?? [],
   };

@@ -129,4 +129,38 @@ describe("G4: missing information is handled honestly", () => {
     expect(r.chosen.recommended).toBe(true); // fell back, so it's our recommendation
     expect(r.ranking.some((c) => c.cropId === r.chosen.cropId)).toBe(true);
   });
+
+  it("attaches KB citations to the basis and traces the retrieval (K3-4)", async () => {
+    const r = await runPipeline(profile(), {
+      writer,
+      getForecast: async () => fakeForecast(),
+      getNormals: async () => fakeNormals(),
+      queryKb: async (_q, cropId) => [
+        { citation: `[KB:BRRI RKB p.7] (${cropId})`, text: "manage blast..." },
+      ],
+    });
+    expect(r.kbCitations).toContain("[KB:BRRI RKB p.7] (rice_boro)");
+    expect(r.basis).toMatch(/Knowledge base:/);
+    expect(writer.events.some((e) => e.toolName === "query_knowledge_base")).toBe(true);
+  });
+
+  it("uses an injected KB price and traces its provenance (K1-7)", async () => {
+    // A very high boro price so KB clearly drives revenue vs the CSV baseline.
+    const r = await runPipeline(profile(), {
+      writer,
+      getForecast: async () => fakeForecast(),
+      getNormals: async () => fakeNormals(),
+      resolvePrice: async (cropId) =>
+        cropId === "rice_boro"
+          ? { pricePerKg: 200, provenance: { source: "tenant:dist-kushtia", basis: "local" } }
+          : null,
+    });
+    // boro (target season = boro) is chosen; revenue reflects the 200 BDT/kg KB price.
+    expect(r.chosen.cropId).toBe("rice_boro");
+    expect(r.financials.grossRevenueBdt).toBeCloseTo(r.financials.expectedYieldKg * 200, 2);
+    // the resolved price is traceable
+    const priceNum = r.numbers.find((n) => n.label === "priceBdtPerKg");
+    expect(priceNum?.value).toBe(200);
+    expect(writer.events.some((e) => e.toolName === "resolve_prices" && e.stepId === priceNum?.stepId)).toBe(true);
+  });
 });

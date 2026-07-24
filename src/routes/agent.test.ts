@@ -41,6 +41,8 @@ describe("POST /api/tier0/agent/message", () => {
       geocode: fakeGeocode,
       getForecast: fakeForecast,
       getNormals: fakeNormals,
+      resolvePrice: async () => null, // CSV baseline; no DB/network in tests
+      queryKb: async () => [], // no mem0 in tests
     });
   });
 
