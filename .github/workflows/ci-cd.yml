@@ -1,0 +1,190 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - rag-mem0
+      - auth-google-oauth-production
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      deploy_branch:
+        description: "Branch to deploy to the VPS"
+        required: false
+        default: "rag-mem0"
+
+concurrency:
+  group: iut-ict-fest-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Build backend
+        run: npm run build
+
+      - name: Test backend
+        run: npm test
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Validate VPS compose config
+        env:
+          PUBLIC_HOST: example.com
+          POSTGRES_DB: iut_ict_fest
+          POSTGRES_USER: iut_ict_fest
+          POSTGRES_PASSWORD: ci-postgres-password
+          AUTH_TOKEN_SECRET: ci-auth-token-secret-change-me-32chars
+          OPENAI_API_KEY: sk-ci-placeholder
+          MEM0_API_KEY: ci-mem0-key
+          MEM0_JWT_SECRET: ci-mem0-jwt-secret-change-me-32chars
+          MEM0_NEO4J_PASSWORD: ci-neo4j-password
+          TEMPORAL_POSTGRES_PASSWORD: ci-temporal-password
+          GRAFANA_ADMIN_PASSWORD: ci-grafana-password
+        run: docker compose -f docker-compose.yml -f docker-compose.vps-nginx.yml config --quiet
+
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: ci
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/rag-mem0' || github.ref == 'refs/heads/auth-google-oauth-production'
+    environment: production
+    steps:
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+
+      - name: Trust VPS host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_APP_DIR: ${{ vars.VPS_APP_DIR || '/srv/muqtadir/iut_ict_fest' }}
+          DEPLOY_BRANCH: ${{ github.event.inputs.deploy_branch || vars.VPS_DEPLOY_BRANCH || github.ref_name }}
+          PUBLIC_HOST: ${{ vars.PUBLIC_HOST }}
+          VPS_APP_PORT: ${{ vars.VPS_APP_PORT || '8093' }}
+          VPS_FRONTEND_PORT: ${{ vars.VPS_FRONTEND_PORT || '8095' }}
+          VPS_GRAFANA_PORT: ${{ vars.VPS_GRAFANA_PORT || '8094' }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB || 'iut_ict_fest' }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER || 'iut_ict_fest' }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          AUTH_TOKEN_SECRET: ${{ secrets.AUTH_TOKEN_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MEM0_API_KEY: ${{ secrets.MEM0_API_KEY }}
+          MEM0_JWT_SECRET: ${{ secrets.MEM0_JWT_SECRET }}
+          MEM0_NEO4J_PASSWORD: ${{ secrets.MEM0_NEO4J_PASSWORD }}
+          TEMPORAL_POSTGRES_PASSWORD: ${{ secrets.TEMPORAL_POSTGRES_PASSWORD }}
+          GRAFANA_ADMIN_USER: ${{ vars.GRAFANA_ADMIN_USER || 'admin' }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          BDAPPS_APP_ID: ${{ secrets.BDAPPS_APP_ID }}
+          BDAPPS_PASSWORD: ${{ secrets.BDAPPS_PASSWORD }}
+          BDAPPS_BASE_URL: ${{ vars.BDAPPS_BASE_URL || 'https://developer.bdapps.com' }}
+        run: |
+          : "${VPS_HOST:?Missing VPS_HOST secret}"
+          : "${VPS_USER:?Missing VPS_USER secret}"
+          : "${PUBLIC_HOST:?Missing PUBLIC_HOST environment variable}"
+          : "${POSTGRES_PASSWORD:?Missing POSTGRES_PASSWORD secret}"
+          : "${AUTH_TOKEN_SECRET:?Missing AUTH_TOKEN_SECRET secret}"
+          : "${OPENAI_API_KEY:?Missing OPENAI_API_KEY secret}"
+          : "${MEM0_API_KEY:?Missing MEM0_API_KEY secret}"
+          : "${MEM0_JWT_SECRET:?Missing MEM0_JWT_SECRET secret}"
+          : "${MEM0_NEO4J_PASSWORD:?Missing MEM0_NEO4J_PASSWORD secret}"
+          : "${TEMPORAL_POSTGRES_PASSWORD:?Missing TEMPORAL_POSTGRES_PASSWORD secret}"
+          : "${GRAFANA_ADMIN_PASSWORD:?Missing GRAFANA_ADMIN_PASSWORD secret}"
+
+          umask 077
+          cat > .env.production.generated <<ENV
+          NODE_ENV=production
+          PUBLIC_HOST=$PUBLIC_HOST
+          VPS_APP_BIND=127.0.0.1
+          VPS_APP_PORT=$VPS_APP_PORT
+          VPS_FRONTEND_BIND=127.0.0.1
+          VPS_FRONTEND_PORT=$VPS_FRONTEND_PORT
+          VPS_GRAFANA_BIND=127.0.0.1
+          VPS_GRAFANA_PORT=$VPS_GRAFANA_PORT
+          POSTGRES_DB=$POSTGRES_DB
+          POSTGRES_USER=$POSTGRES_USER
+          POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+          AUTH_TOKEN_SECRET=$AUTH_TOKEN_SECRET
+          AUTH_TOKEN_TTL_SECONDS=3600
+          COOKIE_SECURE=true
+          FRONTEND_AUTH_SUCCESS_URL=https://$PUBLIC_HOST/
+          GOOGLE_CALLBACK_URL=https://$PUBLIC_HOST/auth/google/callback
+          GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
+          GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
+          OPENAI_API_KEY=$OPENAI_API_KEY
+          OPENAI_INTAKE_MODEL=gpt-4.1-mini
+          MEM0_API_KEY=$MEM0_API_KEY
+          MEM0_AUTH_DISABLED=false
+          MEM0_JWT_SECRET=$MEM0_JWT_SECRET
+          MEM0_NEO4J_PASSWORD=$MEM0_NEO4J_PASSWORD
+          MEM0_DEFAULT_LLM_MODEL=gpt-4o-mini
+          MEM0_DEFAULT_EMBEDDER_MODEL=text-embedding-3-small
+          MEM0_EMBEDDER_PROVIDER=openai
+          MEM0_EMBEDDING_DIMS=1536
+          RAG_EMBEDDING_DIMENSIONS=1536
+          MEM0_PERSISTENCE_ENABLED=true
+          TEMPORAL_TASK_QUEUE=agrisense-cron
+          TEMPORAL_ENSURE_SCHEDULES=true
+          TEMPORAL_POSTGRES_PASSWORD=$TEMPORAL_POSTGRES_PASSWORD
+          GRAFANA_ADMIN_USER=$GRAFANA_ADMIN_USER
+          GRAFANA_ADMIN_PASSWORD=$GRAFANA_ADMIN_PASSWORD
+          BDAPPS_APP_ID=$BDAPPS_APP_ID
+          BDAPPS_PASSWORD=$BDAPPS_PASSWORD
+          BDAPPS_APP_NAME=AgriSense
+          BDAPPS_BASE_URL=$BDAPPS_BASE_URL
+          MOCK_BDAPPS=
+          MOCK_BDAPPS_BALANCE=100
+          ENV
+
+          scp .env.production.generated "$VPS_USER@$VPS_HOST:/tmp/iut_ict_fest.env"
+          rm -f .env.production.generated
+
+          ssh "$VPS_USER@$VPS_HOST" \
+            "VPS_APP_DIR='$VPS_APP_DIR' DEPLOY_BRANCH='$DEPLOY_BRANCH' VPS_APP_PORT='$VPS_APP_PORT' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          cd "$VPS_APP_DIR"
+          git fetch origin "$DEPLOY_BRANCH"
+          git checkout "$DEPLOY_BRANCH"
+          git reset --hard "origin/$DEPLOY_BRANCH"
+
+          umask 077
+          mv /tmp/iut_ict_fest.env .env
+          chmod 600 .env
+
+          docker compose -f docker-compose.yml -f docker-compose.vps-nginx.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.vps-nginx.yml up -d --build --remove-orphans
+          docker compose -f docker-compose.yml -f docker-compose.vps-nginx.yml ps
+          curl -fsS "http://127.0.0.1:$VPS_APP_PORT/health"
+          REMOTE
