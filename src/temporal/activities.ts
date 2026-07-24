@@ -357,10 +357,11 @@ async function insertAlert(
 ): Promise<number> {
   return prisma.$executeRaw`
     INSERT INTO "proactive_alerts" (
-      "farm_id", "session_id", "plan_id", "alert_type", "severity", "title",
+      "id", "farm_id", "session_id", "plan_id", "alert_type", "severity", "title",
       "message", "recommendation", "rule_id", "trigger_date", "raw_evidence", "fingerprint"
     )
     VALUES (
+      gen_random_uuid(),
       ${input.farmId}::uuid,
       ${input.sessionId}::uuid,
       ${input.planId}::uuid,
