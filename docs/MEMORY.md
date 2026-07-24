@@ -214,6 +214,23 @@
   `migrate deploy` (works fine); my P2 migration was hand-written + deployed. Next: P3
   (BDApps login provider, backend→web→mobile).
 
+- 24Jul ~21:15 — Claude session (with Labib) — **P3 shipped (edb736f): BDApps phone
+  identity / OTP login.** Confirmed model with Labib: BDApps = **verification-to-enable-
+  features**, NOT a separate login silo; on mobile (no auth) it doubles as sign-in via the
+  SHARED identity. `src/auth/bdappsAuth.ts` (mirrors GoogleOAuthService): OTP request/verify
+  → `upsertOAuthUser(provider:"bdapps", providerUserId:phone-digits, synthetic email, role
+  user)` → same JWT as email/Google; captures channel + links FarmerProfile.userId when a
+  masked id is present (else channel activates later via subscription webhook — identity
+  doesn't depend on it). 2 additive routes `/auth/bdapps/otp/{request,verify}`. **Non-
+  breaking:** widened `UpsertOAuthUserInput.provider` to `"google"|"bdapps"` (type-only, both
+  store impls already persist any provider string) — Navid's 12 auth tests still green.
+  Also fixed channel.activate to store RAW mobile (was tel:-normalized → lookup mismatch with
+  seed/onboarding/env). **Live-verified (mock OTP, real number blocked by E1351):** token
+  works with Navid's `/auth/me`; FarmerProfile linked (user_id + masked id); channel active.
+  42 tests green. ⚠ Coordinate w/ Navid: phone is the canonical link so an email-signup +
+  bdapps-verify with the same phone don't fork into 2 AppUsers. Backend for P1/P2/P3 done;
+  next = web frontend (verify-phone button) then mobile sign-in, per build order.
+
 ## 8. Session log (append-only: `HH:MM — <who> — <what changed>`)
 
 - 24Jul 11:00 — Claude session 1 (with A) — Read problem statement, bdapps cheatsheet/DGD/
