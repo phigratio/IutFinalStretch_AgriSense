@@ -38,6 +38,10 @@ services:
       MEM0_API_KEY: ${MEM0_API_KEY:?Set MEM0_API_KEY in .env}
       RAG_EMBEDDING_DIMENSIONS: ${RAG_EMBEDDING_DIMENSIONS:-1536}
 
+  frontend:
+    restart: unless-stopped
+    ports: !override []
+
   grafana:
     restart: unless-stopped
     ports: !override []
@@ -70,6 +74,14 @@ services:
 
   mem0-neo4j:
     restart: unless-stopped
+
+  temporal:
+    restart: unless-stopped
+    ports: !override []
+
+  temporal-ui:
+    restart: unless-stopped
+    ports: !override []
 
   loki:
     restart: unless-stopped

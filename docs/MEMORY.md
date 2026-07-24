@@ -174,3 +174,65 @@
   (1536 — schema unchanged), mem0 docker defaults work as-is; Gemini/Groq demoted to
   failover. mem0 open question closed. Mujahid: set `OPENAI_API_KEY` in `.env` + compose env
   and bring the stack up. Navid: embed KB chunks with `text-embedding-3-small` only.
+- 24Jul ~15:15 — Claude session (with Labib) — **Local infra live via docker:** postgres
+  (pgvector) up with host port 5432 mapped (compose change), all Prisma migrations applied
+  incl. multitenant KB; mem0-api + neo4j building. `.env` fixes: leading space in
+  OPENAI_API_KEY (broke auth silently — heuristic fallback masked it), MEM0_API_URL
+  8888→8890 (compose default). **Cross-boundary edit announced:** fixed demo-critical bug in
+  Mujahid's `weatherTool.ts` — geocoder resolved "Bogura" to Rostov Oblast, RUSSIA
+  (count=1, no country bias); now BD-first with renamed-district aliases; verified e2e
+  (Bogra, Rajshahi 24.85/89.37; Banglish intake parsed; full plan returned). Mujahid please
+  review c40228e. Chat now works end-to-end against Postgres + OpenAI.
+
+- 24Jul ~16:10 — Claude session (with Labib) — **First real bdapps sandbox tests against
+  APP_139258** (test number 01805758966, real Robi SIM). Password was in provisioning-email
+  SPAM, not the portal UI. Findings (raw curl diagnostics, not through our app code):
+  - `subscription/otp/request` + `/verify` → **S1000**, works cleanly with the raw
+    `tel:8801805758966` address. Real SMS OTP delivered and verified.
+  - `sms/send`, `subscription/send`, `subscription/getStatus` with the **raw** `tel:88018...`
+    address → **E1951** "Format of the address is invalid Or User Already UnRegistered"
+    (undocumented in our DGD/cheatsheet). Retrying the SAME calls with the **masked
+    `subscriberId` returned by `otp/verify`** → `sms/send` **succeeds (S1000)**,
+    `getStatus` **succeeds (S1000, subscriptionStatus: "INITIAL CHARGING PENDING")**.
+    **Root cause: for this app's config (Subscriber Confirmation Required=YES), bdapps
+    requires the masked subscriberId from OTP verify for all subsequent calls — a raw
+    farmer-entered phone number is rejected.** Our client (`toTelAddress`) already
+    passes masked ids through unchanged, so no code bug — but every caller (payments
+    checkout, agent's future send_sms tool) is currently passed the raw phone number.
+  - `caas/direct/debit` with masked id → progressed to **E1371** "App do not accept
+    payments from given Payment Instrument" (no longer a format error).
+  - `caas/balance/query` and `caas/list/pi` → **raw HTTP 404 from bdapps' own web
+    server** (F5 load-balancer error page), with EITHER raw or masked subscriberId. This
+    is not a code/format issue — those two routes appear undeployed/unrouted for this
+    app on bdapps' infra.
+  - Subscriber remains stuck at `INITIAL CHARGING PENDING` (never flips to REGISTERED)
+    despite repeated `subscription/send action:1` (→ E1351 "already registered" once
+    masked id used). Likely needs a real operator-side confirmation prompt to the
+    subscriber, which may depend on our (placeholder) subscription notification URL,
+    or may just need time/mentor help in sandbox.
+  - **ESCALATE TO BDAPPS MENTORS (exact ask):** "(1) `/caas/balance/query` and
+    `/caas/list/pi` return raw 404 Not Found for APP_139258 — are these routes active
+    for our app? (2) subscriber tel:8801805758966 is stuck at `INITIAL CHARGING PENDING`
+    after OTP verify + subscribe — how do we get to REGISTERED so `direct/debit` accepts
+    Mobile Account (currently E1371)?"
+  - **Action item (not yet implemented, needs a team decision):** if masked-id-first
+    turns out to be required for this app config generally (not just a sandbox quirk),
+    the checkout flow needs an OTP-verify step before first charging a new farmer number,
+    and payments/service.ts + agent tools should store/reuse the masked subscriberId per
+    farmer instead of the raw phone. Flagging as a design decision, not silently changed.
+- 24Jul ~16:15 — Claude session (with Labib) — App **APP_139258 approved to "limited
+  production"** by bdapps. Retested all 3 blockers immediately after: **no change** —
+  `direct/debit` still E1371, `balance`/`list/pi` still raw 404, subscription still
+  `INITIAL CHARGING PENDING`. So general production approval ≠ CaaS activation; they
+  appear to be separate approval tracks. Real Robi balance topped up to ৳100 (was ৳0) —
+  clears one blocker for the eventual ৳5 test charge.
+  Labib then received a **real inbound confirmation SMS from bdapps/Robi** on
+  01805758966 (Bangla): "Thank you for confirming your subscription. To use the
+  application, please wait for a confirmation SMS from bdapps. To unsubscribe, send
+  STOP agrisms to 21213. Call 09678232777 (9am-6pm) for info." — confirms SMS
+  shortcode/keyword (21213/agrisms) is fully wired live. Rechecked status right after:
+  **still INITIAL CHARGING PENDING** — this is a first-stage (telecom-side) confirmation;
+  a second bdapps-side confirmation is still pending, appears async/backend-driven, not
+  triggerable via any API call we have. **Recommended action: call 09678232777 (bdapps
+  support, 9am-6pm) directly**, reference APP_139258 + INITIAL CHARGING PENDING + missing
+  second confirmation SMS, frame as hackathon time pressure.

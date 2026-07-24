@@ -13,17 +13,17 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useSession } from '@/state/session';
-import type { IntakeTraceEvent } from '@/api/types';
+import type { TraceEvent } from '@/api/types';
 
 /** Server rows are agent_tool_calls records; adapt loosely to chip props. */
-function toEvent(row: unknown, i: number): IntakeTraceEvent {
+function toEvent(row: unknown, i: number): TraceEvent {
   const r = row as Record<string, unknown>;
   return {
-    kind: (r.kind as IntakeTraceEvent['kind']) ?? 'tool',
+    kind: (r.kind as TraceEvent['kind']) ?? 'tool',
     toolName: String(r.toolName ?? r.tool_name ?? `step ${i + 1}`),
     parameters: (r.parameters as Record<string, unknown>) ?? {},
     rawResponse: r.rawResponse ?? r.raw_response,
-    status: (r.status as IntakeTraceEvent['status']) ?? 'success',
+    status: (r.status as TraceEvent['status']) ?? 'success',
     errorMessage: (r.errorMessage ?? r.error_message) as string | undefined,
     latencyMs: Number(r.latencyMs ?? 0),
   };
@@ -31,7 +31,7 @@ function toEvent(row: unknown, i: number): IntakeTraceEvent {
 
 export default function TraceScreen() {
   const { sessionId } = useSession();
-  const [events, setEvents] = useState<IntakeTraceEvent[]>([]);
+  const [events, setEvents] = useState<TraceEvent[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -59,11 +59,15 @@ export default function TraceScreen() {
         <ThemedText type="title" style={styles.heading}>
           Agent trace
         </ThemedText>
-        <ThemedText type="small" style={styles.heading}>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.heading}>
           Every tool call behind the advice — parameters and raw responses, straight from the
           server. {sessionId ? `Session ${sessionId.slice(0, 8)}…` : 'No session yet — say hello in Chat first.'}
         </ThemedText>
-        {error && <ThemedText style={styles.error}>⚠️ {error}</ThemedText>}
+        {error && (
+          <ThemedText type="small" themeColor="error" style={styles.heading}>
+            ⚠️ {error}
+          </ThemedText>
+        )}
         <FlatList
           data={events}
           keyExtractor={(_, i) => String(i)}
@@ -87,11 +91,6 @@ const styles = StyleSheet.create({
   heading: {
     paddingHorizontal: Spacing.three,
     paddingTop: Spacing.two,
-  },
-  error: {
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.two,
-    color: '#cc4444',
   },
   listContent: {
     padding: Spacing.three,

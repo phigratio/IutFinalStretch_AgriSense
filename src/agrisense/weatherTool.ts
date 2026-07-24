@@ -4,14 +4,53 @@
  */
 import { type WeatherForecast } from "./types.js";
 
+interface GeocodeResult {
+  name: string;
+  admin1?: string;
+  country?: string;
+  country_code?: string;
+  latitude: number;
+  longitude: number;
+}
+
 interface GeocodeResponse {
-  results?: {
-    name: string;
-    admin1?: string;
-    country?: string;
-    latitude: number;
-    longitude: number;
-  }[];
+  results?: GeocodeResult[];
+}
+
+/**
+ * Our farmers are in Bangladesh, so geocoding must prefer BD matches:
+ * a bare `count=1` lookup famously resolves "Bogura" to a village in Russia.
+ * Renamed districts also need their old names, which Open-Meteo still indexes.
+ */
+const BD_NAME_ALIASES: Record<string, string> = {
+  bogura: "Bogra",
+  chattogram: "Chittagong",
+  cumilla: "Comilla",
+  barishal: "Barisal",
+  jashore: "Jessore",
+};
+
+async function geocodeBangladeshFirst(locationText: string): Promise<GeocodeResult> {
+  const cleaned = locationText.trim();
+  const attempts = [cleaned];
+  const alias = BD_NAME_ALIASES[cleaned.toLowerCase()];
+  if (alias) attempts.push(alias);
+
+  let firstAnyMatch: GeocodeResult | undefined;
+  for (const name of attempts) {
+    const geocodeUrl = new URL("https://geocoding-api.open-meteo.com/v1/search");
+    geocodeUrl.searchParams.set("name", name);
+    geocodeUrl.searchParams.set("count", "10");
+    geocodeUrl.searchParams.set("language", "en");
+    geocodeUrl.searchParams.set("format", "json");
+    const geocode = await fetchJson<GeocodeResponse>(geocodeUrl);
+    const results = geocode.results ?? [];
+    firstAnyMatch ??= results[0];
+    const bdMatch = results.find((r) => r.country_code === "BD");
+    if (bdMatch) return bdMatch;
+  }
+  if (firstAnyMatch) return firstAnyMatch; // non-BD fallback: better than failing
+  throw new Error(`No geocoding result found for ${locationText}`);
 }
 
 interface ForecastResponse {
@@ -20,26 +59,22 @@ interface ForecastResponse {
     precipitation_sum: number[];
     temperature_2m_min: number[];
     temperature_2m_max: number[];
+    relative_humidity_2m_mean?: number[];
+    et0_fao_evapotranspiration?: number[];
+    soil_moisture_0_to_10cm_mean?: number[];
   };
 }
 
 export async function getWeatherForecast(locationText: string): Promise<WeatherForecast> {
-  const geocodeUrl = new URL("https://geocoding-api.open-meteo.com/v1/search");
-  geocodeUrl.searchParams.set("name", locationText);
-  geocodeUrl.searchParams.set("count", "1");
-  geocodeUrl.searchParams.set("language", "en");
-  geocodeUrl.searchParams.set("format", "json");
-
-  const geocode = await fetchJson<GeocodeResponse>(geocodeUrl);
-  const result = geocode.results?.[0];
-  if (!result) {
-    throw new Error(`No geocoding result found for ${locationText}`);
-  }
+  const result = await geocodeBangladeshFirst(locationText);
 
   const forecastUrl = new URL("https://api.open-meteo.com/v1/forecast");
   forecastUrl.searchParams.set("latitude", String(result.latitude));
   forecastUrl.searchParams.set("longitude", String(result.longitude));
-  forecastUrl.searchParams.set("daily", "temperature_2m_max,temperature_2m_min,precipitation_sum");
+  forecastUrl.searchParams.set(
+    "daily",
+    "temperature_2m_max,temperature_2m_min,precipitation_sum,relative_humidity_2m_mean,et0_fao_evapotranspiration,soil_moisture_0_to_10cm_mean",
+  );
   forecastUrl.searchParams.set("timezone", "Asia/Dhaka");
   forecastUrl.searchParams.set("forecast_days", "7");
 
@@ -59,8 +94,11 @@ export async function getWeatherForecast(locationText: string): Promise<WeatherF
       rainfallMm: Number(daily.precipitation_sum[index] ?? 0),
       temperatureMinC: Number(daily.temperature_2m_min[index] ?? 0),
       temperatureMaxC: Number(daily.temperature_2m_max[index] ?? 0),
+      humidityPct: toOptionalNumber(daily.relative_humidity_2m_mean?.[index]),
+      referenceEvapotranspirationMm: toOptionalNumber(daily.et0_fao_evapotranspiration?.[index]),
+      soilMoisture0To9cm: toOptionalNumber(daily.soil_moisture_0_to_10cm_mean?.[index]),
     })),
-    raw: { geocode, forecast },
+    raw: { geocode: result, forecast },
   };
 }
 
@@ -88,9 +126,15 @@ export function mockWeatherForecast(locationText: string): WeatherForecast {
         rainfallMm: [4.2, 0, 2.1, 8, 1.5, 0, 3][index]!,
         temperatureMinC: [25, 25.5, 26, 25.8, 26.2, 25.9, 26.1][index]!,
         temperatureMaxC: [32, 33, 32.5, 31.2, 32.8, 33.1, 32.7][index]!,
+        humidityPct: [82, 78, 80, 86, 79, 76, 81][index]!,
+        referenceEvapotranspirationMm: [3.4, 3.8, 3.5, 2.9, 3.6, 3.9, 3.4][index]!,
+        soilMoisture0To9cm: [0.31, 0.29, 0.3, 0.34, 0.31, 0.28, 0.3][index]!,
       };
     }),
     raw: { mock: true },
   };
 }
 
+function toOptionalNumber(value: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? Number(value) : undefined;
+}

@@ -4,8 +4,11 @@ import { useSidebar } from "../context/SidebarContext.js";
 import {
   CalendarIcon,
   BoxIcon,
+  CreditCardIcon,
   GridIcon,
   HorizontalDotsIcon,
+  ListIcon,
+  PhoneIcon,
   UserGroupIcon,
   UserIcon,
 } from "../icons/index.js";
@@ -18,14 +21,25 @@ interface NavItem {
 
 const mainNav: NavItem[] = [
   { name: "Dashboard", path: "/", icon: <GridIcon /> },
-  { name: "AgriSense", path: "/agrisense", icon: <BoxIcon /> },
+  { name: "AgriSense Full", path: "/agrisense", icon: <BoxIcon /> },
+  { name: "Agri Weather", path: "/agrisense?stage=weather", icon: <SearchSidebarIcon /> },
+  { name: "Agri Evidence", path: "/agrisense?stage=evidence", icon: <SearchSidebarIcon /> },
+  { name: "Crop Ranking", path: "/agrisense?stage=crop_ranking", icon: <BoxIcon /> },
+  { name: "Season Plan", path: "/agrisense?stage=season_plan", icon: <CalendarIcon /> },
+  { name: "Financial Math", path: "/agrisense?stage=financials", icon: <CreditCardIcon /> },
+  { name: "Marketplace Intel", path: "/marketplace", icon: <MarketplaceIcon /> },
+  { name: "Agent Trace", path: "/agrisense?stage=trace", icon: <ListIcon /> },
+  { name: "Agent Intake", path: "/agent-intake", icon: <ListIcon /> },
+  { name: "Temporal", path: "/temporal", icon: <CalendarIcon /> },
+  { name: "Payments", path: "/payments", icon: <CreditCardIcon /> },
+  { name: "BDApps", path: "/bdapps", icon: <PhoneIcon /> },
   { name: "Knowledge Base", path: "/knowledge-base", icon: <BoxIcon /> },
   { name: "Users", path: "/users", icon: <UserGroupIcon /> },
   { name: "Profile", path: "/profile", icon: <UserIcon /> },
 ];
 
 const otherNav: NavItem[] = [
-  { name: "Calendar", path: "/calendar", icon: <CalendarIcon /> },
+  { name: "Season Calendar", path: "/calendar", icon: <CalendarIcon /> },
 ];
 
 export default function AppSidebar() {
@@ -33,7 +47,8 @@ export default function AppSidebar() {
   const location = useLocation();
 
   const showText = isExpanded || isHovered || isMobileOpen;
-  const isActive = (path: string) => location.pathname === path;
+  const currentPath = `${location.pathname}${location.search}`;
+  const isActive = (path: string) => (path.includes("?") ? currentPath === path : location.pathname === path && !location.search);
 
   const renderItems = (items: NavItem[]) => (
     <ul className="flex flex-col gap-1">
@@ -108,5 +123,25 @@ export default function AppSidebar() {
         </div>
       </nav>
     </aside>
+  );
+}
+
+function SearchSidebarIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="7" />
+      <path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+}
+
+function MarketplaceIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 7h16l-1.5 13h-13L4 7Z" />
+      <path d="M8 7a4 4 0 0 1 8 0" />
+      <path d="M9 13h6" />
+      <path d="M12 10v6" />
+    </svg>
   );
 }

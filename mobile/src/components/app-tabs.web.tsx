@@ -30,8 +30,14 @@ export default function AppTabs() {
           <TabTrigger name="plan" href="/plan" asChild>
             <TabButton>Plan</TabButton>
           </TabTrigger>
+          <TabTrigger name="market" href="/market" asChild>
+            <TabButton>Market</TabButton>
+          </TabTrigger>
           <TabTrigger name="money" href="/money" asChild>
             <TabButton>Money</TabButton>
+          </TabTrigger>
+          <TabTrigger name="bdapps" href="/bdapps" asChild>
+            <TabButton>Bdapps</TabButton>
           </TabTrigger>
           <TabTrigger name="trace" href="/trace" asChild>
             <TabButton>Trace</TabButton>
@@ -48,7 +54,7 @@ export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps
       <ThemedView
         type={isFocused ? 'backgroundSelected' : 'backgroundElement'}
         style={styles.tabButtonView}>
-        <ThemedText type="small" themeColor={isFocused ? 'text' : 'textSecondary'}>
+        <ThemedText type="small" themeColor={isFocused ? 'brand' : 'textSecondary'}>
           {children}
         </ThemedText>
       </ThemedView>
