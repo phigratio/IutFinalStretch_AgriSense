@@ -186,6 +186,20 @@
   - Infra note during this: teammate added `multer` dep + KB migrations (kb_ingestion_jobs);
     ran `npm install` + `prisma generate` + `migrate deploy` to get backend booting.
 
+- 24Jul ~20:10 — Claude session (with Labib) — **Started BDApps feature integration, build
+  order = backend → web → mobile** (web has auth already, so it's the cheapest backend test
+  bed; mobile has none so BDApps OTP will become its login). Plan detail:
+  docs/plans/BDAPPS-INTEGRATION-PLAN.md §7 (P1-P7). **P1 shipped (58883ae):** channel
+  activation core. ⚠ **Schema change for Mujahid to note:** additive migration
+  `20260724140105_add_bdapps_channel` adds `bdappsSubscriberId/channelActivatedAt/premium/
+  premiumSince` to `FarmerProfile` (sorts after 090000 which creates the table — safe on
+  fresh migrate deploy). New `src/bdapps/channel.ts` = single source of truth for "can BDApps
+  reach this farmer?" (masked id persisted to profile + write-through to subscriberStore).
+  Wired the **canonical capture point**: `/bdapps/subscription` webhook → activateChannel +
+  premium. New `GET /api/channel/status`. Live-verified end-to-end. Next: P2 (proactive
+  alert → real SMS, hooks the existing Temporal weatherAlertSweep). Anyone pulling: run
+  `npx prisma generate && npx prisma migrate deploy`.
+
 ## 8. Session log (append-only: `HH:MM — <who> — <what changed>`)
 
 - 24Jul 11:00 — Claude session 1 (with A) — Read problem statement, bdapps cheatsheet/DGD/
