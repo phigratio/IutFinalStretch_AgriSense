@@ -14,6 +14,8 @@ export function createPestRiskRouter(service: PestRiskService = pestRiskService)
           daysAfterSowing: optionalNumber(req.body.daysAfterSowing),
           areaAcres: optionalNumber(req.body.areaAcres),
           locationText: req.body.locationText,
+          latitude: optionalNumber(req.body.latitude),
+          longitude: optionalNumber(req.body.longitude),
           farmerId: req.body.farmerId,
           farmId: req.body.farmId,
           sessionId: req.body.sessionId,

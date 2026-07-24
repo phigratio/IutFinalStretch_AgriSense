@@ -77,6 +77,8 @@ export interface IntakeRequest {
   channel?: string;
   preferredLanguage?: "en" | "bn" | "banglish";
   selectedCrop?: string;
+  latitude?: number;
+  longitude?: number;
   useMemory?: boolean;
   acceptedOutcomeIds?: string[];
   ignoredOutcomeIds?: string[];

@@ -87,6 +87,8 @@ export function assessPestRisk(input: {
   daysAfterSowing?: number;
   areaAcres?: number;
   locationText?: string;
+  latitude?: number;
+  longitude?: number;
   farmerId?: string;
   farmId?: string;
   sessionId?: string;

@@ -323,6 +323,8 @@ export function sendAgriSenseMessage(input: {
   bdappsMobile?: string;
   preferredLanguage?: "en" | "bn" | "banglish";
   selectedCrop?: string;
+  latitude?: number;
+  longitude?: number;
   userId?: string;
   tenantId?: string;
   useMemory?: boolean;

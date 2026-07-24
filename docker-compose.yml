@@ -23,6 +23,7 @@ services:
       FRONTEND_AUTH_SUCCESS_URL: ${FRONTEND_AUTH_SUCCESS_URL:-http://localhost:5173/}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_INTAKE_MODEL: ${OPENAI_INTAKE_MODEL:-gpt-4.1-mini}
+      OPENAI_STT_MODEL: ${OPENAI_STT_MODEL:-whisper-1}
       MEM0_API_URL: http://mem0-api:8000
       MEM0_API_KEY: ${MEM0_API_KEY:-}
       MEM0_PERSISTENCE_ENABLED: ${MEM0_PERSISTENCE_ENABLED:-true}
@@ -207,6 +208,7 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       DATABASE_URL: postgresql://${POSTGRES_USER:-iut_ict_fest}:${POSTGRES_PASSWORD:-iut_ict_fest}@postgres:5432/${POSTGRES_DB:-iut_ict_fest}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_STT_MODEL: ${OPENAI_STT_MODEL:-whisper-1}
       MEM0_API_URL: http://mem0-api:8000
       MEM0_API_KEY: ${MEM0_API_KEY:-}
       MEM0_PERSISTENCE_ENABLED: ${MEM0_PERSISTENCE_ENABLED:-true}

@@ -19,6 +19,7 @@ const tests = [
   ["agent intake complete turn", testAgentIntakeComplete],
   ["agrisense full plan workflow", testAgriSensePlan],
   ["agrisense trace and plan readback", testAgriSenseReadbacks],
+  ["voice transcription route wiring", testVoiceRouteWiring],
   ["agrisense scenario simulation", testAgriSenseScenarioSimulation],
   ["finance summary and ledger", testFinanceManagement],
   ["temporal schedules API", testTemporalSchedules],
@@ -115,6 +116,15 @@ async function testAgriSenseReadbacks() {
   const plan = await requestJson(`/api/agrisense/plans/${state.planId}`);
   assert(plan.id, "plan readback missing id");
   assert(plan.items?.length > 0, "plan items readback empty");
+}
+
+async function testVoiceRouteWiring() {
+  const result = await requestJson(
+    "/api/voice/transcribe",
+    { method: "POST", body: undefined },
+    { expectedStatus: 400 },
+  );
+  assertEqual(result.error, "audio file is required", "voice missing audio error");
 }
 
 async function testAgriSenseScenarioSimulation() {
