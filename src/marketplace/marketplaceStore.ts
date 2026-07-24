@@ -59,10 +59,11 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
   async listMarketPrices(crop: string, district?: string): Promise<MarketPricePoint[]> {
     const normalizedCrop = normalizeText(crop);
     const normalizedDistrict = district ? normalizeText(district) : undefined;
-    return marketPriceSeeds
+    const cropMatches = marketPriceSeeds
       .filter((price) => normalizeText(price.crop) === normalizedCrop)
-      .filter((price) => !normalizedDistrict || normalizeText(price.district) === normalizedDistrict || normalizeText(price.marketName).includes(normalizedDistrict))
       .sort((a, b) => a.observedAt.localeCompare(b.observedAt));
+    const districtMatches = cropMatches.filter((price) => !normalizedDistrict || normalizeText(price.district) === normalizedDistrict || normalizeText(price.marketName).includes(normalizedDistrict));
+    return districtMatches.length > 0 ? districtMatches : cropMatches;
   }
 }
 
@@ -235,6 +236,12 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
   }
 
   async listMarketPrices(crop: string, district?: string): Promise<MarketPricePoint[]> {
+    const rows = await this.queryMarketPrices(crop, district);
+    if (rows.length > 0 || !district) return rows;
+    return this.queryMarketPrices(crop);
+  }
+
+  private async queryMarketPrices(crop: string, district?: string): Promise<MarketPricePoint[]> {
     const rows = await this.prisma.$queryRaw<Array<MarketPricePoint>>`
       SELECT
         "crop",

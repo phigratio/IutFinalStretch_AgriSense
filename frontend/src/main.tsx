@@ -13,6 +13,7 @@ import Calendar from "./pages/Calendar.js";
 import AgriSense from "./pages/AgriSense.js";
 import AgentIntake from "./pages/AgentIntake.js";
 import Temporal from "./pages/Temporal.js";
+import Marketplace from "./pages/Marketplace.js";
 import Payments from "./pages/Payments.js";
 import Bdapps from "./pages/Bdapps.js";
 import SignIn from "./pages/SignIn.js";
@@ -41,6 +42,7 @@ createRoot(rootEl).render(
                   <Route path="/agrisense" element={<AgriSense />} />
                   <Route path="/agent-intake" element={<AgentIntake />} />
                   <Route path="/temporal" element={<Temporal />} />
+                  <Route path="/marketplace" element={<Marketplace />} />
                   <Route path="/payments" element={<Payments />} />
                   <Route path="/bdapps" element={<Bdapps />} />
                 </Route>

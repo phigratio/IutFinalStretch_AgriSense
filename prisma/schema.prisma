@@ -136,10 +136,93 @@ model FarmProfile {
   sessions          AgentSession[]
   weatherSnapshots  WeatherSnapshot[]
   plans             SeasonPlan[]
+  orders            MarketplaceOrder[]
 
   @@index([farmerId])
   @@index([locationText])
   @@map("farm_profiles")
+}
+
+model MarketplaceSupplier {
+  id           String                    @id @default(uuid()) @db.Uuid
+  name         String
+  district     String
+  latitude     Decimal?                  @db.Decimal(9, 6)
+  longitude    Decimal?                  @db.Decimal(9, 6)
+  rating       Decimal                   @default(0) @db.Decimal(3, 2)
+  deliveryDays Int                       @default(3) @map("delivery_days")
+  seeded       Boolean                   @default(true)
+  createdAt    DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  items        MarketplaceSupplierItem[]
+  orders       MarketplaceOrder[]
+
+  @@unique([name, district])
+  @@index([district])
+  @@index([rating])
+  @@map("marketplace_suppliers")
+}
+
+model MarketplaceSupplierItem {
+  id            String              @id @default(uuid()) @db.Uuid
+  supplierId    String              @map("supplier_id") @db.Uuid
+  supplier      MarketplaceSupplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  itemName      String              @map("item_name")
+  category      String
+  unit          String
+  priceBdt      Decimal             @map("price_bdt") @db.Decimal(12, 2)
+  stockQuantity Decimal             @map("stock_quantity") @db.Decimal(12, 2)
+  seeded        Boolean             @default(true)
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  orders        MarketplaceOrder[]
+
+  @@unique([supplierId, itemName, unit])
+  @@index([itemName])
+  @@index([category])
+  @@index([priceBdt])
+  @@map("marketplace_supplier_items")
+}
+
+model MarketPrice {
+  id                String   @id @default(uuid()) @db.Uuid
+  crop              String
+  marketName        String   @map("market_name")
+  district          String
+  unit              String
+  observedAt        DateTime @map("observed_at") @db.Date
+  wholesalePriceBdt Decimal  @map("wholesale_price_bdt") @db.Decimal(12, 2)
+  farmgatePriceBdt  Decimal  @map("farmgate_price_bdt") @db.Decimal(12, 2)
+  seeded            Boolean  @default(true)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([crop, marketName, observedAt])
+  @@index([crop])
+  @@index([district])
+  @@index([observedAt])
+  @@map("market_prices")
+}
+
+model MarketplaceOrder {
+  id             String                  @id @default(uuid()) @db.Uuid
+  farmId         String?                 @map("farm_id") @db.Uuid
+  farm           FarmProfile?            @relation(fields: [farmId], references: [id], onDelete: SetNull)
+  supplierId     String                  @map("supplier_id") @db.Uuid
+  supplier       MarketplaceSupplier     @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  supplierItemId String                  @map("supplier_item_id") @db.Uuid
+  supplierItem   MarketplaceSupplierItem @relation(fields: [supplierItemId], references: [id], onDelete: Restrict)
+  quantity       Decimal                 @db.Decimal(12, 2)
+  unit           String
+  unitPriceBdt   Decimal                 @map("unit_price_bdt") @db.Decimal(12, 2)
+  totalPriceBdt  Decimal                 @map("total_price_bdt") @db.Decimal(12, 2)
+  status         String                  @default("quoted")
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([farmId])
+  @@index([supplierId])
+  @@index([status])
+  @@map("marketplace_orders")
 }
 
 model AgentSession {

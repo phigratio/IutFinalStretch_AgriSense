@@ -27,6 +27,7 @@ const mainNav: NavItem[] = [
   { name: "Crop Ranking", path: "/agrisense?stage=crop_ranking", icon: <BoxIcon /> },
   { name: "Season Plan", path: "/agrisense?stage=season_plan", icon: <CalendarIcon /> },
   { name: "Financial Math", path: "/agrisense?stage=financials", icon: <CreditCardIcon /> },
+  { name: "Marketplace Intel", path: "/marketplace", icon: <MarketplaceIcon /> },
   { name: "Agent Trace", path: "/agrisense?stage=trace", icon: <ListIcon /> },
   { name: "Agent Intake", path: "/agent-intake", icon: <ListIcon /> },
   { name: "Temporal", path: "/temporal", icon: <CalendarIcon /> },
@@ -129,6 +130,17 @@ function SearchSidebarIcon() {
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="11" cy="11" r="7" />
       <path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+}
+
+function MarketplaceIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 7h16l-1.5 13h-13L4 7Z" />
+      <path d="M8 7a4 4 0 0 1 8 0" />
+      <path d="M9 13h6" />
+      <path d="M12 10v6" />
     </svg>
   );
 }
