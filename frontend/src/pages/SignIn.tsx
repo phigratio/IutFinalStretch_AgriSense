@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import PageMeta from "../components/common/PageMeta.js";
 import GridShape from "../components/common/GridShape.js";
+import LanguageToggle from "../components/common/LanguageToggle.js";
 import { useAuth } from "../context/AuthContext.js";
 import { googleLoginUrl } from "../api/auth.js";
 
@@ -48,6 +49,9 @@ export default function SignIn() {
     <>
       <PageMeta title="Sign In · ICT Fest Admin" description="Sign in to the admin panel" />
       <div className="grid min-h-screen lg:grid-cols-2">
+        <div className="absolute right-4 top-4 z-20">
+          <LanguageToggle />
+        </div>
         <div className="flex items-center justify-center px-4 py-12">
           <div className="w-full max-w-md">
             <h1 className="mb-2 text-2xl font-bold text-gray-800 dark:text-white/90">

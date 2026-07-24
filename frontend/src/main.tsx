@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext.js";
 import { SidebarProvider } from "./context/SidebarContext.js";
 import { AuthProvider } from "./context/AuthContext.js";
+import { LanguageProvider } from "./context/LanguageContext.js";
 import ProtectedRoute from "./components/common/ProtectedRoute.js";
 import AppLayout from "./layout/AppLayout.js";
 import Dashboard from "./pages/Dashboard.js";
@@ -39,9 +40,10 @@ createRoot(rootEl).render(
   <StrictMode>
     <ThemeProvider>
       <BrowserRouter>
-        <AuthProvider>
-          <SidebarProvider>
-            <Routes>
+        <LanguageProvider>
+          <AuthProvider>
+            <SidebarProvider>
+              <Routes>
               {/* Everything inside the panel requires a valid session. */}
               <Route element={<ProtectedRoute />}>
                 <Route index path="/" element={<DashboardLanding />} />
@@ -81,9 +83,10 @@ createRoot(rootEl).render(
               </Route>
               <Route path="/signin" element={<SignIn />} />
               <Route path="*" element={<NotFound />} />
-            </Routes>
-          </SidebarProvider>
-        </AuthProvider>
+              </Routes>
+            </SidebarProvider>
+          </AuthProvider>
+        </LanguageProvider>
       </BrowserRouter>
     </ThemeProvider>
   </StrictMode>,
