@@ -95,7 +95,7 @@ const CROPS: CropBaseline[] = [
 export function rankCrops(profile: IntakeProfile, weather: WeatherForecast): CropRecommendation[] {
   const area = profile.sizeAcres ?? 1;
   const budget = profile.budgetBdt ?? 0;
-  const season = profile.targetSeason?.toLowerCase() ?? "";
+  const season = normalizePlanningSeason(profile.targetSeason);
   const soil = profile.soilType?.toLowerCase() ?? "";
   const meanTemp = average(weather.daily.map((day) => (day.temperatureMaxC + day.temperatureMinC) / 2));
   const rain7d = weather.daily.reduce((sum, day) => sum + day.rainfallMm, 0);
@@ -232,7 +232,14 @@ export function buildSeasonPlan(profile: IntakeProfile, weather: WeatherForecast
 }
 
 function computeWaterFit(waterNeed: "low" | "medium" | "high", waterAvailability: string | undefined, rain7d: number): number {
-  if (waterAvailability === "tubewell" || waterAvailability === "canal" || waterAvailability === "mixed") return 1;
+  if (
+    waterAvailability === "tubewell" ||
+    waterAvailability === "canal" ||
+    waterAvailability === "river" ||
+    waterAvailability === "mixed"
+  ) {
+    return 1;
+  }
   if (waterAvailability === "pond") return waterNeed === "high" ? 0.7 : 0.9;
   if (waterAvailability === "rainfed") {
     if (waterNeed === "low") return 0.9;
@@ -240,6 +247,12 @@ function computeWaterFit(waterNeed: "low" | "medium" | "high", waterAvailability
     return rain7d >= 35 ? 0.75 : 0.35;
   }
   return 0.45;
+}
+
+function normalizePlanningSeason(season: string | undefined): string {
+  const normalized = season?.toLowerCase().trim() ?? "";
+  if (normalized === "monsoon" || normalized === "borsha") return "aman";
+  return normalized;
 }
 
 function computeTempFit(meanTemp: number, min: number, max: number): number {

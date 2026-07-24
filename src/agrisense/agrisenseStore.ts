@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { config } from "../config.js";
-import { PrismaClient, type Prisma } from "../generated/prisma/client.js";
+import { PrismaClient } from "../generated/prisma/client.js";
 import { type IntakeTraceEvent } from "../agent/intakeSchema.js";
 import { type SeasonPlanResult, type WeatherForecast } from "./types.js";
 
@@ -70,8 +70,8 @@ export class PostgresAgriSenseStore implements AgriSenseStore {
         ${sessionId}::uuid,
         ${event.toolName},
         ${event.kind},
-        ${event.parameters as Prisma.InputJsonValue},
-        ${event.rawResponse === undefined ? null : event.rawResponse as Prisma.InputJsonValue},
+        ${toJsonb(event.parameters)}::jsonb,
+        ${event.rawResponse === undefined ? null : toJsonb(event.rawResponse)}::jsonb,
         ${event.status},
         ${event.errorMessage ?? null},
         CURRENT_TIMESTAMP
@@ -99,7 +99,7 @@ export class PostgresAgriSenseStore implements AgriSenseStore {
           ${day.rainfallMm},
           ${day.temperatureMinC},
           ${day.temperatureMaxC},
-          ${weather.raw as Prisma.InputJsonValue}
+          ${toJsonb(weather.raw)}::jsonb
         )
       `;
     }
@@ -202,3 +202,6 @@ export function getDefaultAgriSenseStore(): AgriSenseStore {
   return defaultAgriSenseStore;
 }
 
+function toJsonb(value: unknown): string {
+  return JSON.stringify(value ?? null);
+}

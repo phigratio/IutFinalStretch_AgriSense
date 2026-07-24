@@ -1,4 +1,5 @@
 import { config } from "../config.js";
+import { buildMultilingualQuery, type SupportedLanguage } from "../language/localization.js";
 
 export interface Mem0Message {
   role: "user" | "assistant" | "system";
@@ -11,6 +12,7 @@ export interface Mem0AddInput {
   agentId?: string;
   runId?: string;
   metadata?: Record<string, unknown>;
+  infer?: boolean;
 }
 
 export interface Mem0SearchInput {
@@ -20,6 +22,7 @@ export interface Mem0SearchInput {
   runId?: string;
   limit?: number;
   filters?: Record<string, unknown>;
+  language?: SupportedLanguage;
 }
 
 export class Mem0Client {
@@ -35,17 +38,22 @@ export class Mem0Client {
       agent_id: input.agentId,
       run_id: input.runId,
       metadata: input.metadata,
+      infer: input.infer ?? false,
     });
   }
 
   async search(input: Mem0SearchInput): Promise<unknown> {
+    const query = buildMultilingualQuery(input.query);
     return this.request("/memories/search", {
-      query: input.query,
+      query,
       user_id: input.userId,
       agent_id: input.agentId,
       run_id: input.runId,
       limit: input.limit ?? 10,
-      filters: input.filters,
+      filters: {
+        ...(input.filters ?? {}),
+        ...(input.language ? { language: input.language } : {}),
+      },
     });
   }
 
@@ -60,7 +68,7 @@ export class Mem0Client {
     });
 
     const text = await response.text();
-    const payload = text ? JSON.parse(text) as unknown : undefined;
+    const payload = parseResponsePayload(text);
 
     if (!response.ok) {
       throw new Error(`Mem0 request failed with ${response.status}: ${text}`);
@@ -71,3 +79,12 @@ export class Mem0Client {
 }
 
 export const mem0Client = new Mem0Client();
+
+function parseResponsePayload(text: string): unknown {
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return { raw: text };
+  }
+}

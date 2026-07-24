@@ -19,7 +19,7 @@ export interface IntakeProfile {
   sessionId?: string;
   farmerName?: string;
   bdappsMobile?: string;
-  preferredLanguage?: string;
+  preferredLanguage?: "en" | "bn" | "banglish";
   locationText?: string;
   latitude?: number;
   longitude?: number;
@@ -70,7 +70,9 @@ export interface IntakeRequest {
   sessionId?: string;
   farmerId?: string;
   farmId?: string;
+  userId?: string;
+  tenantId?: string;
   bdappsMobile?: string;
   channel?: string;
+  preferredLanguage?: "en" | "bn" | "banglish";
 }
-

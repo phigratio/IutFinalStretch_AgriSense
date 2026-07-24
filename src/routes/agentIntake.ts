@@ -14,10 +14,13 @@ export function createAgentIntakeRouter(service: IntakeService = defaultIntakeSe
       const result = await service.handleTurn({
         message: req.body.message,
         sessionId: req.body.sessionId,
+        userId: req.body.userId,
+        tenantId: req.body.tenantId,
         farmerId: req.body.farmerId,
         farmId: req.body.farmId,
         bdappsMobile: req.body.bdappsMobile,
         channel: req.body.channel ?? "web",
+        preferredLanguage: req.body.preferredLanguage,
       });
       res.json(result);
     } catch (error) {
@@ -29,4 +32,3 @@ export function createAgentIntakeRouter(service: IntakeService = defaultIntakeSe
 }
 
 export const agentIntakeRouter = createAgentIntakeRouter();
-

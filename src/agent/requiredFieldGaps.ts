@@ -3,6 +3,7 @@
  * model so the agent never re-asks fields that are already known.
  */
 import { type IntakeField, type IntakeProfile } from "./intakeSchema.js";
+import { normalizeLanguage } from "../language/localization.js";
 
 export function requiredFieldGaps(profile: IntakeProfile): IntakeField[] {
   const gaps: IntakeField[] = [];
@@ -34,11 +35,11 @@ export function normalizeProfile(profile: IntakeProfile): IntakeProfile {
     ...profile,
     locationText: normalizeText(profile.locationText),
     soilType: normalizeText(profile.soilType)?.toLowerCase(),
-    waterAvailability: normalizeText(profile.waterAvailability)?.toLowerCase(),
+    waterAvailability: normalizeWaterAvailability(profile.waterAvailability),
     targetSeason: normalizeText(profile.targetSeason),
     currentCrop: normalizeText(profile.currentCrop)?.toLowerCase(),
     farmerName: normalizeText(profile.farmerName),
-    preferredLanguage: normalizeText(profile.preferredLanguage),
+    preferredLanguage: normalizeLanguage(profile.preferredLanguage),
     bdappsMobile: normalizeText(profile.bdappsMobile),
     sizeAcres: normalizePositiveNumber(profile.sizeAcres),
     budgetBdt: normalizePositiveNumber(profile.budgetBdt),
@@ -58,6 +59,23 @@ function hasPositiveNumber(value: number | undefined): boolean {
 function normalizeText(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function normalizeWaterAvailability(value: string | undefined): string | undefined {
+  const normalized = normalizeText(value)?.toLowerCase();
+  if (!normalized) return undefined;
+  const hasRain = normalized.includes("rain") || normalized.includes("rainfed");
+  const hasRiver = normalized.includes("river");
+  const hasTubewell = normalized.includes("tubewell") || normalized.includes("tube well");
+  const hasCanal = normalized.includes("canal");
+  const hasPond = normalized.includes("pond");
+  if ((hasRain && (hasRiver || hasTubewell || hasCanal || hasPond)) || normalized.includes("mixed")) return "mixed";
+  if (hasRain) return "rainfed";
+  if (hasRiver) return "river";
+  if (hasTubewell) return "tubewell";
+  if (hasCanal) return "canal";
+  if (hasPond) return "pond";
+  return normalized;
 }
 
 function normalizePositiveNumber(value: number | undefined): number | undefined {

@@ -11,6 +11,7 @@ export const config = {
   frontendAuthSuccessUrl: process.env.FRONTEND_AUTH_SUCCESS_URL,
   mem0ApiUrl: process.env.MEM0_API_URL ?? "http://mem0-api:8000",
   mem0ApiKey: process.env.MEM0_API_KEY,
+  mem0PersistenceEnabled: process.env.MEM0_PERSISTENCE_ENABLED === "true",
   ragEmbeddingDimensions: Number(process.env.RAG_EMBEDDING_DIMENSIONS) || 1536,
   openaiApiKey: process.env.OPENAI_API_KEY,
   openaiIntakeModel: process.env.OPENAI_INTAKE_MODEL ?? "gpt-4.1-mini",

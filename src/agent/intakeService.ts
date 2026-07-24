@@ -3,14 +3,17 @@
  * compute deterministic gaps, and produce a targeted farmer-facing reply.
  */
 import { HeuristicIntakeExtractor, OpenAiIntakeExtractor, type IntakeExtractor } from "./extractIntakeProfile.js";
+import { getDefaultConversationMemory, type ConversationMemory } from "./conversationMemory.js";
 import { getDefaultIntakeStore, type IntakeStore } from "./intakeStore.js";
 import { type IntakeRequest, type IntakeTraceEvent, type IntakeTurnResult } from "./intakeSchema.js";
+import { detectInputLanguage, localizeCompleteReply, localizeFollowUpReply, normalizeLanguage } from "../language/localization.js";
 import { mergeProfilePatch, requiredFieldGaps } from "./requiredFieldGaps.js";
 
 export class IntakeService {
   constructor(
     private readonly store: IntakeStore = getDefaultIntakeStore(),
     private readonly extractor: IntakeExtractor = new OpenAiIntakeExtractor(),
+    private readonly memory: ConversationMemory = getDefaultConversationMemory(),
   ) {}
 
   async handleTurn(request: IntakeRequest): Promise<IntakeTurnResult> {
@@ -25,13 +28,27 @@ export class IntakeService {
       farmId: request.farmId,
       bdappsMobile: request.bdappsMobile,
       channel: request.channel,
+      preferredLanguage: request.preferredLanguage,
     });
+    const detectedLanguage = detectInputLanguage(
+      request.message,
+      request.preferredLanguage ?? profile.preferredLanguage,
+    );
 
     await this.trace(profile.sessionId!, trace, {
       kind: "tool",
       toolName: "memory.search",
       parameters: { sessionId: profile.sessionId, farmerId: profile.farmerId, farmId: profile.farmId },
       rawResponse: { profile },
+      status: "success",
+      latencyMs: 0,
+    });
+
+    await this.trace(profile.sessionId!, trace, {
+      kind: "tool",
+      toolName: "language.detect",
+      parameters: { message: request.message, requestedLanguage: request.preferredLanguage, storedLanguage: profile.preferredLanguage },
+      rawResponse: { detectedLanguage },
       status: "success",
       latencyMs: 0,
     });
@@ -61,6 +78,8 @@ export class IntakeService {
         latencyMs: Date.now() - started,
       });
     }
+
+    patch.preferredLanguage = normalizeLanguage(patch.preferredLanguage) ?? detectedLanguage;
 
     const merged = mergeProfilePatch(profile, patch);
     await this.trace(profile.sessionId!, trace, {
@@ -94,6 +113,56 @@ export class IntakeService {
       latencyMs: 0,
     });
 
+    const reply = intakeComplete
+      ? localizeCompleteReply(profile, profile.preferredLanguage ?? detectedLanguage)
+      : localizeFollowUpReply(profile, missingFields, profile.preferredLanguage ?? detectedLanguage);
+
+    const memoryStarted = Date.now();
+    try {
+      const memoryResult = await this.memory.rememberIntakeTurn({
+        message: request.message,
+        reply,
+        profile,
+        profilePatch: patch,
+        missingFields,
+        intakeComplete,
+        language: profile.preferredLanguage ?? detectedLanguage,
+        userId: request.userId,
+        tenantId: request.tenantId,
+        channel: request.channel,
+      });
+      await this.trace(profile.sessionId!, trace, {
+        kind: "tool",
+        toolName: "mem0.memory.add",
+        parameters: {
+          userId: request.userId,
+          tenantId: request.tenantId,
+          farmerId: profile.farmerId,
+          sessionId: profile.sessionId,
+          language: profile.preferredLanguage ?? detectedLanguage,
+        },
+        rawResponse: memoryResult,
+        status: "success",
+        latencyMs: Date.now() - memoryStarted,
+      });
+    } catch (error) {
+      await this.trace(profile.sessionId!, trace, {
+        kind: "error",
+        toolName: "mem0.memory.add",
+        parameters: {
+          userId: request.userId,
+          tenantId: request.tenantId,
+          farmerId: profile.farmerId,
+          sessionId: profile.sessionId,
+          language: profile.preferredLanguage ?? detectedLanguage,
+        },
+        rawResponse: { persisted: false },
+        status: "error",
+        errorMessage: (error as Error).message,
+        latencyMs: Date.now() - memoryStarted,
+      });
+    }
+
     return {
       sessionId: profile.sessionId!,
       farmerId: profile.farmerId!,
@@ -101,7 +170,7 @@ export class IntakeService {
       profile,
       missingFields,
       intakeComplete,
-      reply: intakeComplete ? buildCompleteReply(profile) : buildFollowUpReply(profile, missingFields),
+      reply,
       trace,
       nextStep: intakeComplete
         ? {
@@ -118,50 +187,4 @@ export class IntakeService {
   }
 }
 
-function buildFollowUpReply(profile: { locationText?: string; sizeAcres?: number; soilType?: string; waterAvailability?: string; budgetBdt?: number; targetSeason?: string }, missingFields: string[]): string {
-  const known = [
-    profile.locationText ? `location ${profile.locationText}` : undefined,
-    profile.sizeAcres ? `${profile.sizeAcres} acre farm size` : undefined,
-    profile.soilType ? `${profile.soilType} soil` : undefined,
-    profile.waterAvailability ? `${profile.waterAvailability} water` : undefined,
-    profile.budgetBdt ? `৳${profile.budgetBdt} budget` : undefined,
-    profile.targetSeason ? `${profile.targetSeason} season` : undefined,
-  ].filter(Boolean);
-
-  const questions = missingFields.map(labelGap).join(", ");
-  if (known.length === 0) {
-    return `I can help plan the season. Please tell me ${questions}.`;
-  }
-
-  return `Got it: ${known.join(", ")}. Please tell me ${questions}.`;
-}
-
-function buildCompleteReply(profile: { locationText?: string; sizeAcres?: number; soilType?: string; waterAvailability?: string; budgetBdt?: number; targetSeason?: string }): string {
-  return [
-    "Intake complete.",
-    `I have ${profile.locationText}, ${profile.sizeAcres} acres, ${profile.soilType} soil, ${profile.waterAvailability} water, ৳${profile.budgetBdt} budget, and ${profile.targetSeason} season.`,
-    "Next I will geocode the location, fetch live weather, search the crop knowledge base, and rank crops.",
-  ].join(" ");
-}
-
-function labelGap(gap: string): string {
-  switch (gap) {
-    case "location":
-      return "where the land is";
-    case "farmSize":
-      return "how large the farm is";
-    case "soilType":
-      return "the soil type";
-    case "waterAvailability":
-      return "the water source or availability";
-    case "budget":
-      return "your budget in BDT";
-    case "targetSeason":
-      return "the target season";
-    default:
-      return gap;
-  }
-}
-
 export const intakeService = new IntakeService();
-
