@@ -9,7 +9,10 @@ import multer from "multer";
 import path from "node:path";
 import { mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { ingestionDb } from "../kb/ingestionJobs.js";
+import { chunkText } from "../kb/ingest/chunkDoc.js";
 
 export const tenantsRouter = Router();
 const user = (req: { header(name: string): string | undefined }) => req.header("x-user-id");
@@ -24,6 +27,64 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => cb(null, allowedExtensions.has(path.extname(file.originalname).toLowerCase())),
 });
+
+const privateIpv4 = (address: string) => {
+  const octets = address.split(".").map(Number);
+  return octets[0] === 10 || octets[0] === 127 || octets[0] === 0 ||
+    (octets[0] === 169 && octets[1] === 254) ||
+    (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+    (octets[0] === 192 && octets[1] === 168);
+};
+
+const privateIp = (address: string) => {
+  if (isIP(address) === 4) return privateIpv4(address);
+  const normalized = address.toLowerCase();
+  return normalized === "::1" || normalized === "::" || normalized.startsWith("fc") ||
+    normalized.startsWith("fd") || normalized.startsWith("fe8") || normalized.startsWith("fe9") ||
+    normalized.startsWith("fea") || normalized.startsWith("feb");
+};
+
+async function assertPublicUrl(url: URL): Promise<void> {
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error("Only public http/https links are allowed");
+  if (url.hostname === "localhost" || url.hostname.endsWith(".local")) throw new Error("Local links are not allowed");
+  const addresses = await lookup(url.hostname, { all: true });
+  if (!addresses.length || addresses.some(({ address }) => privateIp(address))) throw new Error("Private network links are not allowed");
+}
+
+function readableText(content: string, contentType: string): { title?: string; text: string } {
+  const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(content)?.[1]
+    ?.replace(/\s+/g, " ").trim();
+  const withoutNoise = contentType.includes("html")
+    ? content.replace(/<(script|style|noscript|svg)[^>]*>[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " ")
+    : content;
+  const text = withoutNoise
+    .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">")
+    .replace(/&#39;/gi, "'").replace(/&quot;/gi, '"').replace(/\s+/g, " ").trim();
+  return { title, text };
+}
+
+export async function fetchKnowledgeLink(rawUrl: string): Promise<{ url: string; title?: string; text: string }> {
+  let current = new URL(rawUrl);
+  for (let redirects = 0; redirects <= 3; redirects++) {
+    await assertPublicUrl(current);
+    const response = await fetch(current, { redirect: "manual", signal: AbortSignal.timeout(12_000), headers: { "user-agent": "AgriSense-KB/1.0" } });
+    if (response.status >= 300 && response.status < 400 && response.headers.get("location")) {
+      current = new URL(response.headers.get("location")!, current);
+      continue;
+    }
+    if (!response.ok) throw new Error(`The link returned HTTP ${response.status}`);
+    const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+    if (!contentType.includes("text/html") && !contentType.includes("text/plain")) throw new Error("The link must open a readable web page");
+    const contentLength = Number(response.headers.get("content-length") ?? 0);
+    if (contentLength > 2_000_000) throw new Error("The linked page is too large");
+    const body = await response.text();
+    if (body.length > 2_000_000) throw new Error("The linked page is too large");
+    const parsed = readableText(body, contentType);
+    if (parsed.text.length < 80) throw new Error("No useful readable text was found at this link");
+    return { url: current.toString(), ...parsed };
+  }
+  throw new Error("The link redirects too many times");
+}
 
 tenantsRouter.post("/", async (req, res, next) => {
   try {
@@ -146,6 +207,37 @@ tenantsRouter.post("/:tid/kb/uploads", async (req, res, next) => {
     } });
     res.status(202).json(job);
   } catch (err) { if (err instanceof TenantAccessError) res.status(403).json({ error: err.message }); else next(err); }
+});
+
+tenantsRouter.post("/:tid/kb/links", async (req, res, next) => {
+  try {
+    const userId = user(req);
+    if (!userId) { res.status(401).json({ error: "x-user-id header required" }); return; }
+    await assertTenantWriteAccess(getKbRuntime().tenantStore, userId, req.params.tid);
+    const rawUrl = typeof req.body?.url === "string" ? req.body.url.trim() : "";
+    if (!rawUrl) { res.status(400).json({ error: "A web link is required" }); return; }
+    let page: Awaited<ReturnType<typeof fetchKnowledgeLink>>;
+    try {
+      page = await fetchKnowledgeLink(rawUrl);
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "The link could not be read" });
+      return;
+    }
+    const title = typeof req.body?.title === "string" && req.body.title.trim() ? req.body.title.trim() : page.title || new URL(page.url).hostname;
+    const docKey = `link:${randomUUID()}`;
+    const chunks = chunkText(page.text);
+    for (const chunk of chunks) {
+      await addChunk(chunk.text, {
+        scope: "tenant", tenantId: req.params.tid, docKey, title, docType: "web_link",
+        source: page.url, sourceUrl: page.url, page: `section ${chunk.ordinal + 1}`,
+        dataOrigin: "linked", verificationStatus: "unverified", retrievedAt: new Date().toISOString(),
+      });
+    }
+    res.status(201).json({ ok: true, docKey, title, chunks: chunks.length });
+  } catch (err) {
+    if (err instanceof TenantAccessError) { res.status(403).json({ error: err.message }); return; }
+    next(err);
+  }
 });
 
 tenantsRouter.get("/:tid/kb/jobs", async (req, res, next) => {

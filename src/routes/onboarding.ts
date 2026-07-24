@@ -81,6 +81,20 @@ onboardingRouter.get("/onboarding/location-defaults", authenticate, async (req, 
   }
 });
 
+/** Approved tenant's own namespace and district, used by the tenant dashboard. */
+onboardingRouter.get("/tenant/context", authenticate, requireRole("tenant"), async (req, res, next) => {
+  try {
+    const tenant = await getKbRuntime().tenantStore.getTenantForUser(uid(req));
+    if (!tenant) {
+      res.status(404).json({ error: "No approved tenant membership was found" });
+      return;
+    }
+    res.json(tenant);
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** Choice A — request to become a tenant (admin decides). */
 onboardingRouter.post("/onboarding/tenant-request", authenticate, async (req, res, next) => {
   try {
@@ -167,7 +181,10 @@ onboardingRouter.post("/admin/tenant-requests/:id/approve", authenticate, requir
     const { tenantStore } = getKbRuntime();
     const slug = `${slugify(reqRec.orgName)}-${reqRec.id.slice(0, 4)}`;
     await tenantStore.createTenant({ slug, name: reqRec.orgName, kind: "district" });
-    await tenantStore.addJurisdiction(slug, reqRec.district, reqRec.upazila);
+    // Every approved tenant owns its full district KB namespace. Keep the
+    // upazila as an additional, more-specific jurisdiction when supplied.
+    await tenantStore.addJurisdiction(slug, reqRec.district);
+    if (reqRec.upazila) await tenantStore.addJurisdiction(slug, reqRec.district, reqRec.upazila);
     await tenantStore.addMember(slug, reqRec.userId, "tenant_admin");
     await rt().auth.setUserRole(reqRec.userId, "tenant");
     const decided = await rt().onboarding.decideTenantRequest(reqRec.id, "approved", uid(req));

@@ -22,6 +22,11 @@ export interface JurisdictionRecord {
   upazila?: string;
 }
 
+export interface TenantContextRecord extends TenantRecord {
+  role: TenantRole;
+  jurisdictions: Array<Pick<JurisdictionRecord, "district" | "upazila">>;
+}
+
 export interface CreateTenantInput {
   slug: string;
   name: string;
@@ -38,6 +43,7 @@ export interface TenantStore {
   resolveTenantIdForDistrict(district: string, upazila?: string): Promise<string>;
   addMember(tenantId: string, userId: string, role: TenantRole): Promise<void>;
   getMemberRole(tenantId: string, userId: string): Promise<TenantRole | undefined>;
+  getTenantForUser(userId: string): Promise<TenantContextRecord | undefined>;
 }
 
 export class TenantAccessError extends Error {
@@ -142,6 +148,23 @@ export class InMemoryTenantStore implements TenantStore {
 
   async getMemberRole(tenantId: string, userId: string): Promise<TenantRole | undefined> {
     return this.members.get(`${tenantId}:${userId}`);
+  }
+
+  async getTenantForUser(userId: string): Promise<TenantContextRecord | undefined> {
+    for (const [key, role] of this.members) {
+      const [tenantId, memberId] = key.split(":");
+      if (memberId !== userId) continue;
+      const tenant = this.tenants.get(tenantId);
+      if (!tenant) continue;
+      return {
+        ...tenant,
+        role,
+        jurisdictions: this.jurisdictions
+          .filter((item) => item.tenantId === tenantId)
+          .map(({ district, upazila }) => ({ district, upazila })),
+      };
+    }
+    return undefined;
   }
 
   reset(): void {

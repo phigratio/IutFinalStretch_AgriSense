@@ -50,6 +50,37 @@ export interface KbIngestionJob {
   createdAt: string;
 }
 
+export interface TenantContext {
+  id: string;
+  slug: string;
+  name: string;
+  kind: string;
+  role: "tenant_admin" | "hub_admin";
+  jurisdictions: Array<{ district: string; upazila?: string }>;
+}
+
+export function getTenantContext() {
+  return apiFetch<TenantContext>("/api/tenant/context");
+}
+
+export function uploadTenantKbFile(tenantId: string, userId: string, form: FormData) {
+  return apiFetch<KbIngestionJob>(`/api/tenants/${encodeURIComponent(tenantId)}/kb/uploads`, {
+    method: "POST", body: form, headers: tenantHeaders(userId),
+  });
+}
+
+export function addTenantKbLink(tenantId: string, userId: string, body: { url: string; title?: string }) {
+  return apiFetch<{ ok: true; docKey: string; title: string; chunks: number }>(`/api/tenants/${encodeURIComponent(tenantId)}/kb/links`, {
+    method: "POST", body, headers: tenantHeaders(userId),
+  });
+}
+
+export function listTenantKbJobs(tenantId: string, userId: string) {
+  return apiFetch<KbIngestionJob[]>(`/api/tenants/${encodeURIComponent(tenantId)}/kb/jobs`, {
+    headers: tenantHeaders(userId),
+  });
+}
+
 export function uploadKbFiles(form: FormData) {
   return apiFetch<{ jobs: KbIngestionJob[] }>(`/api/hub/kb/uploads`, {
     method: "POST", body: form,
