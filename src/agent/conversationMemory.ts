@@ -45,6 +45,7 @@ export class Mem0ConversationMemory implements ConversationMemory {
         { role: "user", content: input.message },
         { role: "assistant", content: input.reply },
       ],
+      infer: false,
       metadata: {
         memoryUserId,
         tenantId: input.tenantId,

@@ -12,6 +12,7 @@ export interface Mem0AddInput {
   agentId?: string;
   runId?: string;
   metadata?: Record<string, unknown>;
+  infer?: boolean;
 }
 
 export interface Mem0SearchInput {
@@ -37,6 +38,7 @@ export class Mem0Client {
       agent_id: input.agentId,
       run_id: input.runId,
       metadata: input.metadata,
+      infer: input.infer ?? false,
     });
   }
 
@@ -66,7 +68,7 @@ export class Mem0Client {
     });
 
     const text = await response.text();
-    const payload = text ? JSON.parse(text) as unknown : undefined;
+    const payload = parseResponsePayload(text);
 
     if (!response.ok) {
       throw new Error(`Mem0 request failed with ${response.status}: ${text}`);
@@ -77,3 +79,12 @@ export class Mem0Client {
 }
 
 export const mem0Client = new Mem0Client();
+
+function parseResponsePayload(text: string): unknown {
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return { raw: text };
+  }
+}
