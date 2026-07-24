@@ -2,6 +2,8 @@
  * Chat tab — the primary surface (Tier-0): farmer talks, agent gathers the
  * profile, fetches weather, ranks crops, and plans the season. Each agent
  * bubble carries inline trace chips proving which tools produced its numbers.
+ * Styling follows the team's TailAdmin tokens: brand bubbles for the farmer,
+ * bordered white cards for the agent, brand-tinted chips.
  * State lives in state/session.tsx and is shared with Plan/Money/Trace tabs.
  */
 import { useRef, useState } from 'react';
@@ -20,6 +22,7 @@ import { TraceChipRow } from '@/components/trace-chips';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { useSession, type ChatBubble } from '@/state/session';
 
 const FIELD_HINTS: Record<string, string> = {
@@ -33,6 +36,7 @@ const FIELD_HINTS: Record<string, string> = {
 
 function ProfileStrip() {
   const { profile } = useSession();
+  const theme = useTheme();
   if (!profile) return null;
   const bits = [
     profile.locationText,
@@ -44,20 +48,43 @@ function ProfileStrip() {
   ].filter(Boolean);
   if (bits.length === 0) return null;
   return (
-    <ThemedView type="backgroundElement" style={styles.profileStrip}>
-      <ThemedText type="small">🧑‍🌾 {bits.join(' · ')}</ThemedText>
+    <ThemedView
+      type="backgroundElement"
+      style={[styles.profileStrip, { borderColor: theme.border }]}>
+      <ThemedText type="small" themeColor="textSecondary">
+        🧑‍🌾 {bits.join(' · ')}
+      </ThemedText>
     </ThemedView>
   );
 }
 
 function Bubble({ item, onHint }: { item: ChatBubble; onHint: (text: string) => void }) {
+  const theme = useTheme();
   const isFarmer = item.role === 'farmer';
+  const isError = item.role === 'error';
+
+  if (isFarmer) {
+    return (
+      <View style={[styles.bubbleRow, styles.bubbleRowFarmer]}>
+        <View style={[styles.bubble, { backgroundColor: theme.brand }]}>
+          <ThemedText style={styles.farmerText}>{item.text}</ThemedText>
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <View style={[styles.bubbleRow, isFarmer && styles.bubbleRowFarmer]}>
+    <View style={styles.bubbleRow}>
       <ThemedView
-        type={isFarmer ? 'backgroundElement' : 'background'}
-        style={[styles.bubble, item.role === 'error' && styles.bubbleError]}>
-        <ThemedText>{item.role === 'error' ? `⚠️ ${item.text}` : item.text}</ThemedText>
+        type="backgroundElement"
+        style={[
+          styles.bubble,
+          { borderColor: theme.border, borderWidth: 1 },
+          isError && { backgroundColor: theme.errorSoft, borderColor: theme.error },
+        ]}>
+        <ThemedText themeColor={isError ? 'error' : 'text'}>
+          {isError ? `⚠️ ${item.text}` : item.text}
+        </ThemedText>
         <TraceChipRow trace={item.trace} />
         {item.missingFields && item.missingFields.length > 0 && (
           <View style={styles.hintRow}>
@@ -65,8 +92,10 @@ function Bubble({ item, onHint }: { item: ChatBubble; onHint: (text: string) => 
               <Pressable
                 key={field}
                 onPress={() => onHint(FIELD_HINTS[field] ?? '')}
-                style={styles.hintChip}>
-                <ThemedText type="small">+ {field}</ThemedText>
+                style={[styles.hintChip, { backgroundColor: theme.brandSoft }]}>
+                <ThemedText type="small" themeColor="brand">
+                  + {field}
+                </ThemedText>
               </Pressable>
             ))}
           </View>
@@ -78,6 +107,7 @@ function Bubble({ item, onHint }: { item: ChatBubble; onHint: (text: string) => 
 
 export default function ChatScreen() {
   const { bubbles, sending, send } = useSession();
+  const theme = useTheme();
   const [draft, setDraft] = useState('');
   const listRef = useRef<FlatList<ChatBubble>>(null);
 
@@ -86,6 +116,8 @@ export default function ChatScreen() {
     setDraft('');
     void send(text);
   };
+
+  const canSend = !sending && draft.trim() !== '';
 
   return (
     <ThemedView style={styles.container}>
@@ -102,24 +134,41 @@ export default function ChatScreen() {
             contentContainerStyle={styles.listContent}
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
             ListEmptyComponent={
-              <ThemedText style={styles.empty}>
+              <ThemedText themeColor="textSecondary" style={styles.empty}>
                 Start with anything — e.g. “I have some land in Bogura, what should I plant?”
               </ThemedText>
             }
           />
           <View style={styles.inputRow}>
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                {
+                  borderColor: theme.border,
+                  backgroundColor: theme.backgroundElement,
+                  color: theme.text,
+                },
+              ]}
               value={draft}
               onChangeText={setDraft}
               placeholder={sending ? 'Agent is working…' : 'Message AgriSense'}
+              placeholderTextColor={theme.textSecondary}
               editable={!sending}
               onSubmitEditing={submit}
               returnKeyType="send"
               multiline
             />
-            <Pressable onPress={submit} disabled={sending || draft.trim() === ''} style={styles.sendBtn}>
-              <ThemedText type="subtitle">{sending ? '…' : 'Send'}</ThemedText>
+            <Pressable
+              onPress={submit}
+              disabled={!canSend}
+              style={[
+                styles.sendBtn,
+                { backgroundColor: theme.brand },
+                !canSend && styles.sendBtnDisabled,
+              ]}>
+              <ThemedText type="smallBold" style={styles.sendLabel}>
+                {sending ? '…' : 'Send'}
+              </ThemedText>
             </Pressable>
           </View>
         </KeyboardAvoidingView>
@@ -135,9 +184,10 @@ const styles = StyleSheet.create({
   profileStrip: {
     marginHorizontal: Spacing.three,
     marginTop: Spacing.two,
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.one,
+    borderRadius: Spacing.three,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
   },
   listContent: {
     padding: Spacing.three,
@@ -146,30 +196,28 @@ const styles = StyleSheet.create({
   },
   empty: {
     textAlign: 'center',
-    marginTop: Spacing.six ?? 48,
-    opacity: 0.7,
+    marginTop: Spacing.six,
+    paddingHorizontal: Spacing.four,
   },
   bubbleRow: { flexDirection: 'row' },
   bubbleRowFarmer: { justifyContent: 'flex-end' },
   bubble: {
     maxWidth: '88%',
     borderRadius: Spacing.three,
-    borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+    paddingVertical: Spacing.two + Spacing.half,
   },
-  bubbleError: { borderColor: '#cc4444' },
+  farmerText: { color: '#ffffff' },
   hintRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.one,
-    marginTop: Spacing.one,
+    marginTop: Spacing.two,
   },
   hintChip: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.one / 2,
+    borderRadius: 999,
+    paddingHorizontal: Spacing.two + Spacing.half,
+    paddingVertical: Spacing.one / 2 + 1,
   },
   inputRow: {
     flexDirection: 'row',
@@ -180,14 +228,18 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderRadius: Spacing.three,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+    paddingVertical: Spacing.two + Spacing.half,
+    fontSize: 16,
     maxHeight: 120,
   },
   sendBtn: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+    borderRadius: Spacing.two + Spacing.half,
+    paddingHorizontal: Spacing.three + Spacing.one,
+    paddingVertical: Spacing.two + Spacing.half,
   },
+  sendBtnDisabled: { opacity: 0.5 },
+  sendLabel: { color: '#ffffff' },
 });
