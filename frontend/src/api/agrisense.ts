@@ -239,6 +239,84 @@ export interface MemoryLookupResult {
   sessions: MemorySessionSummary[];
 }
 
+export interface WorkspaceFarmCard {
+  farmerId: string;
+  farmId: string;
+  sessionId?: string;
+  userId?: string;
+  profile: IntakeProfile;
+  missingFields: string[];
+  completion: "complete" | "incomplete";
+  selectedCrop?: string;
+  latestPlanId?: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceSessionCard {
+  id: string;
+  farmerId?: string;
+  farmId?: string;
+  status: string;
+  channel: string;
+  selectedCrop?: string;
+  summary?: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceWeatherCard {
+  farmId: string;
+  sessionId?: string;
+  weather: WeatherForecast;
+  rain7dMm: number;
+  refreshedAt: string;
+}
+
+export interface WorkspaceEvidenceCard {
+  sessionId: string;
+  farmId?: string;
+  count: number;
+  retrievedEvidence: RetrievedEvidence[];
+  retrievedAt: string;
+}
+
+export interface WorkspaceRankingCard {
+  sessionId: string;
+  farmId?: string;
+  cropRankings: CropRecommendation[];
+  topCrop?: string;
+  rankedAt: string;
+}
+
+export interface WorkspacePlanCard {
+  sessionId?: string;
+  farmId: string;
+  planId: string;
+  crop: string;
+  seasonPlan: SeasonPlanResult;
+  generatedAt: string;
+}
+
+export interface WorkspaceSuggestedAction {
+  id: "complete_intake" | "run_weather" | "run_evidence" | "continue_crop_ranking" | "run_season_plan";
+  label: string;
+  workflowStage?: WorkflowStage;
+  farmId?: string;
+  farmerId?: string;
+  sessionId?: string;
+  reason: string;
+}
+
+export interface AgriSenseWorkspace {
+  farmCards: WorkspaceFarmCard[];
+  sessionCards: WorkspaceSessionCard[];
+  weatherCards: WorkspaceWeatherCard[];
+  evidenceCards: WorkspaceEvidenceCard[];
+  rankingCards: WorkspaceRankingCard[];
+  planCards: WorkspacePlanCard[];
+  outcomeCards: MemoryOutcome[];
+  suggestedActions: WorkspaceSuggestedAction[];
+}
+
 export interface ContextMemoryItem {
   id: string;
   title: string;
@@ -360,6 +438,22 @@ export function getAgriSenseMemory(input: {
   }
   const query = params.toString();
   return apiFetch<MemoryLookupResult>(`/api/agrisense/memory${query ? `?${query}` : ""}`);
+}
+
+export function getAgriSenseWorkspace(input: {
+  userId?: string;
+  farmerId?: string;
+  farmId?: string;
+  sessionId?: string;
+  bdappsMobile?: string;
+  limit?: number;
+}): Promise<AgriSenseWorkspace> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  const query = params.toString();
+  return apiFetch<AgriSenseWorkspace>(`/api/agrisense/workspace${query ? `?${query}` : ""}`);
 }
 
 export function getAgriSenseContext(input: {

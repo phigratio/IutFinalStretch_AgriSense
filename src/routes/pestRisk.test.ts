@@ -55,6 +55,29 @@ describe("/api/pest-risk", () => {
     expect(store.alerts.length).toBeGreaterThan(0);
   });
 
+  it("lists and fetches saved assessment detail", async () => {
+    const { app } = makeApp();
+
+    const created = await request(app)
+      .post("/api/pest-risk/assess")
+      .send({
+        cropId: "rice_t_aman",
+        growthStage: "tillering",
+        daysAfterSowing: 35,
+        areaAcres: 2,
+        locationText: "Gazipur",
+      });
+
+    const list = await request(app).get("/api/pest-risk/assessments");
+    expect(list.status, JSON.stringify(list.body)).toBe(200);
+    expect(list.body[0].id).toBe(created.body.savedAssessmentId);
+
+    const detail = await request(app).get(`/api/pest-risk/assessments/${created.body.savedAssessmentId}`);
+    expect(detail.status, JSON.stringify(detail.body)).toBe(200);
+    expect(detail.body.risks[0].prevention.text.length).toBeGreaterThan(20);
+    expect(detail.body.trace.map((event: { toolName: string }) => event.toolName)).toContain("pest.rule.evaluate");
+  });
+
   it("400s when crop or location is missing", async () => {
     const { app } = makeApp();
     const missingCrop = await request(app).post("/api/pest-risk/assess").send({ locationText: "Gazipur" });

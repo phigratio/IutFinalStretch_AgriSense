@@ -9,6 +9,7 @@ import {
   type MarketplaceIntelligenceRequest,
   type MarketplaceIntelligenceResult,
   type MarketplaceNeed,
+  type MarketplaceRunRecord,
 } from "./types.js";
 
 const MARKETPLACE_AGENT_ID = "marketplace-intelligence";
@@ -139,7 +140,7 @@ export class MarketplaceService {
     }
 
     const topOffer = supplierOffers[0];
-    return {
+    const result: MarketplaceIntelligenceResult = {
       agentMessage: buildAgentMessage(topOffer, priceIntelligence),
       needs,
       supplierOffers,
@@ -149,6 +150,25 @@ export class MarketplaceService {
       trace,
       seeded: true,
     };
+    const saved = await this.store.saveRun({
+      result,
+      userId: input.userId,
+      tenantId: input.tenantId,
+      farmerId: input.farmerId,
+      farmId: input.farmId,
+      sessionId: input.sessionId,
+      crop,
+    });
+    return { ...result, id: saved.id };
+  }
+
+  async listRuns(input: { userId?: string; tenantId?: string; farmerId?: string; farmId?: string; sessionId?: string; limit?: number }): Promise<MarketplaceRunRecord[]> {
+    await this.store.ensureSeeded();
+    return this.store.listRuns(input);
+  }
+
+  async getRun(id: string): Promise<MarketplaceRunRecord | undefined> {
+    return this.store.getRun(id);
   }
 }
 
@@ -169,7 +189,7 @@ function buildPriceIntelligence(crop: string, history: MarketPriceIntelligence["
     trendPct >= 8 || weeklyPct >= 4 ? "sell_now" : trendPct <= -6 || weeklyPct <= -3 ? "store" : "wait";
   const reasoning = current
     ? recommendationReason(action, trendPct, weeklyPct, current)
-    : `No seeded price history exists for ${crop}; wait until a local market quote is available.`;
+    : `No local price history exists for ${crop}; wait until a local market quote is available.`;
 
   return {
     crop,
@@ -191,12 +211,12 @@ function recommendationReason(
   current: NonNullable<MarketPriceIntelligence["current"]>,
 ): string {
   if (action === "sell_now") {
-    return `Farmgate price is ${formatBdt(current.farmgatePriceBdt)}/${current.unit}, up ${trendPct}% across the seeded history and ${weeklyPct}% week over week. Selling now captures the strong move before reversal risk.`;
+    return `Farmgate price is ${formatBdt(current.farmgatePriceBdt)}/${current.unit}, up ${trendPct}% across the available history and ${weeklyPct}% week over week. Selling now captures the strong move before reversal risk.`;
   }
   if (action === "store") {
-    return `Farmgate price is ${formatBdt(current.farmgatePriceBdt)}/${current.unit}, down ${trendPct}% across the seeded history and ${weeklyPct}% week over week. Store if quality and cash flow allow.`;
+    return `Farmgate price is ${formatBdt(current.farmgatePriceBdt)}/${current.unit}, down ${trendPct}% across the available history and ${weeklyPct}% week over week. Store if quality and cash flow allow.`;
   }
-  return `Farmgate price is ${formatBdt(current.farmgatePriceBdt)}/${current.unit}; movement is modest at ${trendPct}% across the seeded history and ${weeklyPct}% week over week. Wait for a clearer move or local buyer quote.`;
+  return `Farmgate price is ${formatBdt(current.farmgatePriceBdt)}/${current.unit}; movement is modest at ${trendPct}% across the available history and ${weeklyPct}% week over week. Wait for a clearer move or local buyer quote.`;
 }
 
 function buildAgentMessage(
@@ -205,7 +225,7 @@ function buildAgentMessage(
 ): string {
   const supplierLine = topOffer
     ? `Best supplier is ${topOffer.supplierName}: ${formatBdt(topOffer.unitPriceBdt)}/${topOffer.unit}, ${topOffer.deliveryDays} day delivery, ${topOffer.distanceKm.toFixed(0)} km away, rating ${topOffer.rating.toFixed(1)}/5.`
-    : "No seeded supplier has enough matching stock for this request.";
+    : "No supplier has enough matching stock for this request.";
   const actionLabel = price.recommendation.action.replace("_", " ");
   return `${supplierLine} Market recommendation for ${price.crop}: ${actionLabel}. ${price.recommendation.reasoning}`;
 }

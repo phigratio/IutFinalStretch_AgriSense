@@ -272,7 +272,7 @@ export const uiTranslations: UiTranslation[] = [
   { en: "Type", bn: "ধরন" },
   { en: "Category", bn: "ক্যাটাগরি" },
   { en: "Label", bn: "লেবেল" },
-  { en: "Seed purchase, labor, sale", bn: "বীজ কেনা, শ্রম, বিক্রি" },
+  { en: "Input purchase, labor, sale", bn: "ইনপুট কেনা, শ্রম, বিক্রি" },
   { en: "Actual Entries", bn: "বাস্তব এন্ট্রি" },
   { en: "No actual ledger, payment, or marketplace entries found yet.", bn: "এখনও কোনো বাস্তব ledger, payment বা marketplace এন্ট্রি পাওয়া যায়নি।" },
   { en: "Inspectable Financial Math", bn: "পরীক্ষাযোগ্য আর্থিক হিসাব" },
