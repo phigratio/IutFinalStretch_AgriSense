@@ -8,22 +8,24 @@ import { config } from "../config.js";
 import { InMemoryPriceStore, type PriceStore } from "./priceStore.js";
 import { PrismaPriceStore } from "./prismaPriceStore.js";
 import { InMemoryTenantStore, type TenantStore } from "./tenancy.js";
+import { InMemoryTableOverrideStore, type TableOverrideStore } from "./tableStore.js";
+import { PrismaTenantStore, PrismaTableOverrideStore } from "./prismaTenantStore.js";
 import { ingestWfpPrices, type IngestedPrice } from "./ingest/wfpPrices.js";
 
 export interface KbRuntime {
   priceStore: PriceStore;
   tenantStore: TenantStore;
+  tableStore: TableOverrideStore;
   /** Pull hub prices (real WFP by default; injectable for offline tests). */
   ingestHubPrices: (opts?: { sinceDate?: string }) => Promise<IngestedPrice[]>;
 }
 
 function buildDefault(): KbRuntime {
-  const priceStore: PriceStore = config.databaseUrl
-    ? new PrismaPriceStore(config.databaseUrl)
-    : new InMemoryPriceStore();
+  const dbUrl = config.databaseUrl;
   return {
-    priceStore,
-    tenantStore: new InMemoryTenantStore(),
+    priceStore: dbUrl ? new PrismaPriceStore(dbUrl) : new InMemoryPriceStore(),
+    tenantStore: dbUrl ? new PrismaTenantStore(dbUrl) : new InMemoryTenantStore(),
+    tableStore: dbUrl ? new PrismaTableOverrideStore(dbUrl) : new InMemoryTableOverrideStore(),
     ingestHubPrices: (opts) => ingestWfpPrices({}, { sinceDate: opts?.sinceDate }),
   };
 }
