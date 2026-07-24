@@ -23,6 +23,7 @@ import {
   type WorkspaceSuggestedAction,
   type WorkflowStage,
 } from "../api/agrisense.js";
+import { getOnboardingMe, type OnboardingProfile } from "../api/onboarding.js";
 import { transcribeVoice } from "../api/voice.js";
 import { diagnoseLeaf, type LeafDiagnosisResult } from "../api/vision.js";
 import LeafResult from "../components/vision/LeafResult.js";
@@ -159,6 +160,48 @@ const focusedStageMeta: Record<ViewStage, { title: string; subtitle: string; rub
   },
 };
 
+/** Map the profile the user filled during onboarding into the AgriSense intake shape. */
+function mapOnboardingToIntake(o: OnboardingProfile): IntakeProfile {
+  const location = [o.upazila, o.district].filter(Boolean).join(", ");
+  return {
+    locationText: location || o.district || undefined,
+    // Onboarding stores farm size in decimals (শতক); 100 decimals = 1 acre.
+    sizeAcres: o.farmSizeDecimals != null ? Math.round((o.farmSizeDecimals / 100) * 100) / 100 : undefined,
+    soilType: o.soilTexture || undefined,
+    waterAvailability: o.waterAvailability || undefined,
+    budgetBdt: o.budgetBdt ?? undefined,
+    targetSeason: o.targetSeason || undefined,
+    farmerName: o.fullName || undefined,
+    bdappsMobile: o.phone || undefined,
+  };
+}
+
+/** Which of the six displayed intake fields are still empty. */
+function missingIntakeFields(profile?: IntakeProfile): string[] {
+  if (!profile) return ["Location", "Farm size", "Soil", "Water", "Budget", "Season"];
+  const missing: string[] = [];
+  if (!profile.locationText) missing.push("Location");
+  if (profile.sizeAcres == null) missing.push("Farm size");
+  if (!profile.soilType) missing.push("Soil");
+  if (!profile.waterAvailability) missing.push("Water");
+  if (profile.budgetBdt == null) missing.push("Budget");
+  if (!profile.targetSeason) missing.push("Season");
+  return missing;
+}
+
+/** A plain-language message describing the farm, used to run advice from the saved profile. */
+function buildProfileMessage(profile: IntakeProfile): string {
+  const parts = [
+    profile.locationText ? `location ${profile.locationText}` : "",
+    profile.sizeAcres != null ? `${profile.sizeAcres} acres` : "",
+    profile.soilType ? `${profile.soilType} soil` : "",
+    profile.waterAvailability ? `${profile.waterAvailability} water` : "",
+    profile.budgetBdt != null ? `budget ${profile.budgetBdt} BDT` : "",
+    profile.targetSeason ? `${profile.targetSeason} season` : "",
+  ].filter(Boolean);
+  return `My farm: ${parts.join(", ")}. Recommend the most profitable crop with a season plan and cost/profit breakdown.`;
+}
+
 export default function AgriSense() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -188,6 +231,8 @@ export default function AgriSense() {
   const [voiceTranscript, setVoiceTranscript] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [onboardingProfile, setOnboardingProfile] = useState<IntakeProfile | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const leafInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -201,7 +246,36 @@ export default function AgriSense() {
   );
   const renderedResult = result ?? workspaceResult;
   const activePlan = renderedResult?.seasonPlan;
-  const profile = renderedResult?.farmProfile;
+  // Fall back to the farm the user already filled during onboarding so the
+  // profile panel is pre-populated instead of showing everything as "Missing".
+  const profile = renderedResult?.farmProfile ?? onboardingProfile ?? undefined;
+  const displayMissingFields = renderedResult?.missingFields ?? missingIntakeFields(profile);
+
+  useEffect(() => {
+    let cancelled = false;
+    getOnboardingMe()
+      .then((me) => {
+        if (cancelled || me.role !== "user" || !me.onboarding) return;
+        setOnboardingProfile(mapOnboardingToIntake(me.onboarding));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Restore the last completed plan so context (weather, crops, plan, finance)
+  // survives a page reload and downstream modules like scenario keep working.
+  useEffect(() => {
+    const raw = localStorage.getItem("agrisense.latestPlan");
+    if (!raw) return;
+    try {
+      const stored = JSON.parse(raw) as AgriSenseMessageResult;
+      if (stored?.seasonPlan) setResult(stored);
+    } catch {
+      localStorage.removeItem("agrisense.latestPlan");
+    }
+  }, []);
 
   useEffect(() => {
     const raw = localStorage.getItem("agrisense.sessionContext");
@@ -530,7 +604,11 @@ export default function AgriSense() {
   }
 
   async function runScenario(message: string, deltas?: ScenarioDeltas) {
-    if (!result?.weather || !result.cropRankings?.length || !result.seasonPlan) {
+    // Use the currently displayed plan (a fresh run, a restored plan, or one
+    // loaded from a saved farm) — not only the live `result` — so scenario works
+    // after a reload or when navigating straight to this module.
+    const baseline = renderedResult;
+    if (!baseline?.weather || !baseline.cropRankings?.length || !baseline.seasonPlan) {
       setError("Run a complete AgriSense plan before scenario simulation.");
       return;
     }
@@ -544,10 +622,10 @@ export default function AgriSense() {
         farmId,
         userId: user?.id,
         preferredLanguage: language,
-        selectedCrop: result.seasonPlan.crop,
+        selectedCrop: baseline.seasonPlan.crop,
         message,
         deltas,
-        baseline: result,
+        baseline,
       });
       setScenarioResult(simulation);
       setTrace((current) => [...current, ...simulation.trace]);
@@ -565,6 +643,97 @@ export default function AgriSense() {
   const isFullStage = activeStage === "full";
   const stageMeta = focusedStageMeta[activeStage];
   const canRunFocusedStage = activeStage !== "trace" && activeStage !== "context" && activeStage !== "scheduler" && activeStage !== "scenario";
+  // Farmers get a clean chat + results view. The full judge-facing workspace
+  // (rubric strip, workflow grid, memory/trace/workspace panels) is opt-in via
+  // ?advanced=1 so it stays available without overwhelming the end user.
+  const advanced = searchParams.get("advanced") === "1";
+
+  // Chat conversation + composer, shared by the inline column (advanced) and the
+  // floating modal (farmer view).
+  const chatMessages = (
+    <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-4">
+      {messages.map((message, index) => (
+        <div key={`${message.role}-${index}`} className={`flex flex-col ${message.role === "farmer" ? "items-end" : "items-start"}`}>
+          <div
+            className={`max-w-[92%] rounded-lg px-3 py-2 text-sm leading-6 ${
+              message.role === "farmer"
+                ? "bg-brand-500 text-white"
+                : "bg-gray-100 text-gray-800 dark:bg-white/[0.06] dark:text-gray-100"
+            }`}
+          >
+            {message.text}
+          </div>
+          {message.diagnosis && (
+            <div className="mt-2 w-full rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-white/[0.03]">
+              <LeafResult result={message.diagnosis} />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
+  const chatForm = (
+    <form onSubmit={handleSubmit} className="border-t border-gray-200 p-3 dark:border-gray-800">
+      <div className="flex gap-2">
+        <input
+          ref={inputRef}
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          placeholder={language === "bn" ? "খামারের তথ্য লিখুন..." : language === "banglish" ? "Farm er details likhun..." : "Describe the farm..."}
+          className="h-11 min-w-0 flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-100"
+        />
+        <input
+          ref={leafInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={(event) => {
+            const selected = event.target.files?.[0];
+            event.target.value = "";
+            if (selected) void diagnoseLeafPhoto(selected);
+          }}
+        />
+        <button
+          type="button"
+          disabled={loading || voiceStatus !== "idle"}
+          onClick={() => leafInputRef.current?.click()}
+          aria-label="Diagnose a leaf photo"
+          title="Diagnose a leaf photo"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-lg hover:bg-white disabled:opacity-60 dark:border-gray-800 dark:bg-white/[0.03]"
+        >
+          🍃
+        </button>
+        <button
+          type="button"
+          disabled={loading || voiceStatus === "transcribing"}
+          onClick={voiceStatus === "recording" ? stopVoiceRecording : () => void startVoiceRecording()}
+          aria-label={voiceStatus === "recording" ? "Stop recording" : "Record voice"}
+          title={voiceStatus === "recording" ? "Stop recording" : "Record voice"}
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border disabled:opacity-60 ${
+            voiceStatus === "recording"
+              ? "border-error-500 bg-error-50 text-error-600 dark:bg-error-500/10"
+              : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-white dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-100"
+          }`}
+        >
+          {voiceStatus === "recording" ? <StopIcon width={18} height={18} /> : <MicIcon width={18} height={18} />}
+        </button>
+        <button
+          type="submit"
+          disabled={loading || voiceStatus === "recording" || voiceStatus === "transcribing"}
+          aria-label="Send message"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-60"
+        >
+          <ArrowUpIcon width={18} height={18} />
+        </button>
+      </div>
+      <div className="mt-2 min-h-5 text-xs text-gray-500 dark:text-gray-400">
+        {voiceStatus === "recording" && "Recording voice... stop when done. Max 60 seconds."}
+        {voiceStatus === "transcribing" && "Transcribing with OpenAI Whisper..."}
+        {voiceStatus === "idle" && voiceTranscript && `Transcript ready: ${voiceTranscript}`}
+      </div>
+    </form>
+  );
 
   return (
     <>
@@ -582,28 +751,50 @@ export default function AgriSense() {
             {stageMeta.subtitle}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <div className="flex rounded-lg border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-white/[0.03]">
-            {(Object.keys(languageLabels) as Language[]).map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => {
-                  setLanguage(option);
-                  if (messages.length === 1 && messages[0]?.role === "agent") {
-                    setMessages([{ role: "agent", text: initialAgentText[option] }]);
-                  }
-                }}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium ${
-                  language === option
-                    ? "bg-brand-500 text-white"
-                    : "text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/[0.06]"
-                }`}
-              >
-                {languageLabels[option]}
-              </button>
-            ))}
-          </div>
+        <div className="flex rounded-lg border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-white/[0.03]">
+          {(Object.keys(languageLabels) as Language[]).map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => {
+                setLanguage(option);
+                if (messages.length === 1 && messages[0]?.role === "agent") {
+                  setMessages([{ role: "agent", text: initialAgentText[option] }]);
+                }
+              }}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+                language === option
+                  ? "bg-brand-500 text-white"
+                  : "text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/[0.06]"
+              }`}
+            >
+              {languageLabels[option]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-500">
+          {error}
+        </div>
+      )}
+
+      {/* Use the farm the user already filled during onboarding — one click to advice. */}
+      {messages.length <= 1 && onboardingProfile && (
+        <button
+          type="button"
+          onClick={() => void submitMessage(buildProfileMessage(onboardingProfile))}
+          disabled={loading}
+          className="mb-4 w-full rounded-lg bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-60"
+        >
+          {loading ? "..." : `🌱 Get advice for my farm${onboardingProfile.locationText ? ` (${onboardingProfile.locationText})` : ""}`}
+        </button>
+      )}
+
+      {/* Quick examples — shown only before the first question so they don't clutter. */}
+      {messages.length <= 1 && !onboardingProfile && (
+        <div className="mb-4 flex flex-wrap gap-2">
           {starterMessages.map((starter) => (
             <button
               key={starter}
@@ -623,15 +814,10 @@ export default function AgriSense() {
             {geoPoint ? `GPS ${geoPoint.latitude.toFixed(3)}, ${geoPoint.longitude.toFixed(3)}` : "Use Device GPS"}
           </button>
         </div>
-      </div>
-
-      {error && (
-        <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-500">
-          {error}
-        </div>
       )}
 
-      {isFullStage ? (
+      {/* Judge-facing workspace — opt-in via ?advanced=1, hidden from farmers. */}
+      {advanced && (isFullStage ? (
         <>
           <RubricCoverageStrip />
           <WorkspaceResumePanel
@@ -666,101 +852,41 @@ export default function AgriSense() {
           }}
           loading={loading}
         />
+      ))}
+
+      {/* Simple run bar for a single module in the farmer view. */}
+      {!advanced && !isFullStage && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-white/[0.03]">
+          <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{stageMeta.title}</p>
+          <button
+            type="button"
+            onClick={() => {
+              if (canRunFocusedStage) runStage(activeStage);
+              else if (activeStage === "scenario") selectStage("scenario");
+              else if (activeStage === "trace") selectStage("trace");
+            }}
+            disabled={loading || activeStage === "trace" || activeStage === "context" || activeStage === "scheduler"}
+            className="h-10 shrink-0 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? "Running..." : stageMeta.runLabel}
+          </button>
+        </div>
       )}
 
-      <div className={`grid min-h-[720px] grid-cols-1 gap-4 ${isFullStage ? "xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.45fr)_minmax(320px,0.95fr)]" : "xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.8fr)]"}`}>
-        {isFullStage && (
-        <section className="flex min-h-[560px] flex-col rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
-          <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Conversation</h2>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Session {sessionId ? shortId(sessionId) : "new"}
-            </p>
-          </div>
-          <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-4">
-            {messages.map((message, index) => (
-              <div key={`${message.role}-${index}`} className={`flex flex-col ${message.role === "farmer" ? "items-end" : "items-start"}`}>
-                <div
-                  className={`max-w-[92%] rounded-lg px-3 py-2 text-sm leading-6 ${
-                    message.role === "farmer"
-                      ? "bg-brand-500 text-white"
-                      : "bg-gray-100 text-gray-800 dark:bg-white/[0.06] dark:text-gray-100"
-                  }`}
-                >
-                  {message.text}
-                </div>
-                {message.diagnosis && (
-                  <div className="mt-2 w-full rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-white/[0.03]">
-                    <LeafResult result={message.diagnosis} />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-          <form onSubmit={handleSubmit} className="border-t border-gray-200 p-3 dark:border-gray-800">
-            <div className="flex gap-2">
-              <input
-                ref={inputRef}
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                placeholder={language === "bn" ? "খামারের তথ্য লিখুন..." : language === "banglish" ? "Farm er details likhun..." : "Describe the farm..."}
-                className="h-11 min-w-0 flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-100"
-              />
-              <input
-                ref={leafInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-                onChange={(event) => {
-                  const selected = event.target.files?.[0];
-                  event.target.value = "";
-                  if (selected) void diagnoseLeafPhoto(selected);
-                }}
-              />
-              <button
-                type="button"
-                disabled={loading || voiceStatus !== "idle"}
-                onClick={() => leafInputRef.current?.click()}
-                aria-label="Diagnose a leaf photo"
-                title="Diagnose a leaf photo"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-lg hover:bg-white disabled:opacity-60 dark:border-gray-800 dark:bg-white/[0.03]"
-              >
-                🍃
-              </button>
-              <button
-                type="button"
-                disabled={loading || voiceStatus === "transcribing"}
-                onClick={voiceStatus === "recording" ? stopVoiceRecording : () => void startVoiceRecording()}
-                aria-label={voiceStatus === "recording" ? "Stop recording" : "Record voice"}
-                title={voiceStatus === "recording" ? "Stop recording" : "Record voice"}
-                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border disabled:opacity-60 ${
-                  voiceStatus === "recording"
-                    ? "border-error-500 bg-error-50 text-error-600 dark:bg-error-500/10"
-                    : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-white dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-100"
-                }`}
-              >
-                {voiceStatus === "recording" ? <StopIcon width={18} height={18} /> : <MicIcon width={18} height={18} />}
-              </button>
-              <button
-                type="submit"
-                disabled={loading || voiceStatus === "recording" || voiceStatus === "transcribing"}
-                aria-label="Send message"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-60"
-              >
-                <ArrowUpIcon width={18} height={18} />
-              </button>
+      <div className={`grid min-h-[560px] grid-cols-1 gap-4 ${advanced ? "xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.45fr)_minmax(320px,0.95fr)]" : "grid-cols-1"}`}>
+        {advanced && (
+          <section className="flex min-h-[560px] flex-col rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+            <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Ask AgriSense</h2>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Type, talk, or send a leaf photo.</p>
             </div>
-            <div className="mt-2 min-h-5 text-xs text-gray-500 dark:text-gray-400">
-              {voiceStatus === "recording" && "Recording voice... stop when done. Max 60 seconds."}
-              {voiceStatus === "transcribing" && "Transcribing with OpenAI Whisper..."}
-              {voiceStatus === "idle" && voiceTranscript && `Transcript ready: ${voiceTranscript}`}
-            </div>
-          </form>
-        </section>
+            {chatMessages}
+            {chatForm}
+          </section>
         )}
 
         <main className="space-y-4">
-          {isFullStage && (
+          {advanced && isFullStage && (
             <WorkflowStageSidebar
               activeStage={activeStage}
               result={renderedResult}
@@ -772,7 +898,7 @@ export default function AgriSense() {
           <StageContent
             activeStage={activeStage}
             profile={profile}
-            missingFields={renderedResult?.missingFields ?? []}
+            missingFields={displayMissingFields}
             result={renderedResult}
             activePlan={activePlan}
             context={contextBundle ?? renderedResult?.context}
@@ -782,27 +908,68 @@ export default function AgriSense() {
           />
         </main>
 
-        <aside className="space-y-4">
-          {!isFullStage && (
-            <FocusedStageControlPanel
-              activeStage={activeStage}
-              meta={stageMeta}
-              profile={profile}
-              workspace={workspace}
-              selectedFarmId={selectedWorkspaceFarmId}
-              useMemory={useMemory}
-              outcomes={rememberedOutcomes}
-              onToggleMemory={setUseMemory}
-              onUseMemory={useOutcome}
-              onRun={() => {
-                if (canRunFocusedStage) runStage(activeStage);
-              }}
-              loading={loading}
-            />
-          )}
-          <TracePanel trace={trace} />
-        </aside>
+        {advanced && (
+          <aside className="space-y-4">
+            {!isFullStage && (
+              <FocusedStageControlPanel
+                activeStage={activeStage}
+                meta={stageMeta}
+                profile={profile}
+                workspace={workspace}
+                selectedFarmId={selectedWorkspaceFarmId}
+                useMemory={useMemory}
+                outcomes={rememberedOutcomes}
+                onToggleMemory={setUseMemory}
+                onUseMemory={useOutcome}
+                onRun={() => {
+                  if (canRunFocusedStage) runStage(activeStage);
+                }}
+                loading={loading}
+              />
+            )}
+            <TracePanel trace={trace} />
+          </aside>
+        )}
       </div>
+
+      {/* Farmer view: chat lives in a floating button + modal so results get full width. */}
+      {!advanced && (
+        <>
+          <button
+            type="button"
+            onClick={() => setChatOpen(true)}
+            aria-label="Ask AgriSense"
+            className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand-500 text-2xl text-white shadow-lg transition hover:bg-brand-600"
+          >
+            💬
+            {loading && <span className="absolute right-1 top-1 h-3 w-3 animate-ping rounded-full bg-white" />}
+          </button>
+
+          {chatOpen && (
+            <div className="fixed inset-0 z-50 flex items-stretch justify-end sm:items-end sm:p-6" role="dialog" aria-modal="true" aria-label="Ask AgriSense">
+              <button type="button" aria-label="Close chat" className="absolute inset-0 h-full w-full cursor-default bg-black/40" onClick={() => setChatOpen(false)} />
+              <div className="relative flex h-full w-full flex-col border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900 sm:h-[600px] sm:max-h-[85vh] sm:w-[420px] sm:rounded-2xl">
+                <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+                  <div>
+                    <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Ask AgriSense</h2>
+                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Type, talk, or send a leaf photo.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setChatOpen(false)}
+                    aria-label="Close"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.05]"
+                  >
+                    ✕
+                  </button>
+                </div>
+                {chatMessages}
+                {chatForm}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </>
   );
 }
