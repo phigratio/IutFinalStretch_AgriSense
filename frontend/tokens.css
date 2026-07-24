@@ -1,0 +1,39 @@
+:root {
+  --color-portal-paper: oklch(98.5% 0.004 250);
+  --color-portal-surface: oklch(100% 0.002 250);
+  --color-portal-ink: oklch(24% 0.02 258);
+  --color-portal-muted: oklch(48% 0.015 257);
+  --color-portal-rule: oklch(90% 0.008 252);
+  --color-portal-accent: oklch(58% 0.2 256);
+  --color-portal-accent-ink: oklch(98% 0.004 250);
+  --color-portal-success: oklch(49% 0.15 150);
+  --color-portal-error: oklch(55% 0.2 25);
+  --color-portal-focus: oklch(48% 0.2 256);
+  --font-portal-display: "Outfit", ui-sans-serif, sans-serif;
+  --font-portal-body: "Noto Sans Bengali", "Hind Siliguri", ui-sans-serif, sans-serif;
+  --space-portal-xs: 0.5rem;
+  --space-portal-sm: 0.75rem;
+  --space-portal-md: 1rem;
+  --space-portal-lg: 1.5rem;
+  --space-portal-xl: 2.5rem;
+  --text-portal-title: clamp(2rem, 3vw + 1rem, 3.5rem);
+  --ease-portal-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-portal-micro: 120ms;
+  --dur-portal-short: 220ms;
+  --rule-portal: 1px;
+  --radius-portal-control: 0.5rem;
+  --radius-portal-panel: 1rem;
+}
+
+.dark {
+  --color-portal-paper: oklch(15% 0.012 255);
+  --color-portal-surface: oklch(19% 0.014 255);
+  --color-portal-ink: oklch(94% 0.006 250);
+  --color-portal-muted: oklch(72% 0.01 252);
+  --color-portal-rule: oklch(31% 0.014 255);
+  --color-portal-accent: oklch(68% 0.16 256);
+  --color-portal-accent-ink: oklch(15% 0.012 255);
+  --color-portal-success: oklch(70% 0.14 150);
+  --color-portal-error: oklch(70% 0.16 25);
+  --color-portal-focus: oklch(75% 0.15 256);
+}

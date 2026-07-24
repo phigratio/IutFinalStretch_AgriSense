@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authenticate, requireRole, type AuthenticatedRequest } from "../middleware/authenticate.js";
-import { getDefaultOnboardingStore, type OnboardingStore, type OnboardingInput } from "../onboarding/store.js";
+import { getDefaultOnboardingStore, getOnboardingMissingFields, isOnboardingComplete, type OnboardingStore, type OnboardingInput } from "../onboarding/store.js";
 import { getDefaultAuthStore, type AuthStore } from "../auth/store.js";
 import { getKbRuntime } from "../kb/runtime.js";
 
@@ -45,9 +45,21 @@ export const onboardingRouter: Router = Router();
 /** Current user's role + onboarding status (drives the Bengali onboarding screen). */
 onboardingRouter.get("/onboarding/me", authenticate, async (req, res, next) => {
   try {
-    const user = await rt().auth.findUserById(uid(req));
-    const onboarding = await rt().onboarding.getOnboardingByUser(uid(req));
-    res.json({ role: user?.role ?? "user", onboarding: onboarding ?? null });
+    const userId = uid(req);
+    const [user, onboarding, tenantRequest, assistRequest] = await Promise.all([
+      rt().auth.findUserById(userId),
+      rt().onboarding.getOnboardingByUser(userId),
+      rt().onboarding.getLatestTenantRequestByUser(userId),
+      rt().onboarding.getLatestAssistRequestByUser(userId),
+    ]);
+    res.json({
+      role: user?.role ?? "user",
+      onboarding: onboarding ?? null,
+      profileComplete: isOnboardingComplete(onboarding),
+      missingFields: getOnboardingMissingFields(onboarding),
+      tenantRequest: tenantRequest ?? null,
+      assistRequest: assistRequest ?? null,
+    });
   } catch (err) {
     next(err);
   }
@@ -183,8 +195,18 @@ onboardingRouter.post("/admin/users/:id/role", authenticate, requireRole("admin"
 // ---- Tenant -----------------------------------------------------------------
 
 /** Assist requests a tenant can fulfil (optionally filtered by district). */
-onboardingRouter.get("/tenant/assist-requests", authenticate, requireRole("tenant", "admin"), async (req, res, next) => {
+async function requireEffectiveTenant(req: unknown, res: { status(code: number): { json(body: unknown): void } }): Promise<boolean> {
+  const user = await rt().auth.findUserById(uid(req));
+  if (user?.role !== "tenant" && user?.role !== "admin") {
+    res.status(403).json({ error: "Your tenant request must be approved before you can access this dashboard" });
+    return false;
+  }
+  return true;
+}
+
+onboardingRouter.get("/tenant/assist-requests", authenticate, async (req, res, next) => {
   try {
+    if (!(await requireEffectiveTenant(req, res))) return;
     const district = req.query.district ? String(req.query.district) : undefined;
     res.json(await rt().onboarding.listAssistRequests({ district, status: "pending" }));
   } catch (err) {
@@ -193,8 +215,9 @@ onboardingRouter.get("/tenant/assist-requests", authenticate, requireRole("tenan
 });
 
 /** Fulfil an assist request by filling the farmer's profile on their behalf. */
-onboardingRouter.post("/tenant/assist-requests/:id/fulfill", authenticate, requireRole("tenant", "admin"), async (req, res, next) => {
+onboardingRouter.post("/tenant/assist-requests/:id/fulfill", authenticate, async (req, res, next) => {
   try {
+    if (!(await requireEffectiveTenant(req, res))) return;
     const assist = await rt().onboarding.getAssistRequest(String(req.params.id));
     if (!assist) {
       res.status(404).json({ error: "Assist request not found" });
@@ -207,9 +230,9 @@ onboardingRouter.post("/tenant/assist-requests/:id/fulfill", authenticate, requi
       district,
       filledBy: "tenant",
       filledByUserId: uid(req),
+      ...readProfileFields(b),
       fullName: (typeof b.fullName === "string" ? b.fullName : undefined) ?? assist.fullName,
       phone: (typeof b.phone === "string" ? b.phone : undefined) ?? assist.phone,
-      ...readProfileFields(b),
     });
     await rt().onboarding.fulfillAssistRequest(assist.id);
     res.json({ ok: true, onboarding: saved });

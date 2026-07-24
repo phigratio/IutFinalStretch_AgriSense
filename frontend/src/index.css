@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "../tokens.css";
+@import "./portal.css";
 
 @custom-variant dark (&:is(.dark *));
 

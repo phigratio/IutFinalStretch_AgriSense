@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.js";
 import {
   getOnboardingMe,
@@ -8,6 +8,7 @@ import {
   requestAssist,
   type UserRole,
   type OnboardingProfile,
+  type OnboardingMe,
 } from "../api/onboarding.js";
 
 // Bengali option maps -> canonical backend values.
@@ -21,13 +22,19 @@ const WATERS = [{ v: "rainfed", bn: "বৃষ্টিনির্ভর" }, { 
 const SEASONS = [{ v: "kharif1", bn: "আউশ" }, { v: "kharif2_aman", bn: "আমন" }, { v: "rabi", bn: "রবি" }, { v: "boro", bn: "বোরো" }];
 
 const ROLE_BN: Record<UserRole, string> = { user: "ব্যবহারকারী", tenant: "টেন্যান্ট", admin: "অ্যাডমিন" };
+const FIELD_BN: Record<OnboardingMe["missingFields"][number], string> = {
+  fullName: "পূর্ণ নাম", phone: "মোবাইল নম্বর", district: "জেলা", farmSizeDecimals: "জমির পরিমাণ",
+  soilTexture: "মাটির ধরন", waterAvailability: "সেচ সুবিধা", budgetBdt: "বাজেট", targetSeason: "মৌসুম",
+};
 
 type Choice = "tenant" | "self" | "assist";
 
 export default function Onboarding() {
-  const { user, logout } = useAuth();
+  const { user, refreshUser, logout } = useAuth();
+  const location = useLocation();
   const [role, setRole] = useState<UserRole>("user");
   const [hasProfile, setHasProfile] = useState(false);
+  const [status, setStatus] = useState<OnboardingMe | null>(null);
   const [choice, setChoice] = useState<Choice | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,17 +43,27 @@ export default function Onboarding() {
   useEffect(() => {
     getOnboardingMe()
       .then((me) => {
+        setStatus(me);
         setRole(me.role);
         setHasProfile(Boolean(me.onboarding));
+        if (me.onboarding && !me.profileComplete) setChoice("self");
       })
       .catch(() => undefined);
-  }, [message]);
+  }, []);
+
+  useEffect(() => {
+    if (status?.role === "tenant" && user?.role !== "tenant") void refreshUser();
+  }, [refreshUser, status?.role, user?.role]);
 
   async function run(fn: () => Promise<unknown>, ok: string) {
     setBusy(true);
     setError(null);
     try {
       await fn();
+      const next = await getOnboardingMe();
+      setStatus(next);
+      setRole(next.role);
+      setHasProfile(Boolean(next.onboarding));
       setMessage(ok);
       setChoice(null);
     } catch (e) {
@@ -58,6 +75,10 @@ export default function Onboarding() {
 
   // Admins belong on the dashboard, not the farmer onboarding.
   if (user?.role === "admin") return <Navigate to="/" replace />;
+  if (status?.role === "tenant") {
+    return user?.role === "tenant" ? <Navigate to="/tenant/dashboard" replace /> : null;
+  }
+  if (status?.profileComplete && new URLSearchParams(location.search).get("edit") !== "1") return <Navigate to="/user/dashboard" replace />;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950" style={{ fontFamily: "'Noto Sans Bengali', 'Hind Siliguri', system-ui, sans-serif" }}>
@@ -89,7 +110,19 @@ export default function Onboarding() {
       )}
       {hasProfile && !message && (
         <div className="mt-4 rounded-xl border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-400">
-          আপনার প্রোফাইল ইতিমধ্যে সংরক্ষিত আছে। চাইলে নিচে থেকে হালনাগাদ করতে পারেন।
+          {status?.profileComplete
+            ? "আপনার প্রোফাইল সম্পূর্ণ এবং সংরক্ষিত আছে।"
+            : `আপনার প্রোফাইল সংরক্ষিত, তবে সম্পূর্ণ নয়। বাকি তথ্য: ${status?.missingFields.map((field) => FIELD_BN[field]).join(", ") || "—"}।`}
+        </div>
+      )}
+      {status?.tenantRequest?.status === "pending" && (
+        <div className="mt-4 rounded-xl border border-warning-500/30 bg-warning-50 px-4 py-3 text-sm text-warning-600 dark:bg-warning-500/10">
+          আপনার টেন্যান্ট আবেদনটি অ্যাডমিনের অনুমোদনের অপেক্ষায় আছে। অনুমোদনের পর টেন্যান্ট ড্যাশবোর্ড খুলবে।
+        </div>
+      )}
+      {status?.assistRequest?.status === "pending" && (
+        <div className="mt-4 rounded-xl border border-brand-300 bg-brand-50 px-4 py-3 text-sm text-brand-700 dark:border-brand-800 dark:bg-brand-500/10 dark:text-brand-300">
+          একজন টেন্যান্টকে দিয়ে প্রোফাইল পূরণের অনুরোধ অপেক্ষমাণ আছে। তথ্য সম্পূর্ণ হলে আপনার ড্যাশবোর্ড খুলবে।
         </div>
       )}
 
@@ -101,7 +134,7 @@ export default function Onboarding() {
       </div>
 
       <div className="mt-5">
-        {choice === "self" && <SelfProfileForm busy={busy} onSubmit={(b) => run(() => saveOwnProfile(b), "আপনার প্রোফাইল সংরক্ষিত হয়েছে।")} />}
+        {choice === "self" && <SelfProfileForm initial={status?.onboarding} busy={busy} onSubmit={(b) => run(() => saveOwnProfile(b), "আপনার প্রোফাইল সংরক্ষিত হয়েছে।")} />}
         {choice === "assist" && <AssistForm busy={busy} onSubmit={(b) => run(() => requestAssist(b), "আপনার অনুরোধ পাঠানো হয়েছে। একজন টেন্যান্ট শীঘ্রই তথ্য পূরণ করবেন।")} />}
         {choice === "tenant" && <TenantForm busy={busy} onSubmit={(b) => run(() => requestTenant(b), "টেন্যান্ট হওয়ার আবেদন জমা হয়েছে। অ্যাডমিন পর্যালোচনা করবেন।")} />}
       </div>
@@ -194,20 +227,24 @@ function AssistForm({ busy, onSubmit }: { busy: boolean; onSubmit: (b: { distric
   );
 }
 
-function SelfProfileForm({ busy, onSubmit }: { busy: boolean; onSubmit: (b: OnboardingProfile) => void }) {
-  const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [district, setDistrict] = useState("");
-  const [farmSizeDecimals, setSize] = useState("");
-  const [soilTexture, setSoil] = useState("");
-  const [waterAvailability, setWater] = useState("");
-  const [budgetBdt, setBudget] = useState("");
-  const [targetSeason, setSeason] = useState("");
+function SelfProfileForm({ initial, busy, onSubmit }: { initial?: OnboardingProfile | null; busy: boolean; onSubmit: (b: OnboardingProfile) => void }) {
+  const [fullName, setFullName] = useState(initial?.fullName ?? "");
+  const [phone, setPhone] = useState(initial?.phone ?? "");
+  const [district, setDistrict] = useState(initial?.district ?? "");
+  const [farmSizeDecimals, setSize] = useState(initial?.farmSizeDecimals?.toString() ?? "");
+  const [soilTexture, setSoil] = useState(initial?.soilTexture ?? "");
+  const [waterAvailability, setWater] = useState(initial?.waterAvailability ?? "");
+  const [budgetBdt, setBudget] = useState(initial?.budgetBdt?.toString() ?? "");
+  const [targetSeason, setSeason] = useState(initial?.targetSeason ?? "");
+  const valid = Boolean(
+    fullName.trim() && phone.trim() && district && Number(farmSizeDecimals) > 0 &&
+    soilTexture && waterAvailability && budgetBdt !== "" && Number(budgetBdt) >= 0 && targetSeason,
+  );
   return (
     <Card>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="আপনার নাম"><input className={inputCls} value={fullName} onChange={(e) => setFullName(e.target.value)} /></Field>
-        <Field label="মোবাইল নম্বর"><input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
+        <Field label="আপনার নাম"><input required className={inputCls} value={fullName} onChange={(e) => setFullName(e.target.value)} /></Field>
+        <Field label="মোবাইল নম্বর"><input required className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
         <Field label="জেলা"><DistrictSelect value={district} onChange={setDistrict} /></Field>
         <Field label="জমির পরিমাণ (শতক)"><input type="number" className={inputCls} value={farmSizeDecimals} onChange={(e) => setSize(e.target.value)} /></Field>
         <Field label="মাটির ধরন">
@@ -232,7 +269,7 @@ function SelfProfileForm({ busy, onSubmit }: { busy: boolean; onSubmit: (b: Onbo
       </div>
       <button
         type="button"
-        disabled={busy || !district}
+        disabled={busy || !valid}
         onClick={() =>
           onSubmit({
             district, fullName: fullName || undefined, phone: phone || undefined,

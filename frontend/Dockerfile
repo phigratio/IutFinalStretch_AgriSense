@@ -5,6 +5,7 @@ RUN npm ci
 COPY index.html ./
 COPY tsconfig.json ./
 COPY vite.config.ts ./
+COPY tokens.css ./
 COPY src ./src
 RUN npm run build
 
