@@ -4,8 +4,11 @@ import { useSidebar } from "../context/SidebarContext.js";
 import {
   CalendarIcon,
   BoxIcon,
+  CreditCardIcon,
   GridIcon,
   HorizontalDotsIcon,
+  ListIcon,
+  PhoneIcon,
   UserGroupIcon,
   UserIcon,
 } from "../icons/index.js";
@@ -19,6 +22,9 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { name: "Dashboard", path: "/", icon: <GridIcon /> },
   { name: "AgriSense", path: "/agrisense", icon: <BoxIcon /> },
+  { name: "Agent Intake", path: "/agent-intake", icon: <ListIcon /> },
+  { name: "Payments", path: "/payments", icon: <CreditCardIcon /> },
+  { name: "BDApps", path: "/bdapps", icon: <PhoneIcon /> },
   { name: "Users", path: "/users", icon: <UserGroupIcon /> },
   { name: "Profile", path: "/profile", icon: <UserIcon /> },
 ];

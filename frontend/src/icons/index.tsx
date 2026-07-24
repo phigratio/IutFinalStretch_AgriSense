@@ -124,6 +124,19 @@ export const BoxIcon = (props: IconProps) => (
   </svg>
 );
 
+export const CreditCardIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M3 10h18M7 15h4" />
+  </svg>
+);
+
+export const PhoneIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.4 19.4 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.4 2.1L8.1 10a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.6 1.9Z" />
+  </svg>
+);
+
 export const ListIcon = (props: IconProps) => (
   <svg {...base(props)}>
     <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
