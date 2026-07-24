@@ -11,6 +11,8 @@ For the current VPS, use the host-Nginx layout. Do not run the Caddy production 
 
 Server facts verified during deployment prep:
 
+- Hosted site: `https://agrisense.72.62.247.199.nip.io`
+- Server IP: `72.62.247.199`
 - SSH user: `astareoadmin`
 - App directory: `/srv/muqtadir/iut_ict_fest`
 - Host Nginx already listens on `80/443`
