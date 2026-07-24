@@ -9,7 +9,7 @@
  *   POST /bdapps/subscription  (Subscription Notification URL)
  */
 import { Router } from "express";
-import { bdapps, handleUssd } from "../bdapps/index.js";
+import { bdapps, handleUssdMenu } from "../bdapps/index.js";
 import type {
   IncomingSms,
   IncomingUssd,
@@ -56,7 +56,10 @@ bdappsListenerRouter.post("/ussd", async (req, res) => {
   console.log("[USSD IN]", JSON.stringify(incoming));
 
   try {
-    const reply = handleUssd(incoming);
+    const reply = await handleUssdMenu(incoming, {
+      channel: getDefaultChannelStore(),
+      data: getDefaultInboundData(),
+    });
     // Push the next screen back to the user (needs a live session + credentials).
     await bdapps.sendUssd({
       sessionId: incoming.sessionId,

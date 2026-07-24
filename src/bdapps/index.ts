@@ -45,5 +45,5 @@ export {
 export { MockBdappsClient, mockBdapps } from "./mock.js";
 export { toTelAddress } from "./phone.js";
 export { bdappsConfig, type BdappsConfig } from "./config.js";
-export { handleUssd, type UssdReply } from "./ussdMenu.js";
+export { handleUssdMenu, type UssdReply, type UssdDeps } from "./ussdMenu.js";
 export type * from "./types.js";
