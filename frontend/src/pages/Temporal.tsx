@@ -6,6 +6,7 @@ import {
   getTemporalWorkflowResult,
   listTemporalSchedules,
   runTemporalWorkflow,
+  type TemporalSchedule,
   type TemporalRunResult,
   type TemporalSchedulesResult,
 } from "../api/temporal.js";
@@ -103,12 +104,18 @@ export default function Temporal() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="font-medium text-gray-900 dark:text-white">{schedule.workflowType}</h3>
-                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{schedule.description}</p>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{scheduleNote(schedule)}</p>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs">
                       <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700 dark:bg-white/[0.06] dark:text-gray-300">{schedule.scheduleId}</span>
                       <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700 dark:bg-white/[0.06] dark:text-gray-300">cron {schedule.cronExpression}</span>
                       <span className="rounded-full bg-success-50 px-2.5 py-1 text-success-700 dark:bg-success-500/15 dark:text-success-400">{schedule.exists ? "exists" : "missing"}</span>
                     </div>
+                    <details className="mt-3">
+                      <summary className="cursor-pointer text-xs font-medium text-brand-600 dark:text-brand-400">Raw schedule</summary>
+                      <pre className="custom-scrollbar mt-2 max-h-56 overflow-auto rounded-lg bg-gray-950 p-3 text-xs leading-5 text-gray-100">
+                        {JSON.stringify(schedule.description ?? schedule, null, 2)}
+                      </pre>
+                    </details>
                   </div>
                   <button onClick={() => void run(schedule.workflowType)} disabled={loading === schedule.workflowType} className="h-10 rounded-lg bg-gray-900 px-4 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60 dark:bg-white dark:text-gray-900">
                     Run now
@@ -141,4 +148,24 @@ export default function Temporal() {
       </div>
     </>
   );
+}
+
+function scheduleNote(schedule: TemporalSchedule): string {
+  const stateNote = readNestedString(schedule.description, ["state", "note"]);
+  if (stateNote) return stateNote;
+
+  const workflowType = readNestedString(schedule.description, ["action", "workflowType"]);
+  if (workflowType) return `Starts ${workflowType} on the configured cron schedule.`;
+
+  if (typeof schedule.description === "string") return schedule.description;
+  return "Temporal schedule is registered and ready.";
+}
+
+function readNestedString(value: unknown, path: string[]): string | null {
+  let current = value;
+  for (const key of path) {
+    if (!current || typeof current !== "object" || !(key in current)) return null;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return typeof current === "string" && current.trim() ? current : null;
 }
