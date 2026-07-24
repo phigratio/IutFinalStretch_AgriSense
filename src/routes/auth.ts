@@ -2,6 +2,7 @@ import { Router } from "express";
 import { AuthService } from "../auth/service.js";
 import { getDefaultAuthStore, type AuthStore } from "../auth/store.js";
 import { GoogleOAuthService, getOAuthStateFromCookie } from "../auth/googleOAuth.js";
+import { BdappsAuthService } from "../auth/bdappsAuth.js";
 import { authenticate, type AuthenticatedRequest } from "../middleware/authenticate.js";
 import { config } from "../config.js";
 
@@ -9,6 +10,7 @@ export function createAuthRouter(store: AuthStore = getDefaultAuthStore()): Rout
   const router = Router();
   const authService = new AuthService(store);
   const googleOAuthService = new GoogleOAuthService(store);
+  const bdappsAuthService = new BdappsAuthService(store);
 
   router.post("/signup", async (req, res) => {
     res.status(201).json(await authService.signup(req.body ?? {}));
@@ -25,6 +27,23 @@ export function createAuthRouter(store: AuthStore = getDefaultAuthStore()): Rout
 
   router.post("/logout", (_req, res) => {
     res.status(204).send();
+  });
+
+  // BDApps phone identity (verification / channel activation; doubles as
+  // mobile sign-in). Additive to email/Google — same shared AppUser + token.
+  router.post("/bdapps/otp/request", async (req, res) => {
+    res.json(await bdappsAuthService.requestOtp(req.body?.mobile));
+  });
+
+  router.post("/bdapps/otp/verify", async (req, res) => {
+    res.json(
+      await bdappsAuthService.verifyOtp({
+        referenceNo: req.body?.referenceNo,
+        otp: req.body?.otp,
+        mobile: req.body?.mobile,
+        name: req.body?.name,
+      }),
+    );
   });
 
   router.get("/google", (_req, res) => {

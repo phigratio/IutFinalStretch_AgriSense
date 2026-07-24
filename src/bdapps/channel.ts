@@ -36,6 +36,7 @@ export interface ChannelStore {
     maskedSubscriberId: string;
     source: ChannelSource;
     premium?: boolean;
+    userId?: string;
   }): Promise<ChannelStatus>;
   setPremium(mobile: string, premium: boolean): Promise<void>;
   getByMobile(mobile: string): Promise<ChannelStatus | undefined>;
@@ -54,6 +55,7 @@ export class PostgresChannelStore implements ChannelStore {
     maskedSubscriberId: string;
     source: ChannelSource;
     premium?: boolean;
+    userId?: string;
   }): Promise<ChannelStatus> {
     // Always cache in the in-memory resolver so outbound calls work immediately.
     if (input.mobile) setMaskedSubscriber(input.mobile, input.maskedSubscriberId);
@@ -74,6 +76,7 @@ export class PostgresChannelStore implements ChannelStore {
     const data = {
       bdappsSubscriberId: input.maskedSubscriberId,
       channelActivatedAt: now,
+      ...(input.userId ? { userId: input.userId } : {}),
       ...(input.premium !== undefined
         ? { premium: input.premium, premiumSince: input.premium ? now : null }
         : {}),
@@ -82,7 +85,9 @@ export class PostgresChannelStore implements ChannelStore {
     const row = existing
       ? await this.prisma.farmerProfile.update({ where: { id: existing.id }, data })
       : await this.prisma.farmerProfile.create({
-          data: { bdappsMobile: normalized ?? input.mobile, ...data },
+          // Store the raw mobile as-is (matches dev seed / onboarding / env
+          // convention). tel: normalization is only for BDApps API calls.
+          data: { bdappsMobile: input.mobile, ...data },
         });
 
     return toStatus(row, input.source);
@@ -122,6 +127,7 @@ export class InMemoryChannelStore implements ChannelStore {
     maskedSubscriberId: string;
     source: ChannelSource;
     premium?: boolean;
+    userId?: string;
   }): Promise<ChannelStatus> {
     if (input.mobile) setMaskedSubscriber(input.mobile, input.maskedSubscriberId);
     const key = input.mobile ? safeTel(input.mobile) ?? input.mobile : input.maskedSubscriberId;
@@ -190,7 +196,7 @@ export function getDefaultChannelStore(): ChannelStore {
  * path). Idempotent; safe to call from every capture point.
  */
 export async function activateChannel(
-  input: { mobile?: string; maskedSubscriberId: string; source: ChannelSource; premium?: boolean },
+  input: { mobile?: string; maskedSubscriberId: string; source: ChannelSource; premium?: boolean; userId?: string },
   store: ChannelStore = getDefaultChannelStore(),
 ): Promise<ChannelStatus> {
   return store.activate(input);
