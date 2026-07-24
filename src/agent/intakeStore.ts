@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { config } from "../config.js";
 import { PrismaClient, type Prisma } from "../generated/prisma/client.js";
+import { normalizeLanguage } from "../language/localization.js";
 import { type IntakeField, type IntakeProfile, type IntakeTraceEvent } from "./intakeSchema.js";
 
 export interface IntakeStore {
@@ -15,6 +16,7 @@ export interface IntakeStore {
     farmId?: string;
     bdappsMobile?: string;
     channel?: string;
+    preferredLanguage?: string;
   }): Promise<IntakeProfile>;
   saveProfile(profile: IntakeProfile, missingFields: IntakeField[], status: string): Promise<IntakeProfile>;
   saveTrace(sessionId: string, event: IntakeTraceEvent): Promise<void>;
@@ -48,6 +50,7 @@ export class InMemoryIntakeStore implements IntakeStore {
     farmerId?: string;
     farmId?: string;
     bdappsMobile?: string;
+    preferredLanguage?: string;
   }): Promise<IntakeProfile> {
     if (input.sessionId) {
       const existing = this.profiles.get(input.sessionId);
@@ -59,7 +62,7 @@ export class InMemoryIntakeStore implements IntakeStore {
       farmerId: input.farmerId ?? randomUUID(),
       farmId: input.farmId ?? randomUUID(),
       bdappsMobile: input.bdappsMobile,
-      preferredLanguage: "en",
+      preferredLanguage: normalizeLanguage(input.preferredLanguage) ?? "en",
     };
     this.profiles.set(profile.sessionId!, profile);
     return profile;
@@ -92,6 +95,7 @@ export class PostgresIntakeStore implements IntakeStore {
     farmId?: string;
     bdappsMobile?: string;
     channel?: string;
+    preferredLanguage?: string;
   }): Promise<IntakeProfile> {
     if (input.sessionId) {
       const profile = await this.findBySessionId(input.sessionId);
@@ -109,9 +113,10 @@ export class PostgresIntakeStore implements IntakeStore {
 
     await this.prisma.$executeRaw`
       INSERT INTO "farmer_profiles" ("id", "bdapps_mobile", "preferred_language")
-      VALUES (${farmerId}::uuid, ${input.bdappsMobile ?? null}, 'en')
+      VALUES (${farmerId}::uuid, ${input.bdappsMobile ?? null}, ${normalizeLanguage(input.preferredLanguage) ?? "en"})
       ON CONFLICT ("id") DO UPDATE SET
         "bdapps_mobile" = COALESCE(EXCLUDED."bdapps_mobile", "farmer_profiles"."bdapps_mobile"),
+        "preferred_language" = COALESCE(EXCLUDED."preferred_language", "farmer_profiles"."preferred_language"),
         "updated_at" = CURRENT_TIMESTAMP
     `;
 
@@ -136,7 +141,7 @@ export class PostgresIntakeStore implements IntakeStore {
       SET
         "preferred_name" = ${profile.farmerName ?? null},
         "bdapps_mobile" = ${profile.bdappsMobile ?? null},
-        "preferred_language" = ${profile.preferredLanguage ?? "en"},
+        "preferred_language" = ${normalizeLanguage(profile.preferredLanguage) ?? "en"},
         "updated_at" = CURRENT_TIMESTAMP
       WHERE "id" = ${profile.farmerId}::uuid
     `;
@@ -153,7 +158,7 @@ export class PostgresIntakeStore implements IntakeStore {
         "budget_bdt" = ${profile.budgetBdt ?? null},
         "target_season" = ${profile.targetSeason ?? null},
         "current_crop" = ${profile.currentCrop ?? null},
-        "metadata" = ${metadataFor(profile)},
+        "metadata" = ${toJsonb(metadataFor(profile))}::jsonb,
         "updated_at" = CURRENT_TIMESTAMP
       WHERE "id" = ${profile.farmId}::uuid
     `;
@@ -181,8 +186,8 @@ export class PostgresIntakeStore implements IntakeStore {
         ${sessionId}::uuid,
         ${event.toolName},
         ${event.kind},
-        ${event.parameters as Prisma.InputJsonValue},
-        ${event.rawResponse === undefined ? null : event.rawResponse as Prisma.InputJsonValue},
+        ${toJsonb(event.parameters)}::jsonb,
+        ${event.rawResponse === undefined ? null : toJsonb(event.rawResponse)}::jsonb,
         ${event.status},
         ${event.errorMessage ?? null},
         CURRENT_TIMESTAMP
@@ -245,7 +250,7 @@ function mapRow(row: JoinedProfileRow): IntakeProfile {
     farmId: row.farm_id,
     farmerName: row.preferred_name ?? undefined,
     bdappsMobile: row.bdapps_mobile ?? undefined,
-    preferredLanguage: row.preferred_language,
+    preferredLanguage: normalizeLanguage(row.preferred_language) ?? "en",
     locationText: row.location_text ?? undefined,
     latitude: toNumber(row.latitude),
     longitude: toNumber(row.longitude),
@@ -270,6 +275,10 @@ function metadataFor(profile: IntakeProfile): Prisma.InputJsonValue {
   };
 }
 
+function toJsonb(value: unknown): string {
+  return JSON.stringify(value ?? null);
+}
+
 let defaultIntakeStore: IntakeStore | undefined;
 
 export function getDefaultIntakeStore(): IntakeStore {
@@ -278,4 +287,3 @@ export function getDefaultIntakeStore(): IntakeStore {
     : new InMemoryIntakeStore();
   return defaultIntakeStore;
 }
-

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { IntakeService } from "./intakeService.js";
 import { InMemoryIntakeStore } from "./intakeStore.js";
-import { type IntakeExtractor } from "./extractIntakeProfile.js";
+import { HeuristicIntakeExtractor, type IntakeExtractor } from "./extractIntakeProfile.js";
 import { type IntakeProfile, type IntakeProfilePatch } from "./intakeSchema.js";
 
 class QueueExtractor implements IntakeExtractor {
@@ -31,10 +31,12 @@ describe("IntakeService", () => {
     expect(result.reply).toContain("where the land is");
     expect(result.trace.map((event) => event.toolName)).toEqual([
       "memory.search",
+      "language.detect",
       "extract_intake_profile",
       "profile.merge",
       "requiredFieldGaps",
       "save_farm_profile",
+      "mem0.memory.add",
     ]);
   });
 
@@ -125,5 +127,55 @@ describe("IntakeService", () => {
       budgetBdt: 40000,
       targetSeason: "Boro",
     });
+  });
+
+  it("extracts Banglish farmer details and asks only for the farm size still missing", async () => {
+    const store = new InMemoryIntakeStore();
+    const service = new IntakeService(store, new HeuristicIntakeExtractor());
+
+    const result = await service.handleTurn({
+      message:
+        "the land is in dhaka, soil type is bele, water is from nearby river and rain, budget is 400 tk daily and target season is monsoon",
+    });
+
+    expect(result.profile).toMatchObject({
+      locationText: "Dhaka",
+      soilType: "sandy",
+      waterAvailability: "mixed",
+      budgetBdt: 400,
+      targetSeason: "Monsoon",
+    });
+    expect(result.missingFields).toEqual(["farmSize"]);
+    expect(result.reply).toContain("how large the farm is");
+  });
+
+  it("detects Bangla script, stores preference, and replies in Bangla", async () => {
+    const store = new InMemoryIntakeStore();
+    const service = new IntakeService(store, new HeuristicIntakeExtractor());
+
+    const result = await service.handleTurn({
+      message: "আমার গাজীপুরে ২ একর জমি, বেলে দোআঁশ মাটি, বৃষ্টির পানি, বাজেট ৪৫ হাজার, আমন",
+    });
+
+    expect(result.profile.preferredLanguage).toBe("bn");
+    expect(result.profile).toMatchObject({
+      soilType: "sandy loam",
+      waterAvailability: "rainfed",
+      budgetBdt: 45000,
+      targetSeason: "Aman",
+    });
+    expect(result.reply).toContain("ইনটেক সম্পূর্ণ");
+  });
+
+  it("keeps Banglish as a separate preferred language", async () => {
+    const store = new InMemoryIntakeStore();
+    const service = new IntakeService(store, new HeuristicIntakeExtractor());
+
+    const result = await service.handleTurn({
+      message: "amar jomi Gazipur e, bele mati, nodi ar brishti pani, budget 30k, Aman",
+    });
+
+    expect(result.profile.preferredLanguage).toBe("banglish");
+    expect(result.reply).toContain("jomi koto boro");
   });
 });

@@ -15,17 +15,33 @@ interface ChatMessage {
   text: string;
 }
 
+type Language = "en" | "bn" | "banglish";
+
 const starterMessages = [
   "I have 2 acres in Gazipur, what should I plant?",
-  "sandy loam, rainfed, budget 45k, Aman",
+  "amar 2 acre jomi Gazipur e, bele doash mati, brishti er pani, budget 45k, Aman",
+  "আমার গাজীপুরে ২ একর জমি, বেলে দোআঁশ মাটি, বৃষ্টির পানি, বাজেট ৪৫ হাজার, আমন",
   "2 acres in Gazipur, sandy loam, rainfed, budget 45k, Aman",
 ];
 
+const languageLabels: Record<Language, string> = {
+  en: "English",
+  banglish: "Banglish",
+  bn: "বাংলা",
+};
+
+const initialAgentText: Record<Language, string> = {
+  en: "Tell me what you know about the farm. I will ask only for the missing details.",
+  banglish: "Farm niye ja janen bolun. Ami sudhu missing details jiggesh korbo.",
+  bn: "খামার সম্পর্কে যা জানেন বলুন। আমি শুধু যে তথ্যগুলো নেই সেগুলো জিজ্ঞেস করব।",
+};
+
 export default function AgriSense() {
+  const [language, setLanguage] = useState<Language>("en");
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "agent",
-      text: "Tell me what you know about the farm. I will ask only for the missing details.",
+      text: initialAgentText.en,
     },
   ]);
   const [input, setInput] = useState("");
@@ -56,6 +72,7 @@ export default function AgriSense() {
         sessionId,
         farmerId,
         farmId,
+        preferredLanguage: language,
       });
 
       setSessionId(response.sessionId);
@@ -99,6 +116,27 @@ export default function AgriSense() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <div className="flex rounded-lg border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-white/[0.03]">
+            {(Object.keys(languageLabels) as Language[]).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => {
+                  setLanguage(option);
+                  if (messages.length === 1 && messages[0]?.role === "agent") {
+                    setMessages([{ role: "agent", text: initialAgentText[option] }]);
+                  }
+                }}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+                  language === option
+                    ? "bg-brand-500 text-white"
+                    : "text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/[0.06]"
+                }`}
+              >
+                {languageLabels[option]}
+              </button>
+            ))}
+          </div>
           {starterMessages.map((starter) => (
             <button
               key={starter}
@@ -147,7 +185,7 @@ export default function AgriSense() {
                 ref={inputRef}
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                placeholder="Describe the farm..."
+                placeholder={language === "bn" ? "খামারের তথ্য লিখুন..." : language === "banglish" ? "Farm er details likhun..." : "Describe the farm..."}
                 className="h-11 min-w-0 flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-100"
               />
               <button
@@ -412,4 +450,3 @@ function formatDate(value: string): string {
 function shortId(value: string): string {
   return value.slice(0, 8);
 }
-

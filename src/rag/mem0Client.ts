@@ -1,4 +1,5 @@
 import { config } from "../config.js";
+import { buildMultilingualQuery, type SupportedLanguage } from "../language/localization.js";
 
 export interface Mem0Message {
   role: "user" | "assistant" | "system";
@@ -20,6 +21,7 @@ export interface Mem0SearchInput {
   runId?: string;
   limit?: number;
   filters?: Record<string, unknown>;
+  language?: SupportedLanguage;
 }
 
 export class Mem0Client {
@@ -39,13 +41,17 @@ export class Mem0Client {
   }
 
   async search(input: Mem0SearchInput): Promise<unknown> {
+    const query = buildMultilingualQuery(input.query);
     return this.request("/memories/search", {
-      query: input.query,
+      query,
       user_id: input.userId,
       agent_id: input.agentId,
       run_id: input.runId,
       limit: input.limit ?? 10,
-      filters: input.filters,
+      filters: {
+        ...(input.filters ?? {}),
+        ...(input.language ? { language: input.language } : {}),
+      },
     });
   }
 

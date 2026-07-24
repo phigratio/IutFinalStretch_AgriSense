@@ -5,6 +5,7 @@
 import { IntakeService } from "../agent/intakeService.js";
 import { getDefaultIntakeStore } from "../agent/intakeStore.js";
 import { type IntakeRequest, type IntakeTraceEvent } from "../agent/intakeSchema.js";
+import { buildMultilingualQuery, localizePlanSummary, localizeSeasonPlan, normalizeLanguage } from "../language/localization.js";
 import { buildSeasonPlan, rankCrops } from "./planningEngine.js";
 import { getDefaultAgriSenseStore, type AgriSenseStore } from "./agrisenseStore.js";
 import { getWeatherForecast, mockWeatherForecast } from "./weatherTool.js";
@@ -34,6 +35,7 @@ export class AgriSenseService {
   async handleMessage(request: IntakeRequest): Promise<AgriSenseMessageResult> {
     const intake = await this.intakeService.handleTurn(request);
     const trace = [...intake.trace];
+    const language = normalizeLanguage(intake.profile.preferredLanguage) ?? "en";
 
     if (!intake.intakeComplete) {
       return {
@@ -90,6 +92,15 @@ export class AgriSenseService {
       toolName: "rag.retrieve.placeholder",
       parameters: {
         profile: intake.profile,
+        language,
+        normalizedQuery: buildMultilingualQuery([
+          request.message,
+          intake.profile.locationText,
+          intake.profile.soilType,
+          intake.profile.waterAvailability,
+          intake.profile.targetSeason,
+          intake.profile.currentCrop,
+        ].filter(Boolean).join(" ")),
         note: "Knowledge base implementation is owned by teammate; deterministic seeded crop baselines used meanwhile.",
       },
       rawResponse: { chunks: [], status: "pending teammate KB" },
@@ -112,7 +123,7 @@ export class AgriSenseService {
     const seasonPlan = await this.store.saveSeasonPlan(
       intake.sessionId,
       intake.farmId,
-      buildSeasonPlan(intake.profile, weather, cropRankings[0]!),
+      localizeSeasonPlan(buildSeasonPlan(intake.profile, weather, cropRankings[0]!), language),
       weatherIds,
     );
     await this.trace(intake.sessionId, trace, {
@@ -137,7 +148,13 @@ export class AgriSenseService {
       sessionId: intake.sessionId,
       farmerId: intake.farmerId,
       farmId: intake.farmId,
-      assistantMessage: buildAssistantMessage(seasonPlan.crop, cropRankings[0]!.suitabilityScore, weather, seasonPlan.financials.netProfitBdt),
+      assistantMessage: localizePlanSummary({
+        crop: cropRankings[0]!.crop,
+        score: cropRankings[0]!.suitabilityScore,
+        weather,
+        netProfitBdt: seasonPlan.financials.netProfitBdt,
+        language,
+      }),
       missingFields: [],
       farmProfile: intake.profile,
       weather,
@@ -169,10 +186,4 @@ function summarizeWeather(weather: WeatherForecast): Record<string, number> {
   };
 }
 
-function buildAssistantMessage(crop: string, score: number, weather: WeatherForecast, netProfitBdt: number): string {
-  const today = weather.daily[0];
-  return `I completed the intake and ran the planning tools. Top crop: ${crop} (${score}/100). Today in ${weather.locationText}: ${today?.rainfallMm ?? 0}mm rain, ${today?.temperatureMinC ?? 0}-${today?.temperatureMaxC ?? 0}C. Estimated net profit is ৳${netProfitBdt}.`;
-}
-
 export const agriSenseService = new AgriSenseService();
-

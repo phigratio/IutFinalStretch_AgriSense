@@ -2,11 +2,13 @@ import { apiFetch } from "./client.js";
 
 export interface IntakeProfile {
   sessionId?: string;
+  userId?: string;
+  tenantId?: string;
   farmerId?: string;
   farmId?: string;
   farmerName?: string;
   bdappsMobile?: string;
-  preferredLanguage?: string;
+  preferredLanguage?: "en" | "bn" | "banglish";
   locationText?: string;
   latitude?: number;
   longitude?: number;
@@ -120,6 +122,7 @@ export function sendAgriSenseMessage(input: {
   farmerId?: string;
   farmId?: string;
   bdappsMobile?: string;
+  preferredLanguage?: "en" | "bn" | "banglish";
 }): Promise<AgriSenseMessageResult> {
   return apiFetch<AgriSenseMessageResult>("/api/agrisense/message", {
     method: "POST",
@@ -134,4 +137,3 @@ export function getAgriSenseTrace(sessionId: string): Promise<unknown[]> {
 export function getAgriSensePlan(planId: string): Promise<unknown> {
   return apiFetch<unknown>(`/api/agrisense/plans/${planId}`);
 }
-

@@ -16,6 +16,14 @@ export function createApp(): Application {
   const app = express();
 
   app.use(express.json());
+  app.use((req, res, next) => {
+    const startedAt = Date.now();
+    res.on("finish", () => {
+      const elapsedMs = Date.now() - startedAt;
+      console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${elapsedMs}ms`);
+    });
+    next();
+  });
   app.use(observabilityMiddleware);
 
   app.use("/health", healthRouter);

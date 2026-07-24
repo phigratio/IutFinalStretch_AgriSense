@@ -13,10 +13,13 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
       res.status(201).json(
         await service.startSession({
           sessionId: req.body.sessionId,
+          userId: req.body.userId,
+          tenantId: req.body.tenantId,
           farmerId: req.body.farmerId,
           farmId: req.body.farmId,
           bdappsMobile: req.body.bdappsMobile,
           channel: req.body.channel ?? "web",
+          preferredLanguage: req.body.preferredLanguage,
         }),
       );
     } catch (error) {
@@ -30,10 +33,13 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
         await service.handleMessage({
           message: req.body.message,
           sessionId: req.body.sessionId,
+          userId: req.body.userId,
+          tenantId: req.body.tenantId,
           farmerId: req.body.farmerId,
           farmId: req.body.farmId,
           bdappsMobile: req.body.bdappsMobile,
           channel: req.body.channel ?? "web",
+          preferredLanguage: req.body.preferredLanguage,
         }),
       );
     } catch (error) {
