@@ -107,6 +107,13 @@ model FarmerProfile {
   bdappsMobile   String?       @map("bdapps_mobile")
   preferredName  String?       @map("preferred_name")
   preferredLanguage String     @default("en") @map("preferred_language")
+  // BDApps "channel activation" (see docs/plans/BDAPPS-INTEGRATION-PLAN.md §1a):
+  // the masked subscriberId is the reach credential — without it BDApps cannot
+  // SMS/charge this farmer. Captured via subscription webhook / inbound / OTP.
+  bdappsSubscriberId String?    @map("bdapps_subscriber_id") // masked tel:MDUz…
+  channelActivatedAt DateTime?  @map("channel_activated_at") @db.Timestamptz(6)
+  premium            Boolean    @default(false)
+  premiumSince       DateTime?  @map("premium_since") @db.Timestamptz(6)
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
   farms          FarmProfile[]
@@ -114,6 +121,7 @@ model FarmerProfile {
 
   @@index([userId])
   @@index([bdappsMobile])
+  @@index([bdappsSubscriberId])
   @@map("farmer_profiles")
 }
 

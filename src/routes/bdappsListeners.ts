@@ -15,10 +15,16 @@ import type {
   IncomingUssd,
   IncomingSubscriptionNotification,
 } from "../bdapps/index.js";
+import { activateChannel } from "../bdapps/channel.js";
 
 export const bdappsListenerRouter = Router();
 
 const ack = { statusCode: "S1000", statusDetail: "Success" };
+
+/** A `tel:` value that is a plain BD number (not a masked token). */
+function looksLikeRawNumber(subscriberId: string): boolean {
+  return /^tel:880\d{10}$/.test(subscriberId.replace(/\s+/g, ""));
+}
 
 /** A user texted your short code + keyword. */
 bdappsListenerRouter.post("/sms", async (req, res) => {
@@ -62,12 +68,30 @@ bdappsListenerRouter.post("/ussd", async (req, res) => {
   res.json(ack);
 });
 
-/** BDApps confirms a subscribe/unsubscribe actually happened. */
-bdappsListenerRouter.post("/subscription", (req, res) => {
+/**
+ * BDApps confirms a subscribe/unsubscribe. This is the CANONICAL channel-
+ * activation capture point (DGD §6.3.2): on confirmation, BDApps delivers the
+ * masked subscriberId here. We persist it to FarmerProfile so we can reach the
+ * farmer, and flip their premium entitlement from the subscription status.
+ */
+bdappsListenerRouter.post("/subscription", async (req, res) => {
   const note = req.body as IncomingSubscriptionNotification;
   console.log("[SUBSCRIPTION IN]", JSON.stringify(note));
 
-  // TODO: persist note.subscriberId + note.status to your database here.
+  try {
+    if (note.subscriberId) {
+      const registered = String(note.status).toUpperCase() === "REGISTERED";
+      await activateChannel({
+        maskedSubscriberId: note.subscriberId,
+        // If BDApps sent a raw number, use it as the mobile link too.
+        mobile: looksLikeRawNumber(note.subscriberId) ? note.subscriberId : undefined,
+        source: "subscription_webhook",
+        premium: registered,
+      });
+    }
+  } catch (err) {
+    console.error("[SUBSCRIPTION] channel activation failed:", err);
+  }
 
-  res.json(ack);
+  res.json(ack); // always acknowledge so BDApps doesn't retry-storm
 });

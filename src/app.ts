@@ -8,6 +8,7 @@ import { bdappsTestRouter } from "./routes/bdappsTest.js";
 import { agentIntakeRouter } from "./routes/agentIntake.js";
 import { agrisenseRouter } from "./routes/agrisense.js";
 import { paymentsRouter } from "./routes/payments.js";
+import { channelRouter } from "./routes/channel.js";
 import { temporalRouter } from "./routes/temporal.js";
 import { marketplaceRouter } from "./routes/marketplace.js";
 // NOTE: parallel Tier 0 implementation (navid) — mounted under /api/tier0 to avoid
@@ -59,6 +60,8 @@ export function createApp(): Application {
   app.use("/api/marketplace", marketplaceRouter);
   // bdapps CaaS checkout + receipt readback (payments/service.ts).
   app.use("/api/payments", paymentsRouter);
+  // BDApps channel-activation status (can we reach this farmer via BDApps?).
+  app.use("/api/channel", channelRouter);
   // Parallel Tier 0 pipeline (navid): /api/tier0/agent/message, /api/tier0/sessions/:id/trace.
   app.use("/api/tier0", agentRouter);
   // Multi-tenant knowledge base (navid/kb): prices resolve tenant-over-hub with provenance.
