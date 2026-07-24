@@ -10,6 +10,7 @@ import {
 } from "../api/onboarding.js";
 import LocationAutofill, { EditableDistrictSelect } from "../components/onboarding/LocationAutofill.js";
 import SelfOnboardChat from "../components/onboarding/SelfOnboardChat.js";
+import BdappsOptInCard from "../components/onboarding/BdappsOptInCard.js";
 
 
 const ROLE_BN: Record<UserRole, string> = { user: "ব্যবহারকারী", tenant: "টেন্যান্ট", admin: "অ্যাডমিন" };
@@ -129,6 +130,10 @@ export default function Onboarding() {
         {choice === "assist" && <AssistForm defaultName={user?.name} defaultPhone={status?.onboarding?.phone} busy={busy} onSubmit={(b) => run(() => requestAssist(b), "আপনার অনুরোধ পাঠানো হয়েছে। একজন টেন্যান্ট শীঘ্রই তথ্য পূরণ করবেন।")} />}
         {choice === "tenant" && <TenantForm defaultPhone={status?.onboarding?.phone} busy={busy} onSubmit={(b) => run(() => requestTenant(b), "টেন্যান্ট হওয়ার আবেদন জমা হয়েছে। অ্যাডমিন পর্যালোচনা করবেন।")} />}
       </div>
+
+      {/* BDApps opt-in — independent of the intake choice; activates the SMS/pay
+          channel on the current farmer via the existing OTP verify flow. */}
+      <BdappsOptInCard phone={status?.onboarding?.phone} />
       </div>
     </div>
   );
