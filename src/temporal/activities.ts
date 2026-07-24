@@ -4,7 +4,17 @@ import { PrismaClient } from "../generated/prisma/client.js";
 import { config } from "../config.js";
 import { mem0Client } from "../rag/mem0Client.js";
 import { getWeatherForecast } from "../agrisense/weatherTool.js";
+import { deliverPendingAlerts } from "../notifications/smsDispatcher.js";
 import type { MemoryRefreshInput, PlanReminderInput, SweepResult, WeatherAlertInput } from "./types.js";
+
+/** Best-effort SMS delivery of freshly-created alerts; never fails the sweep. */
+async function dispatchAlertsSafely(): Promise<void> {
+  try {
+    await deliverPendingAlerts();
+  } catch (error) {
+    console.error("[alert dispatch] delivery failed:", (error as Error).message);
+  }
+}
 
 interface ActiveFarmRow {
   farm_id: string;
@@ -109,6 +119,7 @@ export async function weatherAlertSweepActivity(input: WeatherAlertInput = {}): 
       }
     }
 
+    if (created > 0) await dispatchAlertsSafely(); // deliver new alerts by SMS
     return { workflow: "weather_alert_sweep", scanned: rows.length, created, skipped, errors };
   });
 }
@@ -153,6 +164,7 @@ export async function planTaskReminderSweepActivity(input: PlanReminderInput = {
       });
     }
 
+    if (created > 0) await dispatchAlertsSafely(); // deliver new alerts by SMS
     return { workflow: "plan_task_reminder_sweep", scanned: rows.length, created, skipped: 0, errors: [] };
   });
 }

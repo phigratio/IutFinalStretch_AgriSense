@@ -9,6 +9,7 @@ import { agentIntakeRouter } from "./routes/agentIntake.js";
 import { agrisenseRouter } from "./routes/agrisense.js";
 import { paymentsRouter } from "./routes/payments.js";
 import { channelRouter } from "./routes/channel.js";
+import { devRouter } from "./routes/dev.js";
 import { temporalRouter } from "./routes/temporal.js";
 import { marketplaceRouter } from "./routes/marketplace.js";
 import { financeRouter } from "./routes/finance.js";
@@ -66,6 +67,8 @@ export function createApp(): Application {
   app.use("/api/payments", paymentsRouter);
   // BDApps channel-activation status (can we reach this farmer via BDApps?).
   app.use("/api/channel", channelRouter);
+  // Dev/demo triggers for proactive-alert SMS (dev-only).
+  app.use("/api/dev", devRouter);
   // Parallel Tier 0 pipeline (navid): /api/tier0/agent/message, /api/tier0/sessions/:id/trace.
   app.use("/api/tier0", agentRouter);
   // Multi-tenant knowledge base (navid/kb): prices resolve tenant-over-hub with provenance.

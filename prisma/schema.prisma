@@ -383,6 +383,11 @@ model ProactiveAlert {
   rawEvidence    Json      @default("{}") @map("raw_evidence")
   fingerprint    String    @unique
   status         String    @default("open")
+  // BDApps SMS delivery (P2, see BDAPPS-INTEGRATION-PLAN.md Flow C): alerts are
+  // computed here then delivered off-app by SMS to the farmer's masked channel.
+  deliveryStatus String    @default("pending") @map("delivery_status") // pending|sent|skipped_no_channel|failed
+  smsMessageId   String?   @map("sms_message_id")
+  deliveredAt    DateTime? @map("delivered_at") @db.Timestamptz(6)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
 
@@ -390,6 +395,7 @@ model ProactiveAlert {
   @@index([sessionId])
   @@index([alertType])
   @@index([status])
+  @@index([deliveryStatus])
   @@map("proactive_alerts")
 }
 
