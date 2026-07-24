@@ -143,6 +143,37 @@
 - bdapps TAP doc (dev.bdapps.com/API_Documentation/bdapps_tap_api.html) — confirm CaaS flow
   matches DGD v1.1.3 shapes (C, during P3-C2).
 
+## 8. Session log (append-only: `HH:MM — <who> — <what changed>`)
+
+- 24Jul 11:00 — Claude session 1 (with A) — Read problem statement, bdapps cheatsheet/DGD/
+  setup guide, demo PHP, and pre-event repo; produced the six planning docs; flagged
+  compliance rule → D1; proposed architecture/phases; this file seeded. Next action for team:
+  execute Phase 0 (P0-1..P0-5) immediately.
+- 24Jul 11:15 — Claude session 1 (with A) — Planning docs pushed to repo main (ba71caa) so
+  all members can pull them. GitHub reports the repo was renamed →
+  github.com/phigratio/IutFinalStretch_AgriSense (local origin URL updated). ⚠ Note: this is
+  the pre-event repo — per D1/RULES §1 the SUBMISSION repo must be fresh with window-only
+  code; recommended: create it now (P0-1) and keep this repo for planning/reference. Also
+  verify naming with organizers: required pattern is `TeamNameAgriSense` (example shows no
+  underscore).
+- 24Jul 11:10 — Claude session 1 (with Labib) — Reviewed teammate work (schema + mem0 PR #1,
+  .gitignore PR #2) and pre-event bdapps client coverage. Logged D12 (Expo React Native app)
+  + D13 (build on this repo / Postgres+mem0 stack). Wrote Labib's workstream plan →
+  `docs/plans/PLAN-labib-bdapps-react-native.md`. Flagged: agent loop UNOWNED, mem0 needs
+  OpenAI key or Gemini reconfig, venue-wifi/hotspot risk. Roles table (§2) filled.
+- 24Jul ~13:00 — Claude session (with Labib) — Iterative build of Labib's workstream, 6
+  commits pushed to main (see IN PROGRESS/SHIPPED note in §5): bdapps mock mode, payments
+  checkout service + routes (63 backend tests green, live-verified in mock mode), Expo
+  SDK 57 app with Home/Chat/Plan/Money/Trace tabs wired to Mujahid's /api/agrisense
+  endpoints + /api/payments. Node upgraded to 24 LTS on Labib's machine (Prisma 7 needs
+  ≥20.19). Next for Labib: bdapps provisioning → first real S1000, Expo Go smoke on phone,
+  scrcpy. Contract note: mobile/src/api/types.ts mirrors backend contracts — change both
+  sides in one commit.
+- 24Jul 11:30 — Claude session 1 (with Labib) — **$50 OpenAI credit claimed by each member
+  (~$150 total)** → D14: LLM = OpenAI `gpt-5-mini`, embeddings `text-embedding-3-small`
+  (1536 — schema unchanged), mem0 docker defaults work as-is; Gemini/Groq demoted to
+  failover. mem0 open question closed. Mujahid: set `OPENAI_API_KEY` in `.env` + compose env
+  and bring the stack up. Navid: embed KB chunks with `text-embedding-3-small` only.
 - 24Jul ~15:15 — Claude session (with Labib) — **Local infra live via docker:** postgres
   (pgvector) up with host port 5432 mapped (compose change), all Prisma migrations applied
   incl. multitenant KB; mem0-api + neo4j building. `.env` fixes: leading space in
@@ -189,35 +220,19 @@
     the checkout flow needs an OTP-verify step before first charging a new farmer number,
     and payments/service.ts + agent tools should store/reuse the masked subscriberId per
     farmer instead of the raw phone. Flagging as a design decision, not silently changed.
-
-## 8. Session log (append-only: `HH:MM — <who> — <what changed>`)
-
-- 24Jul 11:00 — Claude session 1 (with A) — Read problem statement, bdapps cheatsheet/DGD/
-  setup guide, demo PHP, and pre-event repo; produced the six planning docs; flagged
-  compliance rule → D1; proposed architecture/phases; this file seeded. Next action for team:
-  execute Phase 0 (P0-1..P0-5) immediately.
-- 24Jul 11:15 — Claude session 1 (with A) — Planning docs pushed to repo main (ba71caa) so
-  all members can pull them. GitHub reports the repo was renamed →
-  github.com/phigratio/IutFinalStretch_AgriSense (local origin URL updated). ⚠ Note: this is
-  the pre-event repo — per D1/RULES §1 the SUBMISSION repo must be fresh with window-only
-  code; recommended: create it now (P0-1) and keep this repo for planning/reference. Also
-  verify naming with organizers: required pattern is `TeamNameAgriSense` (example shows no
-  underscore).
-- 24Jul 11:10 — Claude session 1 (with Labib) — Reviewed teammate work (schema + mem0 PR #1,
-  .gitignore PR #2) and pre-event bdapps client coverage. Logged D12 (Expo React Native app)
-  + D13 (build on this repo / Postgres+mem0 stack). Wrote Labib's workstream plan →
-  `docs/plans/PLAN-labib-bdapps-react-native.md`. Flagged: agent loop UNOWNED, mem0 needs
-  OpenAI key or Gemini reconfig, venue-wifi/hotspot risk. Roles table (§2) filled.
-- 24Jul ~13:00 — Claude session (with Labib) — Iterative build of Labib's workstream, 6
-  commits pushed to main (see IN PROGRESS/SHIPPED note in §5): bdapps mock mode, payments
-  checkout service + routes (63 backend tests green, live-verified in mock mode), Expo
-  SDK 57 app with Home/Chat/Plan/Money/Trace tabs wired to Mujahid's /api/agrisense
-  endpoints + /api/payments. Node upgraded to 24 LTS on Labib's machine (Prisma 7 needs
-  ≥20.19). Next for Labib: bdapps provisioning → first real S1000, Expo Go smoke on phone,
-  scrcpy. Contract note: mobile/src/api/types.ts mirrors backend contracts — change both
-  sides in one commit.
-- 24Jul 11:30 — Claude session 1 (with Labib) — **$50 OpenAI credit claimed by each member
-  (~$150 total)** → D14: LLM = OpenAI `gpt-5-mini`, embeddings `text-embedding-3-small`
-  (1536 — schema unchanged), mem0 docker defaults work as-is; Gemini/Groq demoted to
-  failover. mem0 open question closed. Mujahid: set `OPENAI_API_KEY` in `.env` + compose env
-  and bring the stack up. Navid: embed KB chunks with `text-embedding-3-small` only.
+- 24Jul ~16:15 — Claude session (with Labib) — App **APP_139258 approved to "limited
+  production"** by bdapps. Retested all 3 blockers immediately after: **no change** —
+  `direct/debit` still E1371, `balance`/`list/pi` still raw 404, subscription still
+  `INITIAL CHARGING PENDING`. So general production approval ≠ CaaS activation; they
+  appear to be separate approval tracks. Real Robi balance topped up to ৳100 (was ৳0) —
+  clears one blocker for the eventual ৳5 test charge.
+  Labib then received a **real inbound confirmation SMS from bdapps/Robi** on
+  01805758966 (Bangla): "Thank you for confirming your subscription. To use the
+  application, please wait for a confirmation SMS from bdapps. To unsubscribe, send
+  STOP agrisms to 21213. Call 09678232777 (9am-6pm) for info." — confirms SMS
+  shortcode/keyword (21213/agrisms) is fully wired live. Rechecked status right after:
+  **still INITIAL CHARGING PENDING** — this is a first-stage (telecom-side) confirmation;
+  a second bdapps-side confirmation is still pending, appears async/backend-driven, not
+  triggerable via any API call we have. **Recommended action: call 09678232777 (bdapps
+  support, 9am-6pm) directly**, reference APP_139258 + INITIAL CHARGING PENDING + missing
+  second confirmation SMS, frame as hackathon time pressure.
