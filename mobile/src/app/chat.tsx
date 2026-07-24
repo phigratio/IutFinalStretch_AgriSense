@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -24,6 +25,7 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession, type ChatBubble } from '@/state/session';
+import type { Language } from '@/api/types';
 
 const FIELD_HINTS: Record<string, string> = {
   location: 'My farm is in ',
@@ -33,6 +35,59 @@ const FIELD_HINTS: Record<string, string> = {
   budget: 'My budget is  taka',
   targetSeason: 'I am planning for  season',
 };
+
+const LANGUAGE_LABELS: Record<Language, string> = {
+  en: 'English',
+  banglish: 'Banglish',
+  bn: 'বাংলা',
+};
+
+const STARTER_MESSAGES = [
+  'I have 2 acres in Gazipur, what should I plant?',
+  'amar 2 acre jomi Gazipur e, bele doash mati, brishti er pani, budget 45k, Aman',
+  'আমার গাজীপুরে ২ একর জমি, বেলে দোআঁশ মাটি, বৃষ্টির পানি, বাজেট ৪৫ হাজার, আমন',
+  '2 acres in Gazipur, sandy loam, rainfed, budget 45k, Aman',
+];
+
+function ChatHeader() {
+  const { language, setLanguage, sending, send } = useSession();
+  const theme = useTheme();
+  return (
+    <View style={styles.header}>
+      <View style={[styles.langBar, { borderColor: theme.border, backgroundColor: theme.backgroundElement }]}>
+        {(Object.keys(LANGUAGE_LABELS) as Language[]).map((lang) => {
+          const active = language === lang;
+          return (
+            <Pressable
+              key={lang}
+              onPress={() => setLanguage(lang)}
+              style={[styles.langChip, active && { backgroundColor: theme.brand }]}>
+              <ThemedText
+                type="small"
+                themeColor={active ? undefined : 'textSecondary'}
+                style={active ? styles.langActiveLabel : undefined}>
+                {LANGUAGE_LABELS[lang]}
+              </ThemedText>
+            </Pressable>
+          );
+        })}
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.starterRow}>
+        {STARTER_MESSAGES.map((starter) => (
+          <Pressable
+            key={starter}
+            onPress={() => void send(starter)}
+            disabled={sending}
+            style={[styles.starterChip, { borderColor: theme.border, backgroundColor: theme.backgroundElement }]}>
+            <ThemedText type="small" themeColor="textSecondary" numberOfLines={1} style={styles.starterText}>
+              {starter}
+            </ThemedText>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
 
 function ProfileStrip() {
   const { profile } = useSession();
@@ -122,6 +177,7 @@ export default function ChatScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <ChatHeader />
         <ProfileStrip />
         <KeyboardAvoidingView
           style={styles.flex}
@@ -181,6 +237,37 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   flex: { flex: 1 },
+  header: {
+    paddingTop: Spacing.two,
+    gap: Spacing.two,
+  },
+  langBar: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    marginHorizontal: Spacing.three,
+    borderWidth: 1,
+    borderRadius: 999,
+    padding: 3,
+    gap: 3,
+  },
+  langChip: {
+    borderRadius: 999,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one,
+  },
+  langActiveLabel: { color: '#ffffff' },
+  starterRow: {
+    paddingHorizontal: Spacing.three,
+    gap: Spacing.two,
+  },
+  starterChip: {
+    maxWidth: 240,
+    borderWidth: 1,
+    borderRadius: Spacing.two,
+    paddingHorizontal: Spacing.two + Spacing.half,
+    paddingVertical: Spacing.two,
+  },
+  starterText: { maxWidth: 220 },
   profileStrip: {
     marginHorizontal: Spacing.three,
     marginTop: Spacing.two,
