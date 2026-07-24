@@ -39,9 +39,14 @@
   copying** · rules ban pre-built code, DQ risk outweighs any speedup · rejected: porting it.
 - D2 — **Custom agent loop** (plan→act→observe, zod tools, trace bus) over LangChain/framework
   · full control of trace + gap-filling + judges' "not a wrapper" Q&A · rejected: heavy framework.
-- D3 — **LLM = Gemini 2.5 Flash free tier, 3 rotating keys; Groq llama-3.3-70b failover**
-  behind one adapter · no paid APIs available; function calling + vision needed · rejected:
-  Anthropic API (no funded key), Ollama local (too slow on our laptops).
+- D3 — ~~LLM = Gemini 2.5 Flash free tier~~ **SUPERSEDED by D14** (OpenAI credits landed).
+- D14 24Jul ~11:30 — **LLM = OpenAI: `gpt-5-mini` for the agent loop + summaries; embeddings
+  = `text-embedding-3-small` (1536-dim — matches the merged schema exactly, no migration);
+  mem0 docker defaults work unchanged** · each member claimed $50 credit → 3 keys, ~$150
+  total, plenty for 24h incl. rehearsals; kills the free-tier RPM risk · Gemini/Groq demoted
+  to failover adapters only. Escalate a hard prompt to `gpt-5.1` only if mini provably
+  fails it. Keys: one primary in backend `.env` (`OPENAI_API_KEY`), other two listed as
+  rotation/backup; never committed (repo rule 1.4).
 - D4 — **Weather = Open-Meteo** (keyless, 16-day, geocoding) with SQLite cache · free + reliable
   + real API for rubric · rejected: OpenWeatherMap (key + quota friction).
 - D5 — **Embeddings local via Transformers.js MiniLM; vectors in SQLite; hybrid retrieve** ·
@@ -70,12 +75,11 @@
 
 ## 4. Environment & credentials status (update as they land)
 
-- [ ] ⚠ mem0 stack needs `OPENAI_API_KEY` as configured (defaults `gpt-5-mini` +
-      `text-embedding-3-small` 1536-dim). If no funded key: reconfigure mem0 to Gemini
-      (embedder `text-embedding-004` → dims 768 → schema `vector(1536)` + migration must
-      change) — owner: Mujahid, decide by 13:00.
-- [ ] Gemini keys ×3 (owner: B) — tested with curl?
-- [ ] Groq key (B)
+- [x] ~~⚠ mem0 stack needs `OPENAI_API_KEY`~~ **RESOLVED 11:30 (D14):** OpenAI credits ×3
+      claimed — set `OPENAI_API_KEY` in backend `.env` + docker env; mem0 defaults
+      (`gpt-5-mini` + `text-embedding-3-small` 1536) stay as-is. Each member: verify your key
+      with one real completion call; note per-key rate tier.
+- [ ] Gemini/Groq failover keys (optional now, nice for resilience)
 - [ ] bdapps Pro app provisioned: APP_ID ☐ · password in .env ☐ · venue public IP whitelisted ☐
       (E1303 = re-check IP) · listener URLs set (ngrok) ☐ · first S1000 seen? ☐
 - [ ] Repo created + 3 clones working
@@ -103,11 +107,13 @@
 
 **BLOCKED / RISKS WATCHLIST**
 - ⚠ **Agent loop has no owner** — it's the 20-pt rubric row; assign at next standup.
-- mem0 stack assumes OpenAI key (§4) + docker Postgres/Neo4j/mem0 must all run on the demo
-  laptop — check RAM + startup time early.
+- Docker Postgres/Neo4j/mem0 must all run on the demo laptop — check RAM + startup time early.
 - bdapps approval latency / IP whitelist — escalate to sponsor mentors if stuck by 13:00.
 - Venue wifi client isolation may block phone↔laptop — hotspot is the primary demo network.
-- Gemini free-tier RPM during rehearsals — mitigation: key rotation, terse prompts, cached turns.
+- ~~Gemini free-tier RPM~~ resolved by D14 (OpenAI credits); fresh OpenAI accounts sit on low
+  rate tiers — verify each key's tier, rotate the 3 keys if TPM squeezes during rehearsals.
+- Credits ≠ committed budget discipline: log usage once mid-hack (platform usage page);
+  $150 is ample for gpt-5-mini but not for careless gpt-5.1-everywhere.
 
 ## 6. Checkpoint results (fill at CP time — honest pass/fail + what was cut)
 
@@ -120,7 +126,7 @@
 
 - **Who owns the agent core loop?** (biggest rubric item; Mujahid after mem0 bring-up is the
   natural fit — decide at next standup)
-- mem0: funded OpenAI key available, or reconfigure to Gemini (dims 768 + migration)?
+- ~~mem0: funded OpenAI key available, or reconfigure to Gemini?~~ → resolved, D14 (OpenAI ×3).
 - ~~Team name?~~ → repo is `IutFinalStretch_AgriSense`; verify underscore naming with organizers.
 - Does the venue share a static public IP for bdapps whitelisting, or NAT that changes? (C asks organizers)
 - Is a funded Anthropic/OpenAI key available from any member? (would slot into adapter as D3 fallback-2)
@@ -145,3 +151,8 @@
   + D13 (build on this repo / Postgres+mem0 stack). Wrote Labib's workstream plan →
   `docs/plans/PLAN-labib-bdapps-react-native.md`. Flagged: agent loop UNOWNED, mem0 needs
   OpenAI key or Gemini reconfig, venue-wifi/hotspot risk. Roles table (§2) filled.
+- 24Jul 11:30 — Claude session 1 (with Labib) — **$50 OpenAI credit claimed by each member
+  (~$150 total)** → D14: LLM = OpenAI `gpt-5-mini`, embeddings `text-embedding-3-small`
+  (1536 — schema unchanged), mem0 docker defaults work as-is; Gemini/Groq demoted to
+  failover. mem0 open question closed. Mujahid: set `OPENAI_API_KEY` in `.env` + compose env
+  and bring the stack up. Navid: embed KB chunks with `text-embedding-3-small` only.
