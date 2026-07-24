@@ -1,9 +1,80 @@
 import { Router } from "express";
 import { getKbRuntime } from "../kb/runtime.js";
 import { assertTenantWriteAccess, TenantAccessError, HUB } from "../kb/tenancy.js";
-import type { PriceObservationLike } from "../kb/priceStore.js";
+import { resolvePriceSignalFrom, type PriceObservationLike } from "../kb/priceStore.js";
+import { searchKB } from "../kb/vectorKb.js";
+import { resolveTableFrom, type TableKind } from "../kb/tableStore.js";
+import { loadTable } from "../data/loader.js";
+import { assertTenantAccess } from "../kb/tenancy.js";
+import { verifyAuthToken } from "../auth/tokens.js";
 
 export const kbRouter: Router = Router();
+
+kbRouter.get("/prices/signal", async (req, res, next) => {
+  try {
+    const cropId = String(req.query.cropId ?? "");
+    if (!cropId) { res.status(400).json({ error: "cropId is required" }); return; }
+    const rows = await getKbRuntime().priceStore.listByCrop(cropId);
+    const result = resolvePriceSignalFrom(rows, cropId);
+    if (!result) { res.status(404).json({ error: "At least two real observations are required" }); return; }
+    res.json({ ...result, disclaimer: "Historical trend only; not a price forecast." });
+  } catch (err) { next(err); }
+});
+
+kbRouter.get("/search", async (req, res, next) => {
+  try {
+    const query = String(req.query.query ?? "").trim();
+    if (!query) { res.status(400).json({ error: "query is required" }); return; }
+    const { tenantStore } = getKbRuntime();
+    const district = req.query.district ? String(req.query.district) : undefined;
+    const tenantId = req.query.tenantId
+      ? String(req.query.tenantId)
+      : district ? await tenantStore.resolveTenantIdForDistrict(district) : HUB;
+    const includeUnverified = req.query.includeUnverified === "true";
+    if (tenantId === HUB && includeUnverified) {
+      const authorization = req.header("authorization");
+      if (!authorization?.startsWith("Bearer ") || !verifyAuthToken(authorization.slice(7))) {
+        res.status(401).json({ error: "Admin authentication required to search draft entries" }); return;
+      }
+    } else if (tenantId !== HUB && (req.query.tenantId || includeUnverified)) {
+      const userId = req.header("x-user-id");
+      if (!userId) { res.status(401).json({ error: "x-user-id header required" }); return; }
+      await assertTenantAccess(tenantStore, userId, tenantId);
+    }
+    const hits = await searchKB(query, { tenantId, cropId: req.query.cropId ? String(req.query.cropId) : undefined, includeUnverified });
+    res.json({ tenantId, hits, citations: [...new Set(hits.map((h) => h.citation))] });
+  } catch (err) {
+    if (err instanceof TenantAccessError) { res.status(403).json({ error: err.message }); return; }
+    next(err);
+  }
+});
+
+const tableFiles: Record<TableKind, string> = {
+  fertilizer: "fertilizer_frg.csv", calendar: "crop_calendar.csv", water: "crop_water.csv",
+  variety: "varieties.csv", srdi: "srdi_fertility.csv",
+};
+
+kbRouter.get("/tables/:kind", async (req, res, next) => {
+  try {
+    const kind = req.params.kind as TableKind;
+    if (!(kind in tableFiles)) { res.status(400).json({ error: "invalid table kind" }); return; }
+    const cropId = String(req.query.cropId ?? "");
+    if (!cropId && kind !== "srdi") { res.status(400).json({ error: "cropId is required" }); return; }
+    const district = req.query.district ? String(req.query.district) : undefined;
+    const { tenantStore, tableStore } = getKbRuntime();
+    const tenantId = district ? await tenantStore.resolveTenantIdForDistrict(district) : HUB;
+    const rows = await tableStore.list(kind, cropId);
+    const resolved = resolveTableFrom(rows, { kind, cropId, district, tenantId }, () => {
+      const candidates = loadTable(tableFiles[kind]);
+      const selected = kind === "srdi"
+        ? candidates.filter((r) => !district || r.district.toLowerCase() === district.toLowerCase())
+        : candidates.filter((r) => r.cropId === cropId);
+      return selected.length ? selected : undefined;
+    });
+    if (!resolved) { res.status(404).json({ error: "No table data available" }); return; }
+    res.json(resolved);
+  } catch (err) { next(err); }
+});
 
 /**
  * GET /api/kb/prices?cropId=&district=&farmLat=&farmLon=

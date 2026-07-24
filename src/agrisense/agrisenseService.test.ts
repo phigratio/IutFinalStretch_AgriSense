@@ -65,6 +65,15 @@ describe("AgriSenseService", () => {
     expect(result.weather?.daily).toHaveLength(7);
     expect(result.cropRankings).toHaveLength(3);
     expect(result.seasonPlan?.tasks.length).toBeGreaterThanOrEqual(6);
+    const fertilizerTasks = result.seasonPlan?.tasks.filter((task) => task.phase === "fertilizer") ?? [];
+    expect(fertilizerTasks.length).toBeGreaterThanOrEqual(2);
+    expect(fertilizerTasks.some((task) => task.inputs?.some((input) => input.item.includes("Urea")))).toBe(true);
+    expect(fertilizerTasks.every((task) => task.growthStage && task.source)).toBe(true);
+    expect(fertilizerTasks.every((task) => task.organicAlternative)).toBe(true);
+    expect(result.seasonPlan?.schedulerSummary?.fertilizerTotals["Urea (top-dress)"]).toBeGreaterThan(0);
+    expect(result.seasonPlan?.schedulerSummary?.totalFertilizerCostBdt).toBe(
+      result.seasonPlan?.financials.costBreakdown.find((item) => item.category === "fertilizer")?.amountBdt,
+    );
     expect(result.seasonPlan?.financials.netProfitBdt).toBeTypeOf("number");
     expect(result.seasonPlan?.financials.costBreakdown.length).toBeGreaterThanOrEqual(7);
     expect(result.seasonPlan?.financials.netProfitBdt).toBe(

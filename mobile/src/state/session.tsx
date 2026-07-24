@@ -1,28 +1,31 @@
 /**
- * One shared agent session for the whole app: chat history, farm profile,
- * latest crop rankings / season plan / weather, and per-turn trace events.
- * Chat writes here; Plan, Money, and Trace tabs read from here — so a number
- * shown anywhere always came from a backend response in this session.
+ * One shared agent session for the whole app — mirrors the web AgriSense
+ * page's state model: chat history, farm profile, latest weather / evidence /
+ * crop rankings / season plan, accumulated trace, chosen language, and the
+ * active workflow stage. Chat writes here; Plan, Market, Money, and Trace tabs
+ * read from here, so any number shown anywhere came from a backend response.
  */
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 
-import { sendMessage } from '@/api/agrisense';
+import { sendMessage, type SendMessageInput } from '@/api/agrisense';
 import type {
   AgriSenseMessageResult,
   CropRecommendation,
   IntakeProfile,
-  IntakeTraceEvent,
+  Language,
   MemoryOutcome,
+  RetrievedEvidence,
   SeasonPlanResult,
+  TraceEvent,
   WeatherForecast,
+  WorkflowStage,
 } from '@/api/types';
 
 export interface ChatBubble {
   id: string;
   role: 'farmer' | 'agent' | 'error';
   text: string;
-  /** Tool calls the agent made while producing this reply (inline chips). */
-  trace?: IntakeTraceEvent[];
+  trace?: TraceEvent[];
   missingFields?: string[];
 }
 
@@ -30,17 +33,27 @@ interface SessionState {
   sessionId?: string;
   farmerId?: string;
   farmId?: string;
+  language: Language;
   profile?: IntakeProfile;
   weather?: WeatherForecast;
+  evidence?: RetrievedEvidence[];
   cropRankings?: CropRecommendation[];
   seasonPlan?: SeasonPlanResult;
   rememberedOutcomes: MemoryOutcome[];
   useMemory: boolean;
+  missingFields: string[];
+  result?: AgriSenseMessageResult;
+  trace: TraceEvent[];
   bubbles: ChatBubble[];
   sending: boolean;
-  send: (text: string, acceptedOutcomeIds?: string[]) => Promise<void>;
-  ignoreOutcome: (id: string) => void;
+  setLanguage: (lang: Language) => void;
   setUseMemory: (enabled: boolean) => void;
+  send: (
+    text: string,
+    stageOrAcceptedOutcomeIds?: WorkflowStage | string[],
+    acceptedOutcomeIds?: string[],
+  ) => Promise<void>;
+  ignoreOutcome: (id: string) => void;
   reset: () => void;
 }
 
@@ -53,42 +66,73 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [sessionId, setSessionId] = useState<string>();
   const [farmerId, setFarmerId] = useState<string>();
   const [farmId, setFarmId] = useState<string>();
+  const [language, setLanguage] = useState<Language>('en');
   const [profile, setProfile] = useState<IntakeProfile>();
   const [weather, setWeather] = useState<WeatherForecast>();
+  const [evidence, setEvidence] = useState<RetrievedEvidence[]>();
   const [cropRankings, setCropRankings] = useState<CropRecommendation[]>();
   const [seasonPlan, setSeasonPlan] = useState<SeasonPlanResult>();
   const [rememberedOutcomes, setRememberedOutcomes] = useState<MemoryOutcome[]>([]);
   const [ignoredOutcomeIds, setIgnoredOutcomeIds] = useState<string[]>([]);
   const [useMemory, setUseMemory] = useState(true);
+  const [missingFields, setMissingFields] = useState<string[]>([]);
+  const [result, setResult] = useState<AgriSenseMessageResult>();
+  const [trace, setTrace] = useState<TraceEvent[]>([]);
   const [bubbles, setBubbles] = useState<ChatBubble[]>([]);
   const [sending, setSending] = useState(false);
 
   const send = useCallback(
-    async (text: string, acceptedOutcomeIds?: string[]) => {
+    async (
+      text: string,
+      stageOrAcceptedOutcomeIds?: WorkflowStage | string[],
+      acceptedOutcomeIds?: string[],
+    ) => {
       const message = text.trim();
       if (message === '' || sending) return;
+
+      const workflowStage = typeof stageOrAcceptedOutcomeIds === 'string'
+        ? stageOrAcceptedOutcomeIds
+        : undefined;
+      const acceptedIds = Array.isArray(stageOrAcceptedOutcomeIds)
+        ? stageOrAcceptedOutcomeIds
+        : acceptedOutcomeIds;
+
       setSending(true);
       setBubbles((prev) => [...prev, { id: bubbleId(), role: 'farmer', text: message }]);
       try {
-        const res: AgriSenseMessageResult = await sendMessage({
+        const input: SendMessageInput = {
           message,
           sessionId,
           farmerId,
           farmId,
           useMemory,
-          acceptedOutcomeIds,
+          acceptedOutcomeIds: acceptedIds,
           ignoredOutcomeIds,
-        });
+          preferredLanguage: language,
+          workflowStage,
+          triggerReason:
+            workflowStage === 'weather'
+              ? 'weather_refreshed'
+              : workflowStage === 'full'
+                ? 'user_requested_replan'
+                : undefined,
+        };
+        const res = await sendMessage(input);
         setSessionId(res.sessionId);
         setFarmerId(res.farmerId);
         setFarmId(res.farmId);
         setProfile(res.farmProfile);
+        setMissingFields(res.missingFields ?? []);
+        setResult(res);
         if (res.weather) setWeather(res.weather);
+        if (res.retrievedEvidence) setEvidence(res.retrievedEvidence);
+        else if (res.seasonPlan?.retrievedEvidence) setEvidence(res.seasonPlan.retrievedEvidence);
         if (res.cropRankings) setCropRankings(res.cropRankings);
         if (res.seasonPlan) setSeasonPlan(res.seasonPlan);
         if (res.rememberedOutcomes) {
           setRememberedOutcomes(res.rememberedOutcomes.filter((outcome) => !ignoredOutcomeIds.includes(outcome.id)));
         }
+        if (res.trace?.length) setTrace((prev) => [...prev, ...res.trace]);
         setBubbles((prev) => [
           ...prev,
           {
@@ -108,7 +152,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setSending(false);
       }
     },
-    [sessionId, farmerId, farmId, useMemory, ignoredOutcomeIds, sending],
+    [sessionId, farmerId, farmId, useMemory, ignoredOutcomeIds, language, sending],
   );
 
   const ignoreOutcome = useCallback((id: string) => {
@@ -122,10 +166,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setFarmId(undefined);
     setProfile(undefined);
     setWeather(undefined);
+    setEvidence(undefined);
     setCropRankings(undefined);
     setSeasonPlan(undefined);
     setRememberedOutcomes([]);
     setIgnoredOutcomeIds([]);
+    setMissingFields([]);
+    setResult(undefined);
+    setTrace([]);
     setBubbles([]);
   }, []);
 
@@ -134,20 +182,46 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       sessionId,
       farmerId,
       farmId,
+      language,
       profile,
       weather,
+      evidence,
       cropRankings,
       seasonPlan,
       rememberedOutcomes,
       useMemory,
+      missingFields,
+      result,
+      trace,
+      bubbles,
+      sending,
+      setLanguage,
+      setUseMemory,
+      send,
+      ignoreOutcome,
+      reset,
+    }),
+    [
+      sessionId,
+      farmerId,
+      farmId,
+      language,
+      profile,
+      weather,
+      evidence,
+      cropRankings,
+      seasonPlan,
+      rememberedOutcomes,
+      useMemory,
+      missingFields,
+      result,
+      trace,
       bubbles,
       sending,
       send,
       ignoreOutcome,
-      setUseMemory,
       reset,
-    }),
-    [sessionId, farmerId, farmId, profile, weather, cropRankings, seasonPlan, rememberedOutcomes, useMemory, bubbles, sending, send, ignoreOutcome, reset],
+    ],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

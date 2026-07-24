@@ -91,11 +91,33 @@ export interface SeasonPlanTask {
   endDate: string;
   growthStage?: string;
   organicAlternative?: string;
+  inputs?: Array<{
+    item: string;
+    quantity: number;
+    unit: string;
+    unitCostBdt?: number;
+    totalCostBdt?: number;
+  }>;
+  source?: string;
+  weatherNote?: string;
+  delayRecommended?: boolean;
   quantity?: number;
   unit?: string;
   unitCostBdt?: number;
   totalCostBdt?: number;
   reasoning: string;
+}
+
+export interface SchedulerSummary {
+  cropId?: string;
+  fertilityClass: string;
+  fertilitySource: string;
+  totalFertilizerCostBdt: number;
+  totalIrrigationCostBdt: number;
+  fertilizerTotals: Record<string, number>;
+  irrigationEvents: number;
+  rainDelayWarnings: number;
+  sources: string[];
 }
 
 export interface SeasonPlanResult {
@@ -117,6 +139,7 @@ export interface SeasonPlanResult {
     budgetSurplusBdt: number;
     costBreakdown: CostBreakdownItem[];
   };
+  schedulerSummary?: SchedulerSummary;
   reasoning: string;
   selectedCropReason: string;
   sourceTraceIds: string[];

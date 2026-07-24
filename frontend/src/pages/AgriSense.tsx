@@ -24,7 +24,7 @@ interface ChatMessage {
 }
 
 type Language = "en" | "bn" | "banglish";
-type ViewStage = WorkflowStage | "context" | "trace";
+type ViewStage = WorkflowStage | "context" | "scheduler" | "trace";
 
 const starterMessages = [
   "I have 2 acres in Gazipur, what should I plant?",
@@ -57,6 +57,7 @@ const workflowStages: Array<{
   { id: "evidence", label: "Evidence", tool: "rag.retrieve", description: "Retrieve agronomic context for the profile and weather." },
   { id: "crop_ranking", label: "Crop Ranking", tool: "crop.rank", description: "Rank crops from profile, weather, budget, and evidence." },
   { id: "season_plan", label: "Season Plan", tool: "season.plan", description: "Generate dated farming actions for the selected crop." },
+  { id: "scheduler", label: "Fertigation", tool: "fertigation.schedule", description: "Inspect FRG fertilizer splits, irrigation checkpoints, organic options, and costs." },
   { id: "financials", label: "Financial Math", tool: "finance.calculate", description: "Inspect costs, profit, ROI, and break-even." },
   { id: "trace", label: "Agent Trace", tool: "trace.read", description: "Inspect every tool call, parameter, and raw response." },
   { id: "full", label: "Full Run", tool: "agent.plan", description: "Run the complete agent workflow end to end." },
@@ -139,7 +140,7 @@ export default function AgriSense() {
 
   async function submitMessage(
     messageText = input,
-    workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" ? "full" : activeStage,
+    workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" || activeStage === "scheduler" ? "full" : activeStage,
     acceptedOutcomeIds?: string[],
   ) {
     const text = messageText.trim();
@@ -204,7 +205,7 @@ export default function AgriSense() {
 
   function runStage(stage: ViewStage) {
     selectStage(stage);
-    if (stage === "trace" || stage === "context") return;
+    if (stage === "trace" || stage === "context" || stage === "scheduler") return;
     const message = stage === "intake"
       ? "continue intake"
       : `continue from ${stageLabels[stage]}`;
@@ -217,7 +218,7 @@ export default function AgriSense() {
   }
 
   function useOutcome(outcome: MemoryOutcome) {
-    const workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" ? "full" : activeStage;
+    const workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" || activeStage === "scheduler" ? "full" : activeStage;
     void submitMessage(
       `Use remembered context: ${outcome.title}`,
       workflowStage,
@@ -384,6 +385,7 @@ function WorkflowStageSidebar({
   }
   if (result?.seasonPlan) {
     available.add("season_plan");
+    available.add("scheduler");
     available.add("financials");
   }
 
@@ -565,6 +567,7 @@ function StageContent({
   if (activeStage === "evidence") return <EvidencePanel result={result} />;
   if (activeStage === "crop_ranking") return <CropRankings rankings={result?.cropRankings ?? []} />;
   if (activeStage === "season_plan") return activePlan ? <SeasonPlanPanel plan={activePlan} /> : <EmptyStage title="Season Plan" text="Run crop ranking first, then continue into season planning." />;
+  if (activeStage === "scheduler") return activePlan ? <FertigationPanel plan={activePlan} /> : <EmptyStage title="Fertigation" text="Run the season plan first to inspect fertilizer and irrigation scheduling." />;
   if (activeStage === "financials") return activePlan ? <FinancialPanel plan={activePlan} /> : <EmptyStage title="Financial Math" text="Run the season plan first to calculate costs, ROI, profit, and break-even." />;
   if (activeStage === "trace") return <EmptyStage title="Agent Trace" text="The trace inspector is open on the right side of this workspace." />;
 
@@ -577,6 +580,7 @@ function StageContent({
       {activePlan && (
         <>
           <SeasonPlanPanel plan={activePlan} />
+          <FertigationPanel plan={activePlan} />
           <FinancialPanel plan={activePlan} />
         </>
       )}
@@ -930,6 +934,100 @@ function SeasonPlanPanel({ plan }: { plan: NonNullable<AgriSenseMessageResult["s
   );
 }
 
+function FertigationPanel({ plan }: { plan: NonNullable<AgriSenseMessageResult["seasonPlan"]> }) {
+  const tasks = plan.tasks.filter((task) => task.phase === "fertilizer" || task.phase === "irrigation");
+  const summary = plan.schedulerSummary;
+  const totals = summary?.fertilizerTotals ?? {};
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Fertilizer & Irrigation</h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            FRG dose scaling, growth-stage timing, crop-water checkpoints, organic alternatives, and forecast warnings.
+          </p>
+        </div>
+        <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-500">
+          {summary?.cropId ?? plan.crop}
+        </span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Metric label="Fertilizer cost" value={formatMoney(summary?.totalFertilizerCostBdt ?? sumTaskCosts(tasks, "fertilizer"))} />
+        <Metric label="Irrigation cost" value={formatMoney(summary?.totalIrrigationCostBdt ?? sumTaskCosts(tasks, "irrigation"))} />
+        <Metric label="Irrigation events" value={summary?.irrigationEvents ?? tasks.filter((task) => task.phase === "irrigation").length} />
+        <Metric label="Rain warnings" value={summary?.rainDelayWarnings ?? tasks.filter((task) => task.delayRecommended).length} />
+        <Metric label="Fertility" value={`${summary?.fertilityClass ?? "medium"} (${summary?.fertilitySource ?? "default"})`} />
+        <Metric label="Urea" value={formatInputTotal(totals, "Urea")} />
+        <Metric label="TSP" value={formatInputTotal(totals, "TSP")} />
+        <Metric label="MoP" value={formatInputTotal(totals, "MoP")} />
+      </div>
+
+      {tasks.length === 0 ? (
+        <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">No fertilizer or irrigation tasks are available for this plan.</p>
+      ) : (
+        <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
+          <div className="hidden grid-cols-[112px_120px_minmax(180px,1fr)_minmax(180px,1fr)_110px] gap-3 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500 dark:border-gray-800 dark:bg-white/[0.04] dark:text-gray-400 lg:grid">
+            <div>Window</div>
+            <div>Stage</div>
+            <div>Action</div>
+            <div>Inputs & Alternatives</div>
+            <div className="text-right">Cost</div>
+          </div>
+          <div className="divide-y divide-gray-200 dark:divide-gray-800">
+            {tasks.map((task) => (
+              <div key={`${task.phase}-${task.startDate}-${task.title}`} className={`grid gap-3 px-3 py-3 text-sm lg:grid-cols-[112px_120px_minmax(180px,1fr)_minmax(180px,1fr)_110px] ${task.delayRecommended ? "bg-warning-50/70 dark:bg-warning-500/10" : ""}`}>
+                <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {formatDate(task.startDate)} - {formatDate(task.endDate)}
+                </div>
+                <div>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${task.phase === "fertilizer" ? "bg-success-50 text-success-700 dark:bg-success-500/15 dark:text-success-400" : "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300"}`}>
+                    {task.growthStage ?? task.phase}
+                  </span>
+                  <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{task.source ?? "scheduler"}</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900 dark:text-white">{task.title}</p>
+                  <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{task.description}</p>
+                  {task.weatherNote && (
+                    <p className="mt-2 rounded-lg border border-warning-500/30 bg-warning-50 px-2 py-1 text-xs font-medium text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
+                      {task.weatherNote}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {(task.inputs ?? []).map((input) => (
+                    <div key={`${task.title}-${input.item}`} className="flex items-start justify-between gap-2 rounded-lg bg-gray-50 px-2 py-1.5 text-xs dark:bg-white/[0.04]">
+                      <span className="font-medium text-gray-800 dark:text-gray-100">{input.item}</span>
+                      <span className="text-right text-gray-600 dark:text-gray-300">
+                        {input.quantity} {input.unit}
+                        {input.totalCostBdt ? ` · ${formatMoney(input.totalCostBdt)}` : ""}
+                      </span>
+                    </div>
+                  ))}
+                  {task.organicAlternative && (
+                    <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">{task.organicAlternative}</p>
+                  )}
+                </div>
+                <div className="text-right text-xs font-semibold text-gray-900 dark:text-white">
+                  {task.totalCostBdt ? formatMoney(task.totalCostBdt) : "No direct cost"}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {summary?.sources.length ? (
+        <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+          Sources: {summary.sources.join(" · ")}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function FinancialPanel({ plan }: { plan: NonNullable<AgriSenseMessageResult["seasonPlan"]> }) {
   const financials = plan.financials;
   const invariantOk =
@@ -994,6 +1092,14 @@ function TaskRow({ task }: { task: SeasonPlanTask }) {
       <div>
         <p className="text-sm font-semibold text-gray-900 dark:text-white">{task.title}</p>
         <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{task.description}</p>
+        {task.inputs && task.inputs.length > 0 && (
+          <p className="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-300">
+            {task.inputs.map((input) => `${input.item}: ${input.quantity} ${input.unit}`).join(" · ")}
+          </p>
+        )}
+        {task.weatherNote && (
+          <p className="mt-1 text-xs font-medium leading-5 text-warning-700 dark:text-warning-400">{task.weatherNote}</p>
+        )}
         <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{task.reasoning}</p>
       </div>
       <div className="text-right text-xs text-gray-600 dark:text-gray-300">
@@ -1049,6 +1155,15 @@ function Metric({ label, value }: { label: string; value: string | number }) {
 
 function formatMoney(value: number): string {
   return `৳${new Intl.NumberFormat("en-BD", { maximumFractionDigits: 0 }).format(value)}`;
+}
+
+function sumTaskCosts(tasks: SeasonPlanTask[], phase: string): number {
+  return tasks.filter((task) => task.phase === phase).reduce((sum, task) => sum + (task.totalCostBdt ?? 0), 0);
+}
+
+function formatInputTotal(totals: Record<string, number>, label: string): string {
+  const match = Object.entries(totals).find(([key]) => key.toLowerCase().includes(label.toLowerCase()));
+  return match ? `${match[1]} kg` : "0 kg";
 }
 
 function formatDate(value: string): string {

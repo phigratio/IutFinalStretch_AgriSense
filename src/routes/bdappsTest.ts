@@ -18,6 +18,11 @@
  */
 import { Router, type Request, type Response } from "express";
 import { bdapps } from "../bdapps/index.js";
+import {
+  rememberOtpReference,
+  rememberMaskedSubscriber,
+  resolveSubscriberAddress,
+} from "../bdapps/subscriberStore.js";
 
 export const bdappsTestRouter = Router();
 
@@ -35,16 +40,29 @@ function handle(fn: (req: Request) => Promise<unknown>) {
   };
 }
 
-bdappsTestRouter.post("/sms", handle((req) => bdapps.sendSms(req.body.to, req.body.message)));
+// Subscriber-bearing calls resolve to the masked id when we've captured one
+// (bdapps rejects the raw number with E1951 on this app — see subscriberStore).
+bdappsTestRouter.post("/sms", handle((req) => bdapps.sendSms(resolveSubscriberAddress(req.body.to), req.body.message)));
 bdappsTestRouter.post("/broadcast", handle((req) => bdapps.broadcastSms(req.body.message)));
 
-bdappsTestRouter.post("/otp/request", handle((req) => bdapps.requestOtp(req.body.mobile)));
-bdappsTestRouter.post("/otp/verify", handle((req) => bdapps.verifyOtp(req.body.referenceNo, req.body.otp)));
+// OTP request remembers referenceNo -> number; verify captures the masked id.
+bdappsTestRouter.post("/otp/request", handle(async (req) => {
+  const result = await bdapps.requestOtp(req.body.mobile);
+  const referenceNo = (result as { referenceNo?: string }).referenceNo;
+  if (referenceNo) rememberOtpReference(referenceNo, req.body.mobile);
+  return result;
+}));
+bdappsTestRouter.post("/otp/verify", handle(async (req) => {
+  const result = await bdapps.verifyOtp(req.body.referenceNo, req.body.otp);
+  const masked = (result as { subscriberId?: string }).subscriberId;
+  if (masked) rememberMaskedSubscriber(req.body.referenceNo, masked);
+  return result;
+}));
 
-bdappsTestRouter.post("/balance", handle((req) => bdapps.queryBalance(req.body.mobile)));
-bdappsTestRouter.post("/pi", handle((req) => bdapps.listPaymentInstruments(req.body.mobile)));
-bdappsTestRouter.post("/charge", handle((req) => bdapps.directDebit({ mobile: req.body.mobile, amount: req.body.amount })));
+bdappsTestRouter.post("/balance", handle((req) => bdapps.queryBalance(resolveSubscriberAddress(req.body.mobile))));
+bdappsTestRouter.post("/pi", handle((req) => bdapps.listPaymentInstruments(resolveSubscriberAddress(req.body.mobile))));
+bdappsTestRouter.post("/charge", handle((req) => bdapps.directDebit({ mobile: resolveSubscriberAddress(req.body.mobile), amount: req.body.amount })));
 
-bdappsTestRouter.post("/subscription/status", handle((req) => bdapps.getSubscriptionStatus(req.body.mobile)));
-bdappsTestRouter.post("/subscription/subscribe", handle((req) => bdapps.subscribe(req.body.mobile)));
-bdappsTestRouter.post("/subscription/unsubscribe", handle((req) => bdapps.unsubscribe(req.body.mobile)));
+bdappsTestRouter.post("/subscription/status", handle((req) => bdapps.getSubscriptionStatus(resolveSubscriberAddress(req.body.mobile))));
+bdappsTestRouter.post("/subscription/subscribe", handle((req) => bdapps.subscribe(resolveSubscriberAddress(req.body.mobile))));
+bdappsTestRouter.post("/subscription/unsubscribe", handle((req) => bdapps.unsubscribe(resolveSubscriberAddress(req.body.mobile))));

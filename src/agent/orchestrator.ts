@@ -48,6 +48,8 @@ export interface OrchestratorDeps {
   resolvePrice?: (cropId: string) => Promise<ResolvedCropPrice | null>;
   /** Optional prose KB retriever; when present, the chosen crop's advice is cited from it. */
   queryKb?: (query: string, cropId: string) => Promise<KbCitation[]>;
+  /** The farmer's actual question; preferred over a generic cultivation query. */
+  knowledgeQuery?: string;
 }
 
 export interface KbCitation {
@@ -251,14 +253,16 @@ export async function runPipeline(
 
   // --- Step 7b: prose KB retrieval for the chosen crop (grounds advice + citations) ---
   let kbCitations: string[] = [];
+  let kbEvidence: string[] = [];
   if (deps.queryKb) {
-    const q = `${cropDisplay} cultivation, fertilizer and pest management`;
+    const q = deps.knowledgeQuery?.trim() || `${cropDisplay} cultivation, fertilizer and pest management`;
     const kbT = await runTraced(writer, {
       toolName: "query_knowledge_base",
       purpose: "explanation.citations",
       parameters: { query: q, cropId: picked },
     }, () => deps.queryKb!(q, picked));
     kbCitations = [...new Set(kbT.result.map((c) => c.citation))];
+    kbEvidence = kbT.result.slice(0, 2).map((hit) => compactEvidence(hit.text));
   }
 
   // --- Step 8: basis block (code-built) ---
@@ -274,9 +278,11 @@ export async function runPipeline(
     priceSource: kbPrice ? "KB (tenant/hub resolved)" : priceRow?.source.source_name ?? "n/a",
     priceDate: priceRow?.date ?? "n/a",
   });
-  const basis = kbCitations.length
-    ? `${basisCore}\n- Knowledge base: ${kbCitations.join("; ")}`
-    : basisCore;
+  const basis = [
+    basisCore,
+    ...(kbEvidence.length ? [`- Retrieved answer evidence: ${kbEvidence.join(" ")}`] : []),
+    ...(kbCitations.length ? [`- Knowledge base: ${kbCitations.join("; ")}`] : []),
+  ].join("\n");
 
   return {
     ranking,
@@ -301,4 +307,13 @@ export function seasonFittingCrops(targetSeason: Season): CropId[] {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function compactEvidence(text: string): string {
+  const clean = text
+    .replace(/<!--[^]*?-->/g, " ")
+    .replace(/[#*_`]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return clean.length > 900 ? `${clean.slice(0, 897)}…` : clean;
 }
