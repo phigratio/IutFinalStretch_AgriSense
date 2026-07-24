@@ -60,6 +60,10 @@ export function listKbIngestionJobs() {
   return apiFetch<KbIngestionJob[]>(`/api/hub/kb/jobs`);
 }
 
+export function retryKbIngestionJob(jobId: string) {
+  return apiFetch<{ ok: true }>(`/api/hub/kb/jobs/${encodeURIComponent(jobId)}/retry`, { method: "POST" });
+}
+
 export function listHubDocuments() {
   return apiFetch<KbDocumentRecord[]>(`/api/hub/kb/docs`);
 }

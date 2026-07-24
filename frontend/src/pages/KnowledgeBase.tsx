@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext.js";
 import {
   listHubDocuments,
   listKbIngestionJobs,
+  retryKbIngestionJob,
   searchKnowledgeBase,
   uploadKbFiles,
   type KbDocumentRecord,
@@ -77,6 +78,17 @@ export default function KnowledgeBase() {
     } finally {
       setUploading(false);
     }
+  }
+
+  async function retryJob(job: KbIngestionJob) {
+    setStatus(`Retrying ${job.originalName}…`);
+    try {
+      await retryKbIngestionJob(job.id);
+      setJobs((current) => current.map((item) => item.id === job.id
+        ? { ...item, status: "queued", stage: "queued", errorMessage: undefined, processedChunks: 0, chunkCount: 0 }
+        : item));
+      setStatus("Retry queued. Scanned-book OCR progress will update below.");
+    } catch (error) { setStatus((error as Error).message); }
   }
 
   async function submitQuery(event: FormEvent<HTMLFormElement>) {
@@ -212,7 +224,7 @@ export default function KnowledgeBase() {
               <td className="py-3 pr-4"><div className="font-medium text-gray-800 dark:text-white">{job.title}</div><div className="text-xs text-gray-500">{job.originalName}</div></td>
               <td className="py-3 pr-4"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs dark:bg-white/[0.06]">{job.status} · {job.stage}</span></td>
               <td className="py-3 pr-4 text-gray-600 dark:text-gray-300">{job.processedChunks}/{job.chunkCount || "?"} chunks</td>
-              <td className="py-3 text-gray-600 dark:text-gray-300">{job.errorMessage ? <span className="text-error-500">{job.errorMessage}</span> : job.status === "completed" ? `${job.extractedChars.toLocaleString()} characters` : "—"}</td>
+              <td className="py-3 text-gray-600 dark:text-gray-300">{job.errorMessage ? <div><span className="text-error-500">{job.errorMessage}</span><button className="ml-3 text-sm font-medium text-brand-500" type="button" onClick={() => void retryJob(job)}>Retry</button></div> : job.status === "completed" ? `${job.extractedChars.toLocaleString()} characters` : "—"}</td>
             </tr>)}
             {!jobs.length && <tr><td className={`${muted} py-5`} colSpan={4}>No upload jobs yet.</td></tr>}
           </tbody>

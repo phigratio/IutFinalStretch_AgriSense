@@ -95,6 +95,18 @@ hubRouter.get("/kb/jobs", authenticate, async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
+hubRouter.post("/kb/jobs/:jobId/retry", authenticate, async (req, res, next) => {
+  try {
+    const result = await ingestionDb().kbIngestionJob.updateMany({
+      where: { id: String(req.params.jobId), tenantId: HUB, status: "failed" },
+      data: { status: "queued", stage: "queued", extractedChars: 0, chunkCount: 0, processedChunks: 0,
+        errorMessage: null, startedAt: null, finishedAt: null },
+    });
+    if (!result.count) { res.status(409).json({ error: "Only a failed central-hub job can be retried" }); return; }
+    res.status(202).json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 hubRouter.get("/kb/docs", authenticate, async (_req, res, next) => {
   try { res.json(await getKbDocumentStore().list(HUB)); } catch (err) { next(err); }
 });

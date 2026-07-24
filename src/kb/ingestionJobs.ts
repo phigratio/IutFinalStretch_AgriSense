@@ -35,7 +35,9 @@ async function processOne(): Promise<void> {
     const job = await claimNextJob();
     if (!job) return;
     try {
-      const sections = await extractFile(job.storedPath, job.mimeType, job.originalName);
+      const sections = await extractFile(job.storedPath, job.mimeType, job.originalName, async ({ stage }) => {
+        await prisma.kbIngestionJob.update({ where: { id: job.id }, data: { stage } });
+      });
       const extractedChars = sections.reduce((sum, section) => sum + section.text.length, 0);
       const chunks = sections.flatMap((section) => chunkText(section.text).map((chunk) => ({ ...chunk, page: section.label })));
       if (!chunks.length) throw new Error("Extraction completed, but no usable text chunks were produced");

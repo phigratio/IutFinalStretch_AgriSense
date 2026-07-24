@@ -13,6 +13,8 @@ export interface ExtractedSection {
   text: string;
 }
 
+export type ExtractionProgress = (progress: { current: number; total: number; stage: string }) => Promise<void> | void;
+
 function clean(text: string): string {
   return text.replace(/\u0000/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 }
@@ -27,17 +29,23 @@ function stripHtml(html: string): string {
   );
 }
 
-async function extractPdf(filePath: string): Promise<ExtractedSection[]> {
+async function extractPdf(filePath: string, onProgress?: ExtractionProgress): Promise<ExtractedSection[]> {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const data = new Uint8Array(await readFile(filePath));
   const pdf = await pdfjs.getDocument({ data, useSystemFonts: true }).promise;
   const sections: ExtractedSection[] = [];
   for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
-    const page = await pdf.getPage(pageNo);
-    const content = await page.getTextContent();
-    let text = clean(content.items.map((item) => "str" in item ? item.str : "").join(" "));
-    if (!text) text = await ocrPdfPage(filePath, pageNo);
-    if (text) sections.push({ label: String(pageNo), text });
+    try {
+      const page = await pdf.getPage(pageNo);
+      const content = await page.getTextContent();
+      const embedded = clean(content.items.map((item) => "str" in item ? item.str : "").join(" "));
+      // Scanned PDFs sometimes contain only page numbers or a few garbage glyphs.
+      const ocr = embedded.length < 40 ? await ocrPdfPage(filePath, pageNo) : "";
+      const text = ocr.length > embedded.length ? ocr : embedded;
+      if (text) sections.push({ label: String(pageNo), text });
+    } finally {
+      await onProgress?.({ current: pageNo, total: pdf.numPages, stage: `OCR page ${pageNo}/${pdf.numPages}` });
+    }
   }
   if (!sections.length) throw new Error("No readable Bangla or English text was found in this PDF");
   return sections;
@@ -48,10 +56,16 @@ async function ocrPdfPage(filePath: string, pageNo: number): Promise<string> {
   const outputBase = path.join(tempDir, "page");
   const imagePath = `${outputBase}.png`;
   try {
-    await execFileAsync("pdftoppm", ["-f", String(pageNo), "-l", String(pageNo), "-singlefile", "-r", "200", "-png", filePath, outputBase], {
+    await execFileAsync("pdftoppm", ["-f", String(pageNo), "-l", String(pageNo), "-singlefile", "-r", "300", "-gray", "-png", filePath, outputBase], {
       timeout: 5 * 60_000, maxBuffer: 10 * 1024 * 1024,
     });
-    return (await extractImage(imagePath))[0]?.text ?? "";
+    try {
+      return (await extractImage(imagePath))[0]?.text ?? "";
+    } catch (error) {
+      // Blank covers, separators and image-only pages are normal in printed books.
+      if (error instanceof Error && error.message.includes("OCR did not find")) return "";
+      throw error;
+    }
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -79,9 +93,9 @@ async function extractEpub(filePath: string): Promise<ExtractedSection[]> {
   return sections;
 }
 
-export async function extractFile(filePath: string, mimeType: string, originalName: string): Promise<ExtractedSection[]> {
+export async function extractFile(filePath: string, mimeType: string, originalName: string, onProgress?: ExtractionProgress): Promise<ExtractedSection[]> {
   const ext = path.extname(originalName).toLowerCase();
-  if (mimeType === "application/pdf" || ext === ".pdf") return extractPdf(filePath);
+  if (mimeType === "application/pdf" || ext === ".pdf") return extractPdf(filePath, onProgress);
   if (mimeType.startsWith("image/") || [".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff"].includes(ext)) return extractImage(filePath);
   if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || ext === ".docx") {
     const result = await mammoth.extractRawText({ path: filePath });
