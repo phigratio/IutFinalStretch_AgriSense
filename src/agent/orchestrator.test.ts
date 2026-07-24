@@ -130,6 +130,20 @@ describe("G4: missing information is handled honestly", () => {
     expect(r.ranking.some((c) => c.cropId === r.chosen.cropId)).toBe(true);
   });
 
+  it("attaches KB citations to the basis and traces the retrieval (K3-4)", async () => {
+    const r = await runPipeline(profile(), {
+      writer,
+      getForecast: async () => fakeForecast(),
+      getNormals: async () => fakeNormals(),
+      queryKb: async (_q, cropId) => [
+        { citation: `[KB:BRRI RKB p.7] (${cropId})`, text: "manage blast..." },
+      ],
+    });
+    expect(r.kbCitations).toContain("[KB:BRRI RKB p.7] (rice_boro)");
+    expect(r.basis).toMatch(/Knowledge base:/);
+    expect(writer.events.some((e) => e.toolName === "query_knowledge_base")).toBe(true);
+  });
+
   it("uses an injected KB price and traces its provenance (K1-7)", async () => {
     // A very high boro price so KB clearly drives revenue vs the CSV baseline.
     const r = await runPipeline(profile(), {

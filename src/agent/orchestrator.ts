@@ -46,6 +46,13 @@ export interface OrchestratorDeps {
   chosenCropId?: string;
   /** Optional KB price resolver; when absent, prices come from the CSV baseline. */
   resolvePrice?: (cropId: string) => Promise<ResolvedCropPrice | null>;
+  /** Optional prose KB retriever; when present, the chosen crop's advice is cited from it. */
+  queryKb?: (query: string, cropId: string) => Promise<KbCitation[]>;
+}
+
+export interface KbCitation {
+  citation: string;
+  text: string;
 }
 
 export interface NumberProvenance {
@@ -61,6 +68,7 @@ export interface OrchestratorResult {
   financials: FinancialResult;
   basis: string;
   numbers: NumberProvenance[];
+  kbCitations: string[];
   weatherAvailable: boolean;
   trace: TraceEvent[];
 }
@@ -239,9 +247,22 @@ export async function runPipeline(
     { label: "breakEvenPriceBdtPerKg", value: round2(financials.breakEvenPriceBdtPerKg), stepId: finStep },
   );
 
-  // --- Step 8: basis block (code-built) ---
   const cropDisplay = loadTable("crops.csv").find((r) => r.cropId === picked)?.displayName ?? picked;
-  const basis = buildRecommendationBasis({
+
+  // --- Step 7b: prose KB retrieval for the chosen crop (grounds advice + citations) ---
+  let kbCitations: string[] = [];
+  if (deps.queryKb) {
+    const q = `${cropDisplay} cultivation, fertilizer and pest management`;
+    const kbT = await runTraced(writer, {
+      toolName: "query_knowledge_base",
+      purpose: "explanation.citations",
+      parameters: { query: q, cropId: picked },
+    }, () => deps.queryKb!(q, picked));
+    kbCitations = [...new Set(kbT.result.map((c) => c.citation))];
+  }
+
+  // --- Step 8: basis block (code-built) ---
+  const basisCore = buildRecommendationBasis({
     profile,
     chosenCropDisplay: cropDisplay,
     fertilityAssumption: undefined,
@@ -250,9 +271,12 @@ export async function runPipeline(
     seasonRainMm,
     financials,
     priceBdtPerKg,
-    priceSource: priceRow?.source.source_name ?? "n/a",
+    priceSource: kbPrice ? "KB (tenant/hub resolved)" : priceRow?.source.source_name ?? "n/a",
     priceDate: priceRow?.date ?? "n/a",
   });
+  const basis = kbCitations.length
+    ? `${basisCore}\n- Knowledge base: ${kbCitations.join("; ")}`
+    : basisCore;
 
   return {
     ranking,
@@ -261,6 +285,7 @@ export async function runPipeline(
     financials,
     basis,
     numbers,
+    kbCitations,
     weatherAvailable: forecast !== null,
     trace: (writer as { events?: TraceEvent[] }).events ?? [],
   };

@@ -10,6 +10,7 @@ import {
 import { runPipeline, type OrchestratorProfile } from "../agent/orchestrator.js";
 import { getKbRuntime } from "../kb/runtime.js";
 import { HUB } from "../kb/tenancy.js";
+import { queryKnowledgeBase } from "../tools/kb.js";
 import { runTraced } from "../tools/trace.js";
 import { getDefaultExtractor } from "../llm/provider.js";
 import {
@@ -37,6 +38,7 @@ export interface AgentRuntime {
   getForecast: (lat: number, lon: number) => Promise<ForecastResult>;
   getNormals: (lat: number, lon: number, months: number[]) => Promise<NormalsResult>;
   resolvePrice: (cropId: string, ctx: PriceContext) => Promise<{ pricePerKg: number; provenance?: unknown } | null>;
+  queryKb: (query: string, cropId: string, ctx: PriceContext) => Promise<{ citation: string; text: string }[]>;
 }
 
 let runtime: AgentRuntime = {
@@ -54,6 +56,12 @@ let runtime: AgentRuntime = {
       farmLat: ctx.farmLat,
       farmLon: ctx.farmLon,
     });
+  },
+  queryKb: async (query, cropId, ctx) => {
+    const { tenantStore } = getKbRuntime();
+    const tenantId = ctx.district ? await tenantStore.resolveTenantIdForDistrict(ctx.district) : undefined;
+    const { hits } = await queryKnowledgeBase(query, { tenantId, cropId });
+    return hits.map((h) => ({ citation: h.citation, text: h.text }));
   },
 };
 
@@ -122,6 +130,7 @@ agentRouter.post("/agent/message", async (req, res, next) => {
           farmLat: profile.lat ?? undefined,
           farmLon: profile.lon ?? undefined,
         }),
+      queryKb: (query, cropId) => runtime.queryKb(query, cropId, { district: profile.district }),
       chosenCropId: state.currentCrop,
     });
     session.result = result;
