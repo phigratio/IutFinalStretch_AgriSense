@@ -8,28 +8,30 @@ import { useEffect } from 'react';
 import { Tabs, ThemeProvider, DefaultTheme, DarkTheme } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { SessionProvider, useSession } from '@/state/session';
 import { AuthProvider } from '@/state/auth';
 import { LanguageProvider, useLanguage } from '@/i18n/language';
+import { ThemeModeProvider, useThemeMode } from '@/theme/theme-mode';
 import { useTheme } from '@/hooks/use-theme';
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   return (
-    <LanguageProvider>
-      <AuthProvider>
-        <SessionProvider>
-          <LanguageSync />
-          <AnimatedSplashOverlay />
-          <TabsNavigator />
-        </SessionProvider>
-      </AuthProvider>
-    </LanguageProvider>
+    <ThemeModeProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <SessionProvider>
+            <LanguageSync />
+            <AnimatedSplashOverlay />
+            <TabsNavigator />
+          </SessionProvider>
+        </AuthProvider>
+      </LanguageProvider>
+    </ThemeModeProvider>
   );
 }
 
@@ -46,7 +48,7 @@ function LanguageSync() {
 function TabsNavigator() {
   const theme = useTheme();
   const { t } = useLanguage();
-  const scheme = useColorScheme();
+  const { scheme } = useThemeMode();
   const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
   const navTheme = {
     ...base,

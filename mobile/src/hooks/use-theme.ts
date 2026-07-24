@@ -1,14 +1,12 @@
 /**
- * Learn more about light and dark modes:
- * https://docs.expo.dev/guides/color-schemes/
+ * Resolve the active color palette. Reads the scheme from ThemeModeProvider
+ * (in-app light/dark toggle, defaulting to the device setting), so flipping the
+ * toggle re-themes every screen. See theme/theme-mode.tsx.
  */
-
 import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useThemeMode } from '@/theme/theme-mode';
 
 export function useTheme() {
-  const scheme = useColorScheme();
-  const theme = scheme === 'unspecified' ? 'light' : scheme;
-
-  return Colors[theme];
+  const { scheme } = useThemeMode();
+  return Colors[scheme];
 }

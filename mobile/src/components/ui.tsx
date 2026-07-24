@@ -23,6 +23,7 @@ import { ThemedText } from './themed-text';
 import { BottomTabInset, Radius, Spacing, type ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useLanguage } from '@/i18n/language';
+import { useThemeMode } from '@/theme/theme-mode';
 
 export type IconName = ComponentProps<typeof Feather>['name'];
 export type Tone = 'brand' | 'secondary' | 'success' | 'warning' | 'error' | 'neutral';
@@ -306,6 +307,29 @@ export function EmptyState({ icon, text }: { icon?: IconName; text: string }) {
         {t(text)}
       </ThemedText>
     </View>
+  );
+}
+
+/** Light / dark theme toggle (sun / moon) for screen headers. */
+export function ThemeToggle() {
+  const theme = useTheme();
+  const { scheme, toggle } = useThemeMode();
+  return (
+    <Pressable
+      onPress={toggle}
+      accessibilityLabel="Toggle light or dark theme"
+      style={{
+        width: 36,
+        height: 36,
+        borderRadius: Radius.pill,
+        borderWidth: 1,
+        borderColor: theme.border,
+        backgroundColor: theme.backgroundElement,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+      <Feather name={scheme === 'dark' ? 'sun' : 'moon'} size={16} color={theme.text} />
+    </Pressable>
   );
 }
 

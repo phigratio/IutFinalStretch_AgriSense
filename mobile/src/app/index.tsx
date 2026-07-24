@@ -9,7 +9,7 @@ import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 
 import { pingBackend } from '@/api/client';
-import { Screen, Card, Button, LanguageToggle, type IconName } from '@/components/ui';
+import { Screen, Card, Button, LanguageToggle, ThemeToggle, type IconName } from '@/components/ui';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -39,7 +39,12 @@ export default function HomeScreen() {
     <Screen
       title="AgriSense"
       subtitle="Your season, planned: weather-aware crops, dated tasks, honest numbers."
-      right={<LanguageToggle />}>
+      right={
+        <View style={{ flexDirection: 'row', gap: Spacing.two }}>
+          <ThemeToggle />
+          <LanguageToggle />
+        </View>
+      }>
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.two }}>

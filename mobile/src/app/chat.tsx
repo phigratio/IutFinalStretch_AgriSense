@@ -1,50 +1,28 @@
 /**
- * Chat tab — the primary surface (Tier-0): farmer talks, agent gathers the
- * profile, fetches weather, ranks crops, and plans the season. Each agent
- * bubble carries inline trace chips proving which tools produced its numbers.
- * Styling follows the team's TailAdmin tokens: brand bubbles for the farmer,
- * bordered white cards for the agent, brand-tinted chips.
- * State lives in state/session.tsx and is shared with Plan/Money/Trace tabs.
+ * Chat tab — the primary surface (Tier-0): the farmer talks, the agent gathers
+ * the profile, fetches weather, ranks crops, and plans the season. Missing
+ * fields become friendly, language-aware tap-to-answer chips; the tool trace is
+ * collapsed behind a subtle toggle so the conversation stays clean (the full
+ * trace also lives in the Trace tab). Terracotta & Sage theme, no emojis.
+ * State lives in state/session.tsx and is shared with the Plan/Market/Money tabs.
  */
 import { useRef, useState } from 'react';
-import {
-  FlatList,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 
 import { TraceChipRow } from '@/components/trace-chips';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, Spacing } from '@/constants/theme';
+import { LeafResultCard } from '@/components/leaf-result';
+import { BottomTabInset, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession, type ChatBubble } from '@/state/session';
 import type { Language, MemoryOutcome } from '@/api/types';
-import * as ImagePicker from 'expo-image-picker';
-import { LeafResultCard } from '@/components/leaf-result';
 import type { LeafImagePart } from '@/api/vision';
 
-const FIELD_HINTS: Record<string, string> = {
-  location: 'My farm is in ',
-  farmSize: 'The farm is  bigha',
-  soilType: 'The soil is ',
-  waterAvailability: 'For water I have ',
-  budget: 'My budget is  taka',
-  targetSeason: 'I am planning for  season',
-};
-
-const LANGUAGE_LABELS: Record<Language, string> = {
-  en: 'English',
-  banglish: 'Banglish',
-  bn: 'বাংলা',
-};
+const LANGUAGE_LABELS: Record<Language, string> = { en: 'English', banglish: 'Banglish', bn: 'বাংলা' };
 
 const STARTER_MESSAGES = [
   'I have 2 acres in Gazipur, what should I plant?',
@@ -52,6 +30,82 @@ const STARTER_MESSAGES = [
   'আমার গাজীপুরে ২ একর জমি, বেলে দোআঁশ মাটি, বৃষ্টির পানি, বাজেট ৪৫ হাজার, আমন',
   '2 acres in Gazipur, sandy loam, rainfed, budget 45k, Aman',
 ];
+
+/** Friendly, tappable prompts for each still-missing intake field, per language.
+ *  Tapping a chip appends its `filler` (with a ___ blank) to the message being
+ *  composed — so the farmer builds one sentence and just replaces each ___,
+ *  instead of typing/sending each field separately. */
+const FIELD_PROMPTS: Record<string, Record<Language, { label: string; filler: string }>> = {
+  location: {
+    en: { label: 'Where?', filler: 'land in ___' },
+    bn: { label: 'জমি কোথায়?', filler: 'জমি ___ এ' },
+    banglish: { label: 'Jomi kothay?', filler: 'jomi ___ e' },
+  },
+  farmSize: {
+    en: { label: 'How big?', filler: '___ bigha' },
+    bn: { label: 'জমি কত বড়?', filler: 'জমি ___ বিঘা' },
+    banglish: { label: 'Jomi koto boro?', filler: 'jomi ___ bigha' },
+  },
+  soilType: {
+    en: { label: 'Soil type?', filler: '___ soil' },
+    bn: { label: 'মাটির ধরন?', filler: 'মাটি ___' },
+    banglish: { label: 'Matir dhoron?', filler: 'mati ___' },
+  },
+  waterAvailability: {
+    en: { label: 'Water?', filler: 'water from ___' },
+    bn: { label: 'পানির উৎস?', filler: 'পানি ___' },
+    banglish: { label: 'Panir source?', filler: 'pani ___' },
+  },
+  budget: {
+    en: { label: 'Budget?', filler: 'budget ___ taka' },
+    bn: { label: 'বাজেট কত?', filler: 'বাজেট ___ টাকা' },
+    banglish: { label: 'Budget koto?', filler: 'budget ___ taka' },
+  },
+  targetSeason: {
+    en: { label: 'Season?', filler: '___ season' },
+    bn: { label: 'কোন মৌসুম?', filler: '___ মৌসুম' },
+    banglish: { label: 'Kon season?', filler: '___ season' },
+  },
+};
+
+const TXT: Record<Language, Record<'quick' | 'steps' | 'placeholder' | 'working' | 'send' | 'empty' | 'remembered' | 'off' | 'ignore' | 'prevOff', string>> = {
+  en: {
+    quick: 'Tap to answer:',
+    steps: 'How the agent worked',
+    placeholder: 'Message AgriSense',
+    working: 'Working…',
+    send: 'Send',
+    empty: 'Start with anything — for example, “I have some land in Bogura, what should I plant?”',
+    remembered: 'Remembered from before',
+    off: 'Off',
+    ignore: 'Ignore',
+    prevOff: 'Previous sessions off · tap to enable',
+  },
+  bn: {
+    quick: 'উত্তর দিতে চাপুন:',
+    steps: 'এজেন্ট যেভাবে কাজ করেছে',
+    placeholder: 'AgriSense-কে লিখুন',
+    working: 'কাজ চলছে…',
+    send: 'পাঠান',
+    empty: 'যেকোনো কিছু দিয়ে শুরু করুন — যেমন, “বগুড়ায় আমার জমি আছে, কী চাষ করব?”',
+    remembered: 'আগের কথা মনে আছে',
+    off: 'বন্ধ',
+    ignore: 'বাদ দিন',
+    prevOff: 'আগের সেশন বন্ধ · চালু করতে চাপুন',
+  },
+  banglish: {
+    quick: 'Answer dite tap korun:',
+    steps: 'Agent jevabe kaj koreche',
+    placeholder: 'AgriSense ke likhun',
+    working: 'Kaj cholche…',
+    send: 'Pathan',
+    empty: 'Jekono kichu diye shuru korun — jemon, “Bogura te amar jomi ache, ki chash korbo?”',
+    remembered: 'Ager kotha mone ache',
+    off: 'Bondho',
+    ignore: 'Bad din',
+    prevOff: 'Ager session bondho · chalu korte tap korun',
+  },
+};
 
 function ChatHeader() {
   const { language, setLanguage, sending, send } = useSession();
@@ -62,14 +116,8 @@ function ChatHeader() {
         {(Object.keys(LANGUAGE_LABELS) as Language[]).map((lang) => {
           const active = language === lang;
           return (
-            <Pressable
-              key={lang}
-              onPress={() => setLanguage(lang)}
-              style={[styles.langChip, active && { backgroundColor: theme.brand }]}>
-              <ThemedText
-                type="small"
-                themeColor={active ? undefined : 'textSecondary'}
-                style={active ? styles.langActiveLabel : undefined}>
+            <Pressable key={lang} onPress={() => setLanguage(lang)} style={[styles.langChip, active && { backgroundColor: theme.brand }]}>
+              <ThemedText type="small" themeColor={active ? undefined : 'textSecondary'} style={active ? styles.langActiveLabel : undefined}>
                 {LANGUAGE_LABELS[lang]}
               </ThemedText>
             </Pressable>
@@ -102,50 +150,45 @@ function ProfileStrip() {
     profile.sizeAcres != null ? `${profile.sizeAcres} acre` : undefined,
     profile.soilType,
     profile.waterAvailability,
-    profile.budgetBdt != null ? `৳${profile.budgetBdt}` : undefined,
+    profile.budgetBdt != null ? `Tk ${profile.budgetBdt}` : undefined,
     profile.targetSeason,
   ].filter(Boolean);
   if (bits.length === 0) return null;
   return (
-    <ThemedView
-      type="backgroundElement"
-      style={[styles.profileStrip, { borderColor: theme.border }]}>
-      <ThemedText type="small" themeColor="textSecondary">
+    <View style={[styles.profileStrip, { borderColor: theme.border, backgroundColor: theme.backgroundElement }]}>
+      <Feather name="user" size={13} color={theme.secondary} />
+      <ThemedText type="small" themeColor="textSecondary" style={{ flex: 1 }} numberOfLines={1}>
         {bits.join(' · ')}
       </ThemedText>
-    </ThemedView>
+    </View>
   );
 }
 
 function MemoryStrip() {
-  const { rememberedOutcomes, useMemory, setUseMemory, ignoreOutcome, send } = useSession();
+  const { rememberedOutcomes, useMemory, setUseMemory, ignoreOutcome, send, language } = useSession();
   const theme = useTheme();
+  const txt = TXT[language];
   if (!useMemory) {
     return (
-      <ThemedView
-        type="backgroundElement"
-        style={[styles.memoryStrip, { borderColor: theme.border }]}>
-        <Pressable onPress={() => setUseMemory(true)}>
-          <ThemedText type="small" themeColor="textSecondary">
-            Previous sessions off · tap to enable
-          </ThemedText>
-        </Pressable>
-      </ThemedView>
+      <Pressable onPress={() => setUseMemory(true)} style={[styles.memoryStrip, { borderColor: theme.border, backgroundColor: theme.backgroundElement }]}>
+        <ThemedText type="small" themeColor="textSecondary">
+          {txt.prevOff}
+        </ThemedText>
+      </Pressable>
     );
   }
   if (rememberedOutcomes.length === 0) return null;
   const useOutcome = (outcome: MemoryOutcome) => {
     void send(`Use remembered context: ${outcome.title}`, [outcome.id]);
   };
-
   return (
-    <ThemedView
-      type="backgroundElement"
-      style={[styles.memoryStrip, { borderColor: theme.border }]}>
+    <View style={[styles.memoryStrip, { borderColor: theme.border, backgroundColor: theme.backgroundElement }]}>
       <View style={styles.memoryHeader}>
-        <ThemedText type="smallBold">Remembered</ThemedText>
+        <ThemedText type="smallBold">{txt.remembered}</ThemedText>
         <Pressable onPress={() => setUseMemory(false)}>
-          <ThemedText type="small" themeColor="textSecondary">Off</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            {txt.off}
+          </ThemedText>
         </Pressable>
       </View>
       <View style={styles.memoryChips}>
@@ -158,17 +201,21 @@ function MemoryStrip() {
               </ThemedText>
             </Pressable>
             <Pressable onPress={() => ignoreOutcome(outcome.id)}>
-              <ThemedText type="small" themeColor="textSecondary">Ignore</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {txt.ignore}
+              </ThemedText>
             </Pressable>
           </View>
         ))}
       </View>
-    </ThemedView>
+    </View>
   );
 }
 
-function Bubble({ item, onHint }: { item: ChatBubble; onHint: (text: string) => void }) {
+function Bubble({ item, language, onInsert }: { item: ChatBubble; language: Language; onInsert: (field: string) => void }) {
   const theme = useTheme();
+  const [traceOpen, setTraceOpen] = useState(false);
+  const txt = TXT[language];
   const isFarmer = item.role === 'farmer';
   const isError = item.role === 'error';
 
@@ -182,44 +229,60 @@ function Bubble({ item, onHint }: { item: ChatBubble; onHint: (text: string) => 
     );
   }
 
+  const stepCount = item.trace?.length ?? 0;
+  const prompts = (item.missingFields ?? []).map((field) => ({ field, prompt: FIELD_PROMPTS[field]?.[language] })).filter((x) => x.prompt);
+
   return (
     <View style={styles.bubbleRow}>
       <ThemedView
         type="backgroundElement"
-        style={[
-          styles.bubble,
-          { borderColor: theme.border, borderWidth: 1 },
-          isError && { backgroundColor: theme.errorSoft, borderColor: theme.error },
-        ]}>
-        <ThemedText themeColor={isError ? 'error' : 'text'}>
-          {item.text}
-        </ThemedText>
-        <TraceChipRow trace={item.trace} />
-        {item.diagnosis && <LeafResultCard diagnosis={item.diagnosis} />}
-        {item.missingFields && item.missingFields.length > 0 && (
-          <View style={styles.hintRow}>
-            {item.missingFields.map((field) => (
-              <Pressable
-                key={field}
-                onPress={() => onHint(FIELD_HINTS[field] ?? '')}
-                style={[styles.hintChip, { backgroundColor: theme.brandSoft }]}>
-                <ThemedText type="small" themeColor="brand">
-                  + {field}
-                </ThemedText>
-              </Pressable>
-            ))}
+        style={[styles.bubble, { borderColor: theme.border, borderWidth: 1 }, isError && { backgroundColor: theme.errorSoft, borderColor: theme.error }]}>
+        <ThemedText themeColor={isError ? 'error' : 'text'}>{item.text}</ThemedText>
+
+        {item.diagnosis ? <LeafResultCard diagnosis={item.diagnosis} /> : null}
+
+        {prompts.length > 0 ? (
+          <View style={styles.quickReplies}>
+            <ThemedText type="small" themeColor="textSecondary" style={{ marginBottom: Spacing.one }}>
+              {txt.quick}
+            </ThemedText>
+            <View style={styles.hintRow}>
+              {prompts.map(({ field, prompt }) => (
+                <Pressable
+                  key={field}
+                  onPress={() => onInsert(field)}
+                  style={[styles.hintChip, { borderColor: theme.brand, backgroundColor: theme.brandSoft }]}>
+                  <ThemedText type="small" themeColor="brand">
+                    {prompt!.label}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </View>
           </View>
-        )}
+        ) : null}
+
+        {stepCount > 0 ? (
+          <View style={{ marginTop: Spacing.two }}>
+            <Pressable onPress={() => setTraceOpen((v) => !v)} style={styles.traceToggle}>
+              <Feather name={traceOpen ? 'chevron-down' : 'chevron-right'} size={13} color={theme.textSecondary} />
+              <ThemedText type="small" themeColor="textSecondary">
+                {txt.steps} · {stepCount}
+              </ThemedText>
+            </Pressable>
+            {traceOpen ? <TraceChipRow trace={item.trace} /> : null}
+          </View>
+        ) : null}
       </ThemedView>
     </View>
   );
 }
 
 export default function ChatScreen() {
-  const { bubbles, sending, send, diagnoseLeaf } = useSession();
+  const { bubbles, sending, send, diagnoseLeaf, language } = useSession();
   const theme = useTheme();
   const [draft, setDraft] = useState('');
   const listRef = useRef<FlatList<ChatBubble>>(null);
+  const txt = TXT[language];
 
   const submit = () => {
     const text = draft;
@@ -240,6 +303,14 @@ export default function ChatScreen() {
     await diagnoseLeaf(image);
   }
 
+  /** Append a still-missing field's filler slot to the message being composed,
+   *  so the farmer answers several fields in one editable sentence. */
+  function insertFiller(field: string) {
+    const filler = FIELD_PROMPTS[field]?.[language]?.filler;
+    if (!filler) return;
+    setDraft((prev) => (prev.trim() ? `${prev.trim()}, ${filler}` : filler));
+  }
+
   const canSend = !sending && draft.trim() !== '';
 
   return (
@@ -248,35 +319,26 @@ export default function ChatScreen() {
         <ChatHeader />
         <ProfileStrip />
         <MemoryStrip />
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <FlatList
             ref={listRef}
             data={bubbles}
             keyExtractor={(b) => b.id}
-            renderItem={({ item }) => <Bubble item={item} onHint={setDraft} />}
+            renderItem={({ item }) => <Bubble item={item} language={language} onInsert={insertFiller} />}
             contentContainerStyle={styles.listContent}
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
             ListEmptyComponent={
               <ThemedText themeColor="textSecondary" style={styles.empty}>
-                Start with anything — e.g. “I have some land in Bogura, what should I plant?”
+                {txt.empty}
               </ThemedText>
             }
           />
-          <View style={styles.inputRow}>
+          <View style={[styles.inputRow, { borderTopColor: theme.border, backgroundColor: theme.background }]}>
             <TextInput
-              style={[
-                styles.input,
-                {
-                  borderColor: theme.border,
-                  backgroundColor: theme.backgroundElement,
-                  color: theme.text,
-                },
-              ]}
+              style={[styles.input, { borderColor: theme.border, backgroundColor: theme.backgroundElement, color: theme.text }]}
               value={draft}
               onChangeText={setDraft}
-              placeholder={sending ? 'Agent is working…' : 'Message AgriSense'}
+              placeholder={sending ? txt.working : txt.placeholder}
               placeholderTextColor={theme.textSecondary}
               editable={!sending}
               onSubmitEditing={submit}
@@ -287,23 +349,15 @@ export default function ChatScreen() {
               onPress={() => void pickAndDiagnose()}
               disabled={sending}
               accessibilityLabel="Diagnose a leaf photo"
-              style={[
-                styles.leafBtn,
-                { borderColor: theme.border, backgroundColor: theme.backgroundElement },
-                sending && styles.sendBtnDisabled,
-              ]}>
+              style={[styles.iconBtn, { borderColor: theme.border, backgroundColor: theme.backgroundElement }, sending && styles.disabled]}>
               <Feather name="camera" size={18} color={theme.text} />
             </Pressable>
             <Pressable
               onPress={submit}
               disabled={!canSend}
-              style={[
-                styles.sendBtn,
-                { backgroundColor: theme.brand },
-                !canSend && styles.sendBtnDisabled,
-              ]}>
+              style={[styles.sendBtn, { backgroundColor: theme.brand }, !canSend && styles.disabled]}>
               <ThemedText type="smallBold" style={styles.sendLabel}>
-                {sending ? '…' : 'Send'}
+                {sending ? '…' : txt.send}
               </ThemedText>
             </Pressable>
           </View>
@@ -317,133 +371,43 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   flex: { flex: 1 },
-  header: {
-    paddingTop: Spacing.two,
-    gap: Spacing.two,
-  },
-  langBar: {
-    flexDirection: 'row',
-    alignSelf: 'flex-start',
-    marginHorizontal: Spacing.three,
-    borderWidth: 1,
-    borderRadius: 999,
-    padding: 3,
-    gap: 3,
-  },
-  langChip: {
-    borderRadius: 999,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one,
-  },
+  header: { paddingTop: Spacing.two, gap: Spacing.two },
+  langBar: { flexDirection: 'row', alignSelf: 'flex-start', marginHorizontal: Spacing.three, borderWidth: 1, borderRadius: Radius.pill, padding: 3, gap: 3 },
+  langChip: { borderRadius: Radius.pill, paddingHorizontal: Spacing.three, paddingVertical: Spacing.one },
   langActiveLabel: { color: '#ffffff' },
-  starterRow: {
-    paddingHorizontal: Spacing.three,
-    gap: Spacing.two,
-  },
-  starterChip: {
-    maxWidth: 240,
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.two + Spacing.half,
-    paddingVertical: Spacing.two,
-  },
+  starterRow: { paddingHorizontal: Spacing.three, gap: Spacing.two },
+  starterChip: { maxWidth: 240, borderWidth: 1, borderRadius: Radius.md, paddingHorizontal: Spacing.two + Spacing.half, paddingVertical: Spacing.two },
   starterText: { maxWidth: 220 },
   profileStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
     marginHorizontal: Spacing.three,
     marginTop: Spacing.two,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.md,
     borderWidth: 1,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
   },
-  memoryStrip: {
-    marginHorizontal: Spacing.three,
-    marginTop: Spacing.two,
-    borderRadius: Spacing.three,
-    borderWidth: 1,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-  },
-  memoryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.one,
-  },
-  memoryChips: {
-    gap: Spacing.one,
-  },
-  memoryChip: {
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.one,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  memoryChipText: {
-    flex: 1,
-  },
-  listContent: {
-    padding: Spacing.three,
-    gap: Spacing.two,
-    paddingBottom: Spacing.four,
-  },
-  empty: {
-    textAlign: 'center',
-    marginTop: Spacing.six,
-    paddingHorizontal: Spacing.four,
-  },
+  memoryStrip: { marginHorizontal: Spacing.three, marginTop: Spacing.two, borderRadius: Radius.md, borderWidth: 1, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two },
+  memoryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.one },
+  memoryChips: { gap: Spacing.one },
+  memoryChip: { borderWidth: 1, borderRadius: Radius.sm, paddingHorizontal: Spacing.two, paddingVertical: Spacing.one, flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  memoryChipText: { flex: 1 },
+  listContent: { padding: Spacing.three, gap: Spacing.two, paddingBottom: Spacing.four },
+  empty: { textAlign: 'center', marginTop: Spacing.six, paddingHorizontal: Spacing.four },
   bubbleRow: { flexDirection: 'row' },
   bubbleRowFarmer: { justifyContent: 'flex-end' },
-  bubble: {
-    maxWidth: '88%',
-    borderRadius: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two + Spacing.half,
-  },
+  bubble: { maxWidth: '90%', borderRadius: Radius.lg, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two + Spacing.half, gap: Spacing.one },
   farmerText: { color: '#ffffff' },
-  hintRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.one,
-    marginTop: Spacing.two,
-  },
-  hintChip: {
-    borderRadius: 999,
-    paddingHorizontal: Spacing.two + Spacing.half,
-    paddingVertical: Spacing.one / 2 + 1,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: Spacing.two,
-    padding: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.two,
-  },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two + Spacing.half,
-    fontSize: 16,
-    maxHeight: 120,
-  },
-  sendBtn: {
-    borderRadius: Spacing.two + Spacing.half,
-    paddingHorizontal: Spacing.three + Spacing.one,
-    paddingVertical: Spacing.two + Spacing.half,
-  },
-  sendBtnDisabled: { opacity: 0.5 },
+  quickReplies: { marginTop: Spacing.two },
+  hintRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one },
+  hintChip: { borderRadius: Radius.pill, borderWidth: 1, paddingHorizontal: Spacing.two + Spacing.half, paddingVertical: Spacing.one + 1 },
+  traceToggle: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one, alignSelf: 'flex-start' },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.two, padding: Spacing.three, paddingBottom: BottomTabInset + Spacing.two, borderTopWidth: 1 },
+  input: { flex: 1, borderWidth: 1, borderRadius: Radius.lg, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two + Spacing.half, fontSize: 16, maxHeight: 120 },
+  iconBtn: { borderWidth: 1, borderRadius: Radius.md, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two + Spacing.half, justifyContent: 'center', alignItems: 'center' },
+  sendBtn: { borderRadius: Radius.md, paddingHorizontal: Spacing.three + Spacing.one, paddingVertical: Spacing.two + Spacing.half },
+  disabled: { opacity: 0.5 },
   sendLabel: { color: '#ffffff' },
-  leafBtn: {
-    borderWidth: 1,
-    borderRadius: Spacing.two + Spacing.half,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two + Spacing.half,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
 });

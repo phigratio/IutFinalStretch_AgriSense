@@ -7,7 +7,7 @@ import { router, type Href } from 'expo-router';
 import { Pressable, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
-import { Screen, Card, type IconName } from '@/components/ui';
+import { Screen, Card, ThemeToggle, type IconName } from '@/components/ui';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -31,7 +31,7 @@ export default function MoreScreen() {
   const theme = useTheme();
   const { t } = useLanguage();
   return (
-    <Screen title="More" subtitle="Every AgriSense tool in one place.">
+    <Screen title="More" subtitle="Every AgriSense tool in one place." right={<ThemeToggle />}>
       <Card style={{ padding: 0, gap: 0, overflow: 'hidden' }}>
         {ITEMS.map((item, index) => (
           <Pressable
