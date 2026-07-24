@@ -16,14 +16,14 @@ on:
         required: false
         default: "main"
 
-concurrency:
-  group: iut-ict-fest-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   ci:
     name: Build and test
     runs-on: ubuntu-latest
+    # Superseded test runs on the same ref may be cancelled to save time.
+    concurrency:
+      group: iut-ict-fest-ci-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -72,6 +72,11 @@ jobs:
     needs: ci
     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/auth-google-oauth-production'
     environment: production
+    # A deploy is never interrupted. A newer deploy queues behind the running one
+    # (only the latest pending run survives); the in-flight deploy always finishes.
+    concurrency:
+      group: iut-ict-fest-deploy-production
+      cancel-in-progress: false
     steps:
       - name: Start SSH agent
         uses: webfactory/ssh-agent@v0.9.0
