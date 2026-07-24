@@ -118,7 +118,7 @@ export class PostgresAgriSenseStore implements AgriSenseStore {
         "id", "session_id", "farm_id", "crop", "rank", "suitability_score", "water_need",
         "risk_level", "reasoning", "retrieved_chunk_ids", "weather_snapshot_ids",
         "expected_yield_unit", "expected_yield", "expected_revenue_bdt", "total_cost_bdt",
-        "net_profit_bdt", "roi_pct", "break_even_yield"
+        "net_profit_bdt", "roi_pct", "break_even_yield", "created_at", "updated_at"
       )
       VALUES (
         ${planId}::uuid,
@@ -138,7 +138,9 @@ export class PostgresAgriSenseStore implements AgriSenseStore {
         ${plan.financials.totalCostBdt},
         ${plan.financials.netProfitBdt},
         ${plan.financials.roiPct},
-        ${plan.financials.breakEvenYieldKg}
+        ${plan.financials.breakEvenYieldKg},
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
       )
     `;
 

@@ -540,7 +540,7 @@ function LedgerForm({
           <input value={form.category} onChange={(event) => setForm((prev) => ({ ...prev, category: event.target.value }))} className={inputClass} />
         </Field>
         <Field label="Label">
-          <input value={form.label} onChange={(event) => setForm((prev) => ({ ...prev, label: event.target.value }))} placeholder="Seed purchase, labor, sale" className={inputClass} />
+          <input value={form.label} onChange={(event) => setForm((prev) => ({ ...prev, label: event.target.value }))} placeholder="Input purchase, labor, sale" className={inputClass} />
         </Field>
         <Field label="Amount BDT">
           <input value={form.amountBdt} onChange={(event) => setForm((prev) => ({ ...prev, amountBdt: event.target.value }))} inputMode="decimal" className={inputClass} />

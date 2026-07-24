@@ -68,6 +68,7 @@ export interface MarketplaceIntelligenceRequest {
 }
 
 export interface MarketplaceIntelligenceResult {
+  id?: string;
   agentMessage: string;
   needs: MarketplaceNeed;
   supplierOffers: SupplierOffer[];
@@ -80,4 +81,15 @@ export interface MarketplaceIntelligenceResult {
   context?: ContextBundle;
   trace: IntakeTraceEvent[];
   seeded: true;
+}
+
+export interface MarketplaceRunRecord extends MarketplaceIntelligenceResult {
+  id: string;
+  userId?: string;
+  tenantId?: string;
+  farmerId?: string;
+  farmId?: string;
+  sessionId?: string;
+  crop: string;
+  createdAt: string;
 }
