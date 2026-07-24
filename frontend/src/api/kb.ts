@@ -35,6 +35,35 @@ export interface KbSearchResponse {
   citations: string[];
 }
 
+export interface KbIngestionJob {
+  id: string;
+  status: "queued" | "processing" | "completed" | "failed";
+  stage: string;
+  originalName: string;
+  title: string;
+  source: string;
+  verificationStatus: "verified" | "cross_checked" | "unverified";
+  extractedChars: number;
+  chunkCount: number;
+  processedChunks: number;
+  errorMessage?: string;
+  createdAt: string;
+}
+
+export function uploadKbFiles(form: FormData) {
+  return apiFetch<{ jobs: KbIngestionJob[] }>(`/api/hub/kb/uploads`, {
+    method: "POST", body: form,
+  });
+}
+
+export function listKbIngestionJobs() {
+  return apiFetch<KbIngestionJob[]>(`/api/hub/kb/jobs`);
+}
+
+export function listHubDocuments() {
+  return apiFetch<KbDocumentRecord[]>(`/api/hub/kb/docs`);
+}
+
 export function postTenantPrice(tenantId: string, userId: string, body: Record<string, unknown>) {
   return apiFetch(`/api/tenants/${encodeURIComponent(tenantId)}/prices`, {
     method: "POST", body, headers: tenantHeaders(userId),

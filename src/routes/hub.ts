@@ -3,8 +3,25 @@ import { getKbRuntime } from "../kb/runtime.js";
 import { assertTenantWriteAccess, HUB, TenantAccessError } from "../kb/tenancy.js";
 import { addChunk, type KbChunkMeta } from "../kb/vectorKb.js";
 import type { TableKind } from "../kb/tableStore.js";
+import multer from "multer";
+import path from "node:path";
+import { mkdirSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { authenticate, type AuthenticatedRequest } from "../middleware/authenticate.js";
+import { ingestionDb } from "../kb/ingestionJobs.js";
+import { getKbDocumentStore } from "../kb/documentStore.js";
 
 export const hubRouter = Router();
+const uploadDir = process.env.KB_UPLOAD_DIR ?? path.resolve("uploads/kb");
+mkdirSync(uploadDir, { recursive: true });
+const centralUpload = multer({
+  storage: multer.diskStorage({
+    destination: uploadDir,
+    filename: (_req, file, cb) => cb(null, `${randomUUID()}${path.extname(file.originalname).toLowerCase()}`),
+  }),
+  limits: { fileSize: 100 * 1024 * 1024, files: 25 },
+  fileFilter: (_req, file, cb) => cb(null, new Set([".pdf", ".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".docx", ".epub", ".txt", ".md", ".csv"]).has(path.extname(file.originalname).toLowerCase())),
+});
 
 async function requireHub(req: { header(name: string): string | undefined }): Promise<void> {
   const userId = req.header("x-user-id");
@@ -45,4 +62,39 @@ hubRouter.post("/tables/import", async (req, res, next) => {
     }
     res.status(201).json({ ok: true, imported: rows.length });
   } catch (err) { if (err instanceof TenantAccessError) res.status(req.header("x-user-id") ? 403 : 401).json({ error: err.message }); else next(err); }
+});
+
+/** Central admin bulk upload. Each file becomes an independent persistent background job. */
+hubRouter.post("/kb/uploads", authenticate, centralUpload.array("files", 25), async (req, res, next) => {
+  try {
+    const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+    if (!files.length) { res.status(400).json({ error: "Select at least one supported file" }); return; }
+    const requestedBy = (req as typeof req & AuthenticatedRequest).auth!.sub;
+    const verificationStatus = String(req.body.verificationStatus || "unverified");
+    if (!["unverified", "cross_checked", "verified"].includes(verificationStatus)) {
+      res.status(400).json({ error: "Invalid verificationStatus" }); return;
+    }
+    const jobs = [];
+    for (const file of files) {
+      jobs.push(await ingestionDb().kbIngestionJob.create({ data: {
+        tenantId: HUB, requestedBy, originalName: file.originalname, storedPath: file.path,
+        mimeType: file.mimetype || "application/octet-stream", sizeBytes: file.size,
+        title: String(req.body.title || path.parse(file.originalname).name).trim(),
+        source: String(req.body.source || "Admin upload").trim(), sourceUrl: req.body.sourceUrl || null,
+        cropId: req.body.cropId || null, docType: req.body.docType || "reference", verificationStatus,
+      } }));
+    }
+    res.status(202).json({ jobs });
+  } catch (err) { next(err); }
+});
+
+hubRouter.get("/kb/jobs", authenticate, async (_req, res, next) => {
+  try {
+    const rows = await ingestionDb().kbIngestionJob.findMany({ where: { tenantId: HUB }, orderBy: { createdAt: "desc" }, take: 100 });
+    res.json(rows.map(({ storedPath: _storedPath, ...job }) => job));
+  } catch (err) { next(err); }
+});
+
+hubRouter.get("/kb/docs", authenticate, async (_req, res, next) => {
+  try { res.json(await getKbDocumentStore().list(HUB)); } catch (err) { next(err); }
 });

@@ -6,6 +6,7 @@ import { searchKB } from "../kb/vectorKb.js";
 import { resolveTableFrom, type TableKind } from "../kb/tableStore.js";
 import { loadTable } from "../data/loader.js";
 import { assertTenantAccess } from "../kb/tenancy.js";
+import { verifyAuthToken } from "../auth/tokens.js";
 
 export const kbRouter: Router = Router();
 
@@ -30,7 +31,12 @@ kbRouter.get("/search", async (req, res, next) => {
       ? String(req.query.tenantId)
       : district ? await tenantStore.resolveTenantIdForDistrict(district) : HUB;
     const includeUnverified = req.query.includeUnverified === "true";
-    if (req.query.tenantId || includeUnverified) {
+    if (tenantId === HUB && includeUnverified) {
+      const authorization = req.header("authorization");
+      if (!authorization?.startsWith("Bearer ") || !verifyAuthToken(authorization.slice(7))) {
+        res.status(401).json({ error: "Admin authentication required to search draft entries" }); return;
+      }
+    } else if (tenantId !== HUB && (req.query.tenantId || includeUnverified)) {
       const userId = req.header("x-user-id");
       if (!userId) { res.status(401).json({ error: "x-user-id header required" }); return; }
       await assertTenantAccess(tenantStore, userId, tenantId);

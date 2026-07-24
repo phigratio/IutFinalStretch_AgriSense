@@ -30,6 +30,7 @@ export interface KbChunkMeta {
   scope: "hub" | "tenant";
   tenantId?: string;
   docKey: string;
+  title?: string;
   docType: string; // fertilizer | pest | disease | practice | advisory | variety
   cropId?: string;
   season?: string;
@@ -82,7 +83,7 @@ export async function addChunk(
     tenantId: meta.scope === "hub" ? HUB : meta.tenantId!,
     scope: meta.scope,
     docKey: meta.docKey,
-    title: meta.docKey,
+    title: meta.title ?? meta.docKey,
     source: meta.source,
     sourceUrl: meta.sourceUrl,
     page: meta.page,

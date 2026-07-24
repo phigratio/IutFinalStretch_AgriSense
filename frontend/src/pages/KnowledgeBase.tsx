@@ -3,12 +3,13 @@ import PageMeta from "../components/common/PageMeta.js";
 import PageBreadcrumb from "../components/common/PageBreadcrumb.js";
 import { useAuth } from "../context/AuthContext.js";
 import {
-  listTenantDocuments,
-  postTenantDocument,
-  postTenantPrice,
+  listHubDocuments,
+  listKbIngestionJobs,
   searchKnowledgeBase,
+  uploadKbFiles,
   type KbDocumentRecord,
   type KbHit,
+  type KbIngestionJob,
 } from "../api/kb.js";
 
 const input = "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white";
@@ -22,7 +23,7 @@ const secondaryButton = "rounded-lg border border-gray-300 px-4 py-2 text-sm fon
 
 export default function KnowledgeBase() {
   const { user } = useAuth();
-  const [tenantId, setTenantId] = useState("dist-kushtia");
+  const tenantId = "hub";
   const [status, setStatus] = useState("");
   const [documents, setDocuments] = useState<KbDocumentRecord[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
@@ -32,12 +33,14 @@ export default function KnowledgeBase() {
   const [hits, setHits] = useState<KbHit[]>([]);
   const [resolvedTenantId, setResolvedTenantId] = useState(tenantId);
   const [searching, setSearching] = useState(false);
+  const [jobs, setJobs] = useState<KbIngestionJob[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   async function loadDocuments() {
     if (!user?.id || !tenantId.trim()) return;
     setLoadingDocs(true);
     try {
-      setDocuments(await listTenantDocuments(tenantId.trim(), user.id));
+      setDocuments(await listHubDocuments());
     } catch (error) {
       setStatus((error as Error).message);
     } finally {
@@ -47,7 +50,34 @@ export default function KnowledgeBase() {
 
   useEffect(() => {
     void loadDocuments();
-  }, [tenantId, user?.id]);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id || !tenantId.trim()) return;
+    const load = async () => setJobs(await listKbIngestionJobs());
+    void load().catch((error) => setStatus((error as Error).message));
+    const interval = window.setInterval(() => void load().catch(() => undefined), 3000);
+    return () => window.clearInterval(interval);
+  }, [user?.id]);
+
+  async function submitUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user?.id) return;
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    setUploading(true);
+    setStatus("Uploading file and creating a background ingestion job…");
+    try {
+      const result = await uploadKbFiles(data);
+      setJobs((current) => [...result.jobs, ...current]);
+      setStatus(`${result.jobs.length} file(s) accepted for background ingestion. You can leave this page.`);
+      form.reset();
+    } catch (error) {
+      setStatus((error as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function submitQuery(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -70,51 +100,6 @@ export default function KnowledgeBase() {
     }
   }
 
-  async function submitDocument(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!user?.id) return;
-    setStatus("Adding advisory to the tenant knowledge base…");
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    try {
-      await postTenantDocument(tenantId.trim(), user.id, {
-        docKey: data.get("docKey"),
-        docType: data.get("docType"),
-        cropId: data.get("cropId"),
-        source: data.get("source"),
-        text: data.get("text"),
-      });
-      setStatus("Advisory added. It is marked unverified until reviewed, so keep ‘Include draft entries’ on while testing it.");
-      form.reset();
-      await loadDocuments();
-    } catch (error) {
-      setStatus((error as Error).message);
-    }
-  }
-
-  async function submitPrice(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!user?.id) return;
-    setStatus("Saving local market price…");
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    try {
-      await postTenantPrice(tenantId.trim(), user.id, {
-        cropId: data.get("cropId"),
-        district: data.get("district"),
-        market: data.get("market"),
-        price: Number(data.get("price")),
-        unit: "kg",
-        priceType: "retail",
-        observedAt: data.get("observedAt"),
-      });
-      setStatus("Local market price saved.");
-      form.reset();
-    } catch (error) {
-      setStatus((error as Error).message);
-    }
-  }
-
   return <>
     <PageMeta title="Knowledge Base · AgriSense" description="Search, review, and update agronomy knowledge" />
     <PageBreadcrumb pageTitle="Knowledge Base" />
@@ -127,17 +112,9 @@ export default function KnowledgeBase() {
       </p>
     </div>
 
-    <section className={`${card} mb-6`}>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-        <div>
-          <label className={label}>Which KB should I use?</label>
-          <input className={input} value={tenantId} onChange={(e) => setTenantId(e.target.value)} placeholder="Example: dist-kushtia" />
-          <p className={help}>Use a tenant slug such as <strong>dist-kushtia</strong>. The search checks this tenant plus the shared hub knowledge.</p>
-        </div>
-        <button className={secondaryButton} type="button" disabled={loadingDocs} onClick={() => void loadDocuments()}>
-          {loadingDocs ? "Refreshing…" : "Refresh document list"}
-        </button>
-      </div>
+    <section className={`${card} mb-6 flex items-center justify-between gap-4`}>
+      <div><h2 className={heading}>Central knowledge hub</h2><p className={muted}>All uploads and searches use the single shared AgriSense knowledge base.</p></div>
+      <button className={secondaryButton} type="button" disabled={loadingDocs} onClick={() => void loadDocuments()}>{loadingDocs ? "Refreshing…" : "Refresh"}</button>
     </section>
 
     {status && <p className="mb-5 rounded-lg bg-brand-50 px-4 py-3 text-sm text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">{status}</p>}
@@ -197,12 +174,57 @@ export default function KnowledgeBase() {
       </div>
     </section>
 
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-      <section className={card}>
+    <section className={`${card} mb-6`}>
+      <div className="mb-5">
+        <h2 className={heading}>Upload documents and books</h2>
+        <p className={muted}>Upload a PDF, image, DOCX, EPUB, or text file. Text extraction, OCR, chunking, and vector ingestion continue in the background.</p>
+      </div>
+      <form className="grid gap-4 lg:grid-cols-2" onSubmit={submitUpload}>
+        <div className="lg:col-span-2">
+          <label className={label}>File (maximum 100 MB)</label>
+          <input className={input} name="files" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.tif,.tiff,.docx,.epub,.txt,.md,.csv" required />
+          <p className={help}>Images are OCRed in Bangla and English. Searchable PDFs preserve page-level citations.</p>
+        </div>
+        <div><label className={label}>Title, optional</label><input className={input} name="title" placeholder="Defaults to the filename" /></div>
+        <div><label className={label}>Source</label><input className={input} name="source" placeholder="Example: Bangladesh Rice Research Institute" required /></div>
+        <div><label className={label}>Source URL, optional</label><input className={input} name="sourceUrl" type="url" placeholder="https://…" /></div>
+        <div><label className={label}>Crop ID, optional</label><input className={input} name="cropId" placeholder="Example: rice_t_aman" /></div>
+        <div><label className={label}>Document type</label><input className={input} name="docType" defaultValue="reference" /></div>
+        <div>
+          <label className={label}>Review status</label>
+          <select className={input} name="verificationStatus" defaultValue="unverified">
+            <option value="unverified">Unverified draft (safest)</option>
+            <option value="cross_checked">Cross-checked</option>
+            <option value="verified">Verified authoritative source</option>
+          </select>
+          <p className={help}>Drafts are visible to admins but excluded from farmer answers.</p>
+        </div>
+        <div className="lg:col-span-2"><button className={button} type="submit" disabled={uploading}>{uploading ? "Uploading…" : "Upload and ingest in background"}</button></div>
+      </form>
+
+      <div className="mt-7 overflow-x-auto">
+        <table className="min-w-full text-left text-sm">
+          <thead className="border-b border-gray-200 text-xs uppercase text-gray-500 dark:border-gray-800 dark:text-gray-400"><tr>
+            <th className="py-2 pr-4">File</th><th className="py-2 pr-4">Status</th><th className="py-2 pr-4">Progress</th><th className="py-2">Result</th>
+          </tr></thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            {jobs.map((job) => <tr key={job.id}>
+              <td className="py-3 pr-4"><div className="font-medium text-gray-800 dark:text-white">{job.title}</div><div className="text-xs text-gray-500">{job.originalName}</div></td>
+              <td className="py-3 pr-4"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs dark:bg-white/[0.06]">{job.status} · {job.stage}</span></td>
+              <td className="py-3 pr-4 text-gray-600 dark:text-gray-300">{job.processedChunks}/{job.chunkCount || "?"} chunks</td>
+              <td className="py-3 text-gray-600 dark:text-gray-300">{job.errorMessage ? <span className="text-error-500">{job.errorMessage}</span> : job.status === "completed" ? `${job.extractedChars.toLocaleString()} characters` : "—"}</td>
+            </tr>)}
+            {!jobs.length && <tr><td className={`${muted} py-5`} colSpan={4}>No upload jobs yet.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section className={card}>
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
             <h2 className={heading}>Source documents</h2>
-            <p className={muted}>These are the document records registered for the selected tenant.</p>
+            <p className={muted}>These are the documents currently registered in the central hub.</p>
           </div>
           <button className="text-sm font-medium text-brand-500 hover:text-brand-600" type="button" onClick={() => void loadDocuments()}>
             Refresh
@@ -228,74 +250,10 @@ export default function KnowledgeBase() {
                 <td className="py-3 pr-4 text-gray-600 dark:text-gray-300">{doc.verificationStatus}</td>
                 <td className="py-3 pr-4 text-gray-600 dark:text-gray-300">{doc.mem0Ids.length || "—"}</td>
               </tr>)}
-              {!documents.length && <tr><td className={`${muted} py-6`} colSpan={4}>No documents found for this tenant yet.</td></tr>}
+              {!documents.length && <tr><td className={`${muted} py-6`} colSpan={4}>No central documents found yet.</td></tr>}
             </tbody>
           </table>
         </div>
-      </section>
-
-      <aside className="space-y-6">
-        <details className={card} open>
-          <summary className="cursor-pointer list-none">
-            <h2 className={heading}>Add a local advisory</h2>
-            <p className={`${muted} mt-1`}>Use this for actual written guidance, notices, pest alerts, or fertilizer advice.</p>
-          </summary>
-          <form className="mt-5 grid gap-3" onSubmit={submitDocument}>
-            <div>
-              <label className={label}>Document ID</label>
-              <input className={input} name="docKey" placeholder="Example: kushtia-potato-blight-2026" required />
-              <p className={help}>A stable unique key for this advisory.</p>
-            </div>
-            <div>
-              <label className={label}>Crop, optional</label>
-              <input className={input} name="cropId" placeholder="Example: potato" />
-            </div>
-            <div>
-              <label className={label}>Type</label>
-              <input className={input} name="docType" placeholder="advisory" defaultValue="advisory" required />
-            </div>
-            <div>
-              <label className={label}>Source</label>
-              <input className={input} name="source" placeholder="Example: Kushtia District Agriculture Office" required />
-            </div>
-            <div>
-              <label className={label}>Advisory text</label>
-              <textarea className={`${input} min-h-36`} name="text" placeholder="Paste the advisory or guidance text here…" required />
-            </div>
-            <button className={button} type="submit">Add advisory to KB</button>
-          </form>
-        </details>
-
-        <details className={card}>
-          <summary className="cursor-pointer list-none">
-            <h2 className={heading}>Add a local market price</h2>
-            <p className={`${muted} mt-1`}>Prices are used by planning/finance logic. They are not searchable advisory text.</p>
-          </summary>
-          <form className="mt-5 grid gap-3" onSubmit={submitPrice}>
-            <div>
-              <label className={label}>Crop</label>
-              <input className={input} name="cropId" placeholder="Example: potato" required />
-            </div>
-            <div>
-              <label className={label}>District</label>
-              <input className={input} name="district" placeholder="Example: Kushtia" required />
-            </div>
-            <div>
-              <label className={label}>Market, optional</label>
-              <input className={input} name="market" placeholder="Example: Kushtia Sadar" />
-            </div>
-            <div>
-              <label className={label}>Retail price, BDT per kg</label>
-              <input className={input} name="price" type="number" min="0.01" step="0.01" placeholder="Example: 32" required />
-            </div>
-            <div>
-              <label className={label}>Observed date</label>
-              <input className={input} name="observedAt" type="date" required />
-            </div>
-            <button className={button} type="submit">Save market price</button>
-          </form>
-        </details>
-      </aside>
-    </div>
+    </section>
   </>;
 }

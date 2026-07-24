@@ -32,8 +32,11 @@ services:
       OTEL_SERVICE_NAME: iut-ict-fest-backend
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_METRIC_EXPORT_INTERVAL_MS: 5000
+      KB_UPLOAD_DIR: /app/uploads/kb
     ports:
       - "${APP_PORT:-3000}:3000"
+    volumes:
+      - kb-uploads:/app/uploads/kb
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
       interval: 10s
@@ -307,3 +310,4 @@ volumes:
   mem0-history:
   mem0-neo4j-data:
   mem0-neo4j-logs:
+  kb-uploads:

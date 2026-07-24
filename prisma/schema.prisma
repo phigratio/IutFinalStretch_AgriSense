@@ -517,3 +517,32 @@ model KbDocument {
   @@index([scope])
   @@map("kb_documents")
 }
+
+model KbIngestionJob {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @map("tenant_id")
+  requestedBy        String   @map("requested_by")
+  status             String   @default("queued") // queued | processing | completed | failed
+  stage              String   @default("queued")
+  originalName       String   @map("original_name")
+  storedPath         String   @map("stored_path")
+  mimeType           String   @map("mime_type")
+  sizeBytes          Int      @map("size_bytes")
+  title              String
+  source             String
+  sourceUrl          String?  @map("source_url")
+  cropId             String?  @map("crop_id")
+  docType            String   @default("reference") @map("doc_type")
+  verificationStatus String   @default("unverified") @map("verification_status")
+  extractedChars     Int      @default(0) @map("extracted_chars")
+  chunkCount         Int      @default(0) @map("chunk_count")
+  processedChunks    Int      @default(0) @map("processed_chunks")
+  errorMessage       String?  @map("error_message")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt          DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt         DateTime? @map("finished_at") @db.Timestamptz(6)
+
+  @@index([tenantId, createdAt])
+  @@index([status, createdAt])
+  @@map("kb_ingestion_jobs")
+}
