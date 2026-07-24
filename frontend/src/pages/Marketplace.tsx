@@ -11,7 +11,11 @@ import {
   type SupplierOffer,
 } from "../api/marketplace.js";
 import type { AgriSenseMessageResult, SeasonPlanTask } from "../api/agrisense.js";
+import { checkoutPayment, type CheckoutResult } from "../api/payments.js";
 import { BoxIcon, CreditCardIcon, ListIcon, SearchIcon } from "../icons/index.js";
+
+/** Sandbox CaaS caps a debit at ৳100, so a large order pays a booking deposit. */
+const DEPOSIT_CAP = 100;
 
 const presets = [
   { label: "Urea in Gazipur", itemName: "Urea fertilizer", quantity: 120, unit: "kg", district: "Gazipur", crop: "rice" },
@@ -28,6 +32,7 @@ export default function Marketplace() {
   const [unit, setUnit] = useState(params.get("unit") ?? planSuggestions[0]?.unit ?? "kg");
   const [district, setDistrict] = useState(params.get("district") ?? "Gazipur");
   const [crop, setCrop] = useState(params.get("crop") ?? planSuggestions[0]?.crop ?? "rice");
+  const [payMobile, setPayMobile] = useState("01812345678");
   const [result, setResult] = useState<MarketplaceIntelligenceResult | null>(null);
   const [runs, setRuns] = useState<MarketplaceRunRecord[]>([]);
   const [loadingRunId, setLoadingRunId] = useState<string | null>(null);
@@ -182,6 +187,9 @@ export default function Marketplace() {
                 <option value="mustard">Mustard</option>
               </select>
             </Field>
+            <Field label="Mobile (for supplier payment)">
+              <input value={payMobile} onChange={(event) => setPayMobile(event.target.value)} placeholder="01XXXXXXXXX" className={inputClass} />
+            </Field>
             <button
               type="submit"
               disabled={loading}
@@ -221,7 +229,7 @@ export default function Marketplace() {
             ) : (
               <div className="mt-4 space-y-3">
                 {result.supplierOffers.map((offer, index) => (
-                  <SupplierCard key={offer.supplierId} offer={offer} rank={index + 1} best={offer.supplierId === bestOffer?.supplierId} />
+                  <SupplierCard key={offer.supplierId} offer={offer} rank={index + 1} best={offer.supplierId === bestOffer?.supplierId} mobile={payMobile} />
                 ))}
               </div>
             )}
@@ -351,7 +359,35 @@ function SeasonPlanNeedsPanel({
   );
 }
 
-function SupplierCard({ offer, rank, best }: { offer: SupplierOffer; rank: number; best: boolean }) {
+function SupplierCard({ offer, rank, best, mobile }: { offer: SupplierOffer; rank: number; best: boolean; mobile: string }) {
+  const [busy, setBusy] = useState(false);
+  const [receipt, setReceipt] = useState<CheckoutResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const deposit = Math.min(Math.round(offer.totalPriceBdt), DEPOSIT_CAP);
+
+  async function buy() {
+    setError(null);
+    setReceipt(null);
+    if (!mobile.trim()) {
+      setError("Enter a mobile number above to pay.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await checkoutPayment({
+        mobile: mobile.trim(),
+        amountBdt: deposit,
+        description: `Booking: ${offer.requestedQuantity} ${offer.unit} ${offer.itemName} — ${offer.supplierName}`,
+      });
+      setReceipt(res);
+      if (!res.ok) setError(`${res.statusCode}: ${res.statusDetail ?? "payment failed"}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Checkout failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className={`rounded-lg border p-3 ${best ? "border-success-500/40 bg-success-50/60 dark:bg-success-500/[0.08]" : "border-gray-200 dark:border-gray-800"}`}>
       <div className="flex items-start justify-between gap-3">
@@ -372,6 +408,31 @@ function SupplierCard({ offer, rank, best }: { offer: SupplierOffer; rank: numbe
         <Metric label="Rating" value={`${offer.rating.toFixed(1)}/5`} />
       </div>
       <p className="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">{offer.rankReason}</p>
+
+      <div className="mt-3 flex items-center gap-3 border-t border-gray-200 pt-3 dark:border-gray-800">
+        <button
+          type="button"
+          onClick={() => void buy()}
+          disabled={busy}
+          className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand-500 px-3 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-60"
+        >
+          <CreditCardIcon width={15} height={15} />
+          {busy ? "Charging…" : `Buy · pay ${formatMoney(deposit)} deposit`}
+        </button>
+        <span className="text-[11px] text-gray-400">via bdapps CaaS (Mobile Account)</span>
+      </div>
+
+      {receipt?.status === "success" && (
+        <div className="mt-3 rounded-lg border border-success-500/30 bg-success-50 p-3 text-xs text-success-700 dark:bg-success-500/10 dark:text-success-500">
+          <p className="font-semibold">✅ Payment received{receipt.mock ? " · MOCK" : ""}</p>
+          <p className="mt-1">Charged {formatMoney(receipt.amountBdt)} · Trx {receipt.internalTrxId ?? receipt.externalTrxId}</p>
+          {receipt.balanceBeforeBdt != null && (
+            <p>Operator balance {formatMoney(receipt.balanceBeforeBdt)} → {formatMoney(receipt.balanceBeforeBdt - receipt.amountBdt)}</p>
+          )}
+          <p>{receipt.smsSent ? "📩 SMS receipt sent" : "receipt recorded"}</p>
+        </div>
+      )}
+      {error && <p className="mt-2 text-xs text-error-600 dark:text-error-500">⚠️ {error}</p>}
     </div>
   );
 }
