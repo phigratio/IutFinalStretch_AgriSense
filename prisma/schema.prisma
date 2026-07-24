@@ -261,6 +261,46 @@ model SeasonPlanItem {
   @@map("season_plan_items")
 }
 
+model ProactiveAlert {
+  id             String    @id @default(uuid()) @db.Uuid
+  farmId         String?   @map("farm_id") @db.Uuid
+  sessionId      String?   @map("session_id") @db.Uuid
+  planId         String?   @map("plan_id") @db.Uuid
+  alertType      String    @map("alert_type")
+  severity       String    @default("info")
+  title          String
+  message        String
+  recommendation String
+  ruleId         String    @map("rule_id")
+  triggerDate    DateTime? @map("trigger_date") @db.Date
+  rawEvidence    Json      @default("{}") @map("raw_evidence")
+  fingerprint    String    @unique
+  status         String    @default("open")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([farmId])
+  @@index([sessionId])
+  @@index([alertType])
+  @@index([status])
+  @@map("proactive_alerts")
+}
+
+model TemporalJobRun {
+  id           String    @id @default(uuid()) @db.Uuid
+  workflowType String    @map("workflow_type")
+  workflowId   String?   @map("workflow_id")
+  status       String
+  startedAt    DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  finishedAt   DateTime? @map("finished_at") @db.Timestamptz(6)
+  summary      Json      @default("{}")
+  errorMessage String?   @map("error_message")
+
+  @@index([workflowType])
+  @@index([startedAt])
+  @@map("temporal_job_runs")
+}
+
 model BdappsPayment {
   id                String      @id @default(uuid()) @db.Uuid
   userId            String?     @map("user_id") @db.Uuid

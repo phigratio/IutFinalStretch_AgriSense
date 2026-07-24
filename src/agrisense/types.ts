@@ -9,6 +9,9 @@ export interface WeatherDaily {
   rainfallMm: number;
   temperatureMinC: number;
   temperatureMaxC: number;
+  humidityPct?: number;
+  referenceEvapotranspirationMm?: number;
+  soilMoisture0To9cm?: number;
 }
 
 export interface WeatherForecast {
@@ -37,9 +40,40 @@ export interface CropRecommendation {
     waterFit: number;
     tempFit: number;
     budgetFit: number;
+    evidenceFit?: number;
   };
   reasoning: string;
   citations: string[];
+}
+
+export interface CostBreakdownItem {
+  category: "land-prep" | "seed" | "fertilizer" | "irrigation" | "pest" | "labor" | "harvest" | "contingency";
+  label: string;
+  amountBdt: number;
+  reasoning: string;
+}
+
+export interface FinancialProjection {
+  expectedYieldKg: number;
+  expectedRevenueBdt: number;
+  totalCostBdt: number;
+  netProfitBdt: number;
+  roiPct: number;
+  breakEvenYieldKg: number;
+  pricePerKgBdt: number;
+  budgetBdt: number;
+  budgetSurplusBdt: number;
+  costBreakdown: CostBreakdownItem[];
+}
+
+export interface RetrievedEvidence {
+  id: string;
+  source: "seeded-baseline" | "mem0" | "rag";
+  title: string;
+  content: string;
+  citation?: string;
+  crop?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface SeasonPlanTask {
@@ -48,6 +82,8 @@ export interface SeasonPlanTask {
   description: string;
   startDate: string;
   endDate: string;
+  growthStage?: string;
+  organicAlternative?: string;
   quantity?: number;
   unit?: string;
   unitCostBdt?: number;
@@ -62,27 +98,26 @@ export interface SeasonPlanResult {
   harvestStartDate: string;
   harvestEndDate: string;
   tasks: SeasonPlanTask[];
-  financials: {
-    expectedYieldKg: number;
-    expectedRevenueBdt: number;
-    totalCostBdt: number;
-    netProfitBdt: number;
-    roiPct: number;
-    breakEvenYieldKg: number;
-  };
+  financials: FinancialProjection;
   reasoning: string;
+  selectedCropReason: string;
+  sourceTraceIds: string[];
+  automationTrigger: string;
+  retrievedEvidence: RetrievedEvidence[];
 }
 
 export interface AgriSenseMessageResult {
   sessionId: string;
   farmerId: string;
   farmId: string;
+  workflowStage?: "intake" | "weather" | "evidence" | "crop_ranking" | "season_plan" | "financials" | "full";
+  nextAvailableStages?: string[];
   assistantMessage: string;
   missingFields: string[];
   farmProfile: IntakeProfile;
   weather?: WeatherForecast;
+  retrievedEvidence?: RetrievedEvidence[];
   cropRankings?: CropRecommendation[];
   seasonPlan?: SeasonPlanResult;
   trace: IntakeTraceEvent[];
 }
-

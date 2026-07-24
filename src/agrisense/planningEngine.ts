@@ -4,7 +4,10 @@
  */
 import { type IntakeProfile } from "../agent/intakeSchema.js";
 import {
+  type CostBreakdownItem,
   type CropRecommendation,
+  type FinancialProjection,
+  type RetrievedEvidence,
   type SeasonPlanResult,
   type SeasonPlanTask,
   type WeatherForecast,
@@ -22,6 +25,13 @@ interface CropBaseline {
   costBdtPerAcre: number;
   durationDays: number;
   citation: string;
+}
+
+export interface BuildSeasonPlanOptions {
+  triggerReason?: string;
+  selectedCropReason?: string;
+  sourceTraceIds?: string[];
+  retrievedEvidence?: RetrievedEvidence[];
 }
 
 const CROPS: CropBaseline[] = [
@@ -92,7 +102,7 @@ const CROPS: CropBaseline[] = [
   },
 ];
 
-export function rankCrops(profile: IntakeProfile, weather: WeatherForecast): CropRecommendation[] {
+export function rankCrops(profile: IntakeProfile, weather: WeatherForecast, evidence: RetrievedEvidence[] = []): CropRecommendation[] {
   const area = profile.sizeAcres ?? 1;
   const budget = profile.budgetBdt ?? 0;
   const season = normalizePlanningSeason(profile.targetSeason);
@@ -105,10 +115,11 @@ export function rankCrops(profile: IntakeProfile, weather: WeatherForecast): Cro
     const seasonFit = crop.seasons.includes(season) ? 1 : 0.25;
     const waterFit = computeWaterFit(crop.waterNeed, profile.waterAvailability, rain7d);
     const tempFit = computeTempFit(meanTemp, crop.optimalTempMinC, crop.optimalTempMaxC);
+    const evidenceFit = computeEvidenceFit(crop.crop, evidence);
     const totalCostBdt = roundMoney(crop.costBdtPerAcre * area);
     const budgetFit = budget > 0 ? clamp(budget / totalCostBdt, 0, 1) : 0.2;
     const suitabilityScore = Math.round(
-      100 * (0.3 * soilFit + 0.25 * seasonFit + 0.2 * waterFit + 0.15 * tempFit + 0.1 * budgetFit),
+      100 * (0.25 * soilFit + 0.22 * seasonFit + 0.18 * waterFit + 0.15 * tempFit + 0.1 * budgetFit + 0.1 * evidenceFit),
     );
     const expectedYieldKg = Math.round(crop.yieldKgPerAcre * area * yieldMultiplier(suitabilityScore));
     const expectedRevenueBdt = roundMoney(expectedYieldKg * crop.farmGatePriceBdtKg);
@@ -129,23 +140,52 @@ export function rankCrops(profile: IntakeProfile, weather: WeatherForecast): Cro
       netProfitBdt,
       roiPct,
       breakEvenYieldKg,
-      factors: { soilFit, seasonFit, waterFit, tempFit, budgetFit },
-      reasoning: `${crop.crop} scored ${suitabilityScore}/100 from ${soil || "unknown"} soil, ${season || "unknown"} season, ${profile.waterAvailability ?? "unknown"} water, ${round2(rain7d)}mm 7-day rain, and ${round2(meanTemp)}C mean forecast temperature.`,
-      citations: [crop.citation],
+      factors: { soilFit, seasonFit, waterFit, tempFit, budgetFit, evidenceFit },
+      reasoning: `${crop.crop} scored ${suitabilityScore}/100 from ${soil || "unknown"} soil, ${season || "unknown"} season, ${profile.waterAvailability ?? "unknown"} water, ${round2(rain7d)}mm 7-day rain, ${round2(meanTemp)}C mean forecast temperature, and ${Math.round(evidenceFit * 100)}% retrieved evidence fit.`,
+      citations: uniqueStrings([crop.citation, ...evidence.filter((item) => item.crop === crop.crop || item.content.toLowerCase().includes(crop.crop)).map((item) => item.citation ?? item.id)]),
     };
   })
     .sort((a, b) => b.suitabilityScore - a.suitabilityScore)
     .slice(0, 3);
 }
 
-export function buildSeasonPlan(profile: IntakeProfile, weather: WeatherForecast, crop: CropRecommendation): SeasonPlanResult {
+export function selectCrop(
+  rankings: CropRecommendation[],
+  requestedCrop?: string,
+): { crop: CropRecommendation; reason: string } {
+  const normalized = requestedCrop?.trim().toLowerCase();
+  const requested = normalized ? rankings.find((crop) => crop.crop.toLowerCase() === normalized) : undefined;
+  if (requested) {
+    return {
+      crop: requested,
+      reason: `Selected ${requested.crop} because the farmer explicitly requested it and it was present in the ranked candidates.`,
+    };
+  }
+
+  return {
+    crop: rankings[0]!,
+    reason: `Selected ${rankings[0]!.crop} automatically because it has the highest suitability score among the ranked crops.`,
+  };
+}
+
+export function buildSeasonPlan(
+  profile: IntakeProfile,
+  weather: WeatherForecast,
+  crop: CropRecommendation,
+  options: BuildSeasonPlanOptions = {},
+): SeasonPlanResult {
   const sowDate = chooseSowDate(weather);
   const duration = CROPS.find((baseline) => baseline.crop === crop.crop)?.durationDays ?? 100;
   const harvestStartDate = addDays(sowDate, duration);
   const harvestEndDate = addDays(harvestStartDate, 7);
   const area = profile.sizeAcres ?? 1;
-  const fertilizerCost = roundMoney(crop.totalCostBdt * 0.22);
-  const irrigationCost = crop.waterNeed === "high" && profile.waterAvailability === "rainfed" ? roundMoney(2500 * area) : roundMoney(1200 * area);
+  const financials = calculateFinancialProjection(profile, crop);
+  const fertilizerCost = amountFor(financials.costBreakdown, "fertilizer");
+  const irrigationCost = amountFor(financials.costBreakdown, "irrigation");
+  const fertilizerStartDate = avoidHeavyRain(addDays(sowDate, 18), weather);
+  const fertilizerEndDate = addDays(fertilizerStartDate, 7);
+  const fertilizerQuantityKg = Math.round(fertilizerRateKgPerAcre(crop.crop, profile.soilType) * area);
+  const irrigationQuantity = irrigationPlanQuantity(crop.waterNeed, profile.waterAvailability, area);
 
   const tasks: SeasonPlanTask[] = [
     {
@@ -154,6 +194,7 @@ export function buildSeasonPlan(profile: IntakeProfile, weather: WeatherForecast
       description: `Prepare ${area} acres and reserve input budget before sowing.`,
       startDate: addDays(sowDate, -10),
       endDate: addDays(sowDate, -3),
+      growthStage: "pre-sowing",
       totalCostBdt: roundMoney(crop.totalCostBdt * 0.18),
       reasoning: `Scheduled before sowing because target season is ${profile.targetSeason} and the selected crop is ${crop.crop}.`,
     },
@@ -163,25 +204,36 @@ export function buildSeasonPlan(profile: IntakeProfile, weather: WeatherForecast
       description: `Sow when the next 3-day rainfall is below heavy-rain risk.`,
       startDate: sowDate,
       endDate: addDays(sowDate, 3),
+      growthStage: "sowing",
       reasoning: `Chosen from live forecast; first available window starts ${sowDate}.`,
     },
     {
       phase: "fertilizer",
       title: "Apply split fertilizer",
-      description: "Use split fertilizer timing and avoid applying right before heavy rain.",
-      startDate: addDays(sowDate, 18),
-      endDate: addDays(sowDate, 25),
-      quantity: Math.round(45 * area),
+      description: `Apply the first split at vegetative growth; reserve the rest for later crop-stage follow-up.`,
+      startDate: fertilizerStartDate,
+      endDate: fertilizerEndDate,
+      growthStage: "vegetative / tillering",
+      organicAlternative: organicFertilizerAlternative(profile.soilType, area),
+      quantity: fertilizerQuantityKg,
       unit: "kg urea equivalent",
+      unitCostBdt: fertilizerQuantityKg > 0 ? roundMoney(fertilizerCost / fertilizerQuantityKg) : undefined,
       totalCostBdt: fertilizerCost,
-      reasoning: `Split timing reduces loss risk for ${profile.soilType} soil and forecast-aware application.`,
+      reasoning: fertilizerStartDate === addDays(sowDate, 18)
+        ? `Quantity is tied to ${area} acres of ${profile.soilType} soil; split timing reduces loss risk and matches forecast-aware application.`
+        : `Shifted after heavy rain risk so fertilizer is not applied immediately before forecast rainfall.`,
     },
     {
       phase: "irrigation",
       title: "Check irrigation need",
-      description: "Irrigate only if rainfall is insufficient for the crop stage.",
+      description: `Irrigate only if rainfall is insufficient; prioritize soil-moisture checks before spending on pumping.`,
       startDate: addDays(sowDate, 28),
       endDate: addDays(sowDate, 35),
+      growthStage: "vegetative water-demand check",
+      organicAlternative: "Mulch with crop residue or compost to reduce evaporation before buying extra pump hours.",
+      quantity: irrigationQuantity.quantity,
+      unit: irrigationQuantity.unit,
+      unitCostBdt: irrigationQuantity.quantity > 0 ? roundMoney(irrigationCost / irrigationQuantity.quantity) : undefined,
       totalCostBdt: irrigationCost,
       reasoning: `${crop.crop} has ${crop.waterNeed} water need and the farm water source is ${profile.waterAvailability}.`,
     },
@@ -191,6 +243,7 @@ export function buildSeasonPlan(profile: IntakeProfile, weather: WeatherForecast
       description: "Inspect the field and remove weeds before crop competition reduces yield.",
       startDate: addDays(sowDate, 30),
       endDate: addDays(sowDate, 40),
+      growthStage: "early vegetative",
       totalCostBdt: roundMoney(crop.totalCostBdt * 0.08),
       reasoning: "Weed checks are scheduled during early vegetative growth.",
     },
@@ -200,7 +253,8 @@ export function buildSeasonPlan(profile: IntakeProfile, weather: WeatherForecast
       description: "Scout leaves and stems; apply treatment only if symptoms appear.",
       startDate: addDays(sowDate, 45),
       endDate: addDays(sowDate, 60),
-      totalCostBdt: roundMoney(crop.totalCostBdt * 0.1),
+      growthStage: "vegetative to reproductive transition",
+      totalCostBdt: amountFor(financials.costBreakdown, "pest"),
       reasoning: `Risk level is ${crop.riskLevel}, so scouting is included before major yield loss windows.`,
     },
     {
@@ -209,6 +263,7 @@ export function buildSeasonPlan(profile: IntakeProfile, weather: WeatherForecast
       description: "Harvest and prepare sale/storage decision from market price.",
       startDate: harvestStartDate,
       endDate: harvestEndDate,
+      growthStage: "maturity",
       reasoning: `Harvest window uses a ${duration}-day crop duration from the seeded crop table.`,
     },
   ];
@@ -219,15 +274,116 @@ export function buildSeasonPlan(profile: IntakeProfile, weather: WeatherForecast
     harvestStartDate,
     harvestEndDate,
     tasks,
-    financials: {
-      expectedYieldKg: crop.expectedYieldKg,
-      expectedRevenueBdt: crop.expectedRevenueBdt,
-      totalCostBdt: crop.totalCostBdt,
-      netProfitBdt: crop.netProfitBdt,
-      roiPct: crop.roiPct,
-      breakEvenYieldKg: crop.breakEvenYieldKg,
-    },
+    financials,
     reasoning: `Recommended ${crop.crop} because profile inputs (${profile.locationText}, ${profile.sizeAcres} acres, ${profile.soilType}, ${profile.waterAvailability}, ৳${profile.budgetBdt}, ${profile.targetSeason}) and weather (${weather.daily[0]?.rainfallMm ?? 0}mm rain today, ${weather.daily[0]?.temperatureMaxC ?? 0}C max) produce the highest suitability among ranked crops.`,
+    selectedCropReason: options.selectedCropReason ?? `Selected ${crop.crop} from crop ranking.`,
+    sourceTraceIds: options.sourceTraceIds ?? [],
+    automationTrigger: options.triggerReason ?? "intake_completed",
+    retrievedEvidence: options.retrievedEvidence ?? [],
+  };
+}
+
+function fertilizerRateKgPerAcre(crop: string, soilType?: string): number {
+  const cropRate = crop === "rice" ? 50 : crop === "maize" ? 55 : crop === "potato" ? 70 : crop === "tomato" ? 65 : 35;
+  const soil = soilType?.toLowerCase() ?? "";
+  if (soil.includes("sandy")) return Math.round(cropRate * 1.1);
+  if (soil.includes("clay")) return Math.round(cropRate * 0.95);
+  return cropRate;
+}
+
+function irrigationPlanQuantity(waterNeed: CropRecommendation["waterNeed"], waterAvailability?: string, areaAcres = 1): { quantity: number; unit: string } {
+  const source = waterAvailability?.toLowerCase() ?? "";
+  const baseEvents = waterNeed === "high" ? 4 : waterNeed === "medium" ? 3 : 2;
+  const adjustedEvents = source.includes("rain") ? Math.max(1, baseEvents - 1) : baseEvents;
+  return {
+    quantity: Math.round(adjustedEvents * areaAcres),
+    unit: "irrigation events",
+  };
+}
+
+function organicFertilizerAlternative(soilType?: string, areaAcres = 1): string {
+  const compostTons = Math.max(1, Math.round(areaAcres * 1.5));
+  const soil = soilType?.toLowerCase() ?? "";
+  if (soil.includes("sandy")) {
+    return `${compostTons} tons compost or well-rotted cow dung plus split urea to improve sandy soil nutrient holding.`;
+  }
+  return `${compostTons} tons compost or well-rotted cow dung before sowing, then reduce chemical top-up only after crop response is visible.`;
+}
+
+export function calculateFinancialProjection(profile: IntakeProfile, crop: CropRecommendation): FinancialProjection {
+  const area = profile.sizeAcres ?? 1;
+  const pricePerKgBdt = crop.expectedYieldKg > 0 ? round2(crop.expectedRevenueBdt / crop.expectedYieldKg) : 0;
+  const baselineCost = crop.totalCostBdt;
+  const costBreakdown: CostBreakdownItem[] = [
+    {
+      category: "land-prep",
+      label: "Land preparation",
+      amountBdt: roundMoney(baselineCost * 0.18),
+      reasoning: `Scaled by ${area} acres for tillage and field preparation.`,
+    },
+    {
+      category: "seed",
+      label: "Seed or seedling",
+      amountBdt: roundMoney(baselineCost * 0.12),
+      reasoning: `Seed input reserve based on selected crop ${crop.crop}.`,
+    },
+    {
+      category: "fertilizer",
+      label: "Fertilizer",
+      amountBdt: roundMoney(baselineCost * 0.22),
+      reasoning: "Includes split fertilizer application reserve.",
+    },
+    {
+      category: "irrigation",
+      label: "Irrigation",
+      amountBdt: crop.waterNeed === "high" && profile.waterAvailability === "rainfed"
+        ? roundMoney(2500 * area)
+        : roundMoney(1200 * area),
+      reasoning: `Water cost reflects ${crop.waterNeed} crop water need and ${profile.waterAvailability ?? "unknown"} farm water source.`,
+    },
+    {
+      category: "pest",
+      label: "Pest and disease reserve",
+      amountBdt: roundMoney(baselineCost * 0.1),
+      reasoning: `Reserve included because crop risk level is ${crop.riskLevel}.`,
+    },
+    {
+      category: "labor",
+      label: "Labor",
+      amountBdt: roundMoney(baselineCost * 0.18),
+      reasoning: "Labor allocation covers sowing, weeding, and in-season checks.",
+    },
+    {
+      category: "harvest",
+      label: "Harvest and post-harvest",
+      amountBdt: roundMoney(baselineCost * 0.12),
+      reasoning: "Harvest reserve scales with expected production.",
+    },
+  ];
+
+  const subtotal = costBreakdown.reduce((sum, item) => sum + item.amountBdt, 0);
+  const contingency = Math.max(0, baselineCost - subtotal);
+  costBreakdown.push({
+    category: "contingency",
+    label: "Contingency",
+    amountBdt: contingency,
+    reasoning: "Keeps the itemized cost total equal to the deterministic crop baseline.",
+  });
+
+  const totalCostBdt = costBreakdown.reduce((sum, item) => sum + item.amountBdt, 0);
+  const netProfitBdt = roundMoney(crop.expectedRevenueBdt - totalCostBdt);
+
+  return {
+    expectedYieldKg: crop.expectedYieldKg,
+    expectedRevenueBdt: crop.expectedRevenueBdt,
+    totalCostBdt,
+    netProfitBdt,
+    roiPct: totalCostBdt > 0 ? round2((netProfitBdt / totalCostBdt) * 100) : 0,
+    breakEvenYieldKg: pricePerKgBdt > 0 ? round2(totalCostBdt / pricePerKgBdt) : 0,
+    pricePerKgBdt,
+    budgetBdt: profile.budgetBdt ?? 0,
+    budgetSurplusBdt: roundMoney((profile.budgetBdt ?? 0) - totalCostBdt),
+    costBreakdown,
   };
 }
 
@@ -261,12 +417,39 @@ function computeTempFit(meanTemp: number, min: number, max: number): number {
   return clamp(1 - distance / 12, 0.1, 1);
 }
 
+function computeEvidenceFit(crop: string, evidence: RetrievedEvidence[]): number {
+  if (evidence.length === 0) return 0.4;
+  const normalizedCrop = crop.toLowerCase();
+  const matches = evidence.filter((item) => {
+    return item.crop === normalizedCrop ||
+      item.title.toLowerCase().includes(normalizedCrop) ||
+      item.content.toLowerCase().includes(normalizedCrop);
+  }).length;
+  return clamp(matches / 2, 0.35, 1);
+}
+
 function chooseSowDate(weather: WeatherForecast): string {
   for (let index = 0; index < weather.daily.length; index++) {
     const rain3d = weather.daily.slice(index, index + 3).reduce((sum, day) => sum + day.rainfallMm, 0);
     if (rain3d < 30) return weather.daily[index]!.date;
   }
   return weather.daily[0]?.date ?? new Date().toISOString().slice(0, 10);
+}
+
+function avoidHeavyRain(candidateDate: string, weather: WeatherForecast): string {
+  const index = weather.daily.findIndex((day) => day.date >= candidateDate);
+  if (index < 0) return candidateDate;
+  const rain3d = weather.daily.slice(index, index + 3).reduce((sum, day) => sum + day.rainfallMm, 0);
+  if (rain3d < 30) return candidateDate;
+  return weather.daily.slice(index + 3).find((day) => day.rainfallMm < 10)?.date ?? addDays(candidateDate, 4);
+}
+
+function amountFor(items: CostBreakdownItem[], category: CostBreakdownItem["category"]): number {
+  return items.find((item) => item.category === category)?.amountBdt ?? 0;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function yieldMultiplier(score: number): number {

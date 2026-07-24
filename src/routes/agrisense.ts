@@ -20,6 +20,9 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
           bdappsMobile: req.body.bdappsMobile,
           channel: req.body.channel ?? "web",
           preferredLanguage: req.body.preferredLanguage,
+          selectedCrop: req.body.selectedCrop,
+          workflowStage: req.body.workflowStage,
+          triggerReason: req.body.triggerReason,
         }),
       );
     } catch (error) {
@@ -40,6 +43,32 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
           bdappsMobile: req.body.bdappsMobile,
           channel: req.body.channel ?? "web",
           preferredLanguage: req.body.preferredLanguage,
+          selectedCrop: req.body.selectedCrop,
+          workflowStage: req.body.workflowStage,
+          triggerReason: req.body.triggerReason,
+        }),
+      );
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
+
+  router.post("/workflow", async (req: Request, res: Response): Promise<void> => {
+    try {
+      res.json(
+        await service.handleMessage({
+          message: req.body.message ?? "recalculate season plan",
+          sessionId: req.body.sessionId,
+          userId: req.body.userId,
+          tenantId: req.body.tenantId,
+          farmerId: req.body.farmerId,
+          farmId: req.body.farmId,
+          bdappsMobile: req.body.bdappsMobile,
+          channel: req.body.channel ?? "web",
+          preferredLanguage: req.body.preferredLanguage,
+          selectedCrop: req.body.selectedCrop,
+          workflowStage: req.body.workflowStage ?? "full",
+          triggerReason: req.body.triggerReason ?? "user_requested_replan",
         }),
       );
     } catch (error) {

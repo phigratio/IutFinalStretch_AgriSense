@@ -8,6 +8,7 @@ import { bdappsTestRouter } from "./routes/bdappsTest.js";
 import { agentIntakeRouter } from "./routes/agentIntake.js";
 import { agrisenseRouter } from "./routes/agrisense.js";
 import { paymentsRouter } from "./routes/payments.js";
+import { temporalRouter } from "./routes/temporal.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { notFoundHandler } from "./middleware/notFound.js";
 import { observabilityMiddleware } from "./middleware/observability.js";
@@ -32,6 +33,7 @@ export function createApp(): Application {
   app.use("/api/stats", statsRouter);
   app.use("/api/agent", agentIntakeRouter);
   app.use("/api/agrisense", agrisenseRouter);
+  app.use("/api/temporal", temporalRouter);
   // bdapps CaaS checkout + receipt readback (payments/service.ts).
   app.use("/api/payments", paymentsRouter);
 

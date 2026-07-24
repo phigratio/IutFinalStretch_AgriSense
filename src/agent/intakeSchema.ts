@@ -41,6 +41,7 @@ export interface IntakeProfilePatch extends Partial<Omit<IntakeProfile, "farmerI
 }
 
 export interface IntakeTraceEvent {
+  traceId?: string;
   kind: "tool" | "plan" | "error";
   toolName: string;
   parameters: Record<string, unknown>;
@@ -75,4 +76,13 @@ export interface IntakeRequest {
   bdappsMobile?: string;
   channel?: string;
   preferredLanguage?: "en" | "bn" | "banglish";
+  selectedCrop?: string;
+  workflowStage?: "intake" | "weather" | "evidence" | "crop_ranking" | "season_plan" | "financials" | "full";
+  triggerReason?:
+    | "intake_completed"
+    | "profile_updated"
+    | "weather_refreshed"
+    | "crop_selected"
+    | "user_requested_replan"
+    | "daily_forecast_check";
 }
