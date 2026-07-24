@@ -3,6 +3,7 @@
  * These are backend response shapes consumed by the API and future UI.
  */
 import { type IntakeProfile, type IntakeTraceEvent } from "../agent/intakeSchema.js";
+import { type ContextBundle } from "../context/contextService.js";
 
 export interface WeatherDaily {
   date: string;
@@ -106,6 +107,46 @@ export interface SeasonPlanResult {
   retrievedEvidence: RetrievedEvidence[];
 }
 
+export type MemoryOutcomeKind =
+  | "farm_fact"
+  | "crop_decision"
+  | "financial_result"
+  | "risk_warning"
+  | "pending_task"
+  | "farmer_preference";
+
+export interface MemoryOutcome {
+  id: string;
+  userId?: string;
+  farmerId?: string;
+  farmId?: string;
+  sessionId?: string;
+  planId?: string;
+  kind: MemoryOutcomeKind;
+  title: string;
+  summary: string;
+  valueJson: Record<string, unknown>;
+  score: number;
+  sourceTraceIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemorySessionSummary {
+  id: string;
+  status: string;
+  channel: string;
+  selectedCrop?: string;
+  summary?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemoryLookupResult {
+  outcomes: MemoryOutcome[];
+  sessions: MemorySessionSummary[];
+}
+
 export interface AgriSenseMessageResult {
   sessionId: string;
   farmerId: string;
@@ -119,5 +160,8 @@ export interface AgriSenseMessageResult {
   retrievedEvidence?: RetrievedEvidence[];
   cropRankings?: CropRecommendation[];
   seasonPlan?: SeasonPlanResult;
+  rememberedOutcomes?: MemoryOutcome[];
+  memoryTrace?: IntakeTraceEvent[];
+  context?: ContextBundle;
   trace: IntakeTraceEvent[];
 }

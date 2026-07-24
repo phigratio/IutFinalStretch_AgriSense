@@ -14,6 +14,9 @@ export interface SendMessageInput {
   farmerId?: string;
   farmId?: string;
   bdappsMobile?: string;
+  useMemory?: boolean;
+  acceptedOutcomeIds?: string[];
+  ignoredOutcomeIds?: string[];
 }
 
 export function sendMessage(input: SendMessageInput): Promise<AgriSenseMessageResult> {

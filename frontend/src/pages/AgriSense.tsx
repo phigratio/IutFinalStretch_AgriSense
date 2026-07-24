@@ -1,15 +1,19 @@
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import PageMeta from "../components/common/PageMeta.js";
 import {
+  getAgriSenseMemory,
   sendAgriSenseMessage,
   type AgriSenseMessageResult,
   type CropRecommendation,
   type IntakeProfile,
+  type MemoryOutcome,
+  type MemorySessionSummary,
   type SeasonPlanTask,
   type TraceEvent,
   type WorkflowStage,
 } from "../api/agrisense.js";
+import { useAuth } from "../context/AuthContext.js";
 import { ArrowUpIcon, BoxIcon, CalendarIcon, SearchIcon } from "../icons/index.js";
 
 interface ChatMessage {
@@ -58,6 +62,7 @@ const workflowStages: Array<{
 const stageLabels = Object.fromEntries(workflowStages.map((stage) => [stage.id, stage.label])) as Record<ViewStage, string>;
 
 export default function AgriSense() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [language, setLanguage] = useState<Language>("en");
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -72,6 +77,10 @@ export default function AgriSense() {
   const [farmId, setFarmId] = useState<string | undefined>();
   const [result, setResult] = useState<AgriSenseMessageResult | null>(null);
   const [trace, setTrace] = useState<TraceEvent[]>([]);
+  const [useMemory, setUseMemory] = useState(true);
+  const [rememberedOutcomes, setRememberedOutcomes] = useState<MemoryOutcome[]>([]);
+  const [memorySessions, setMemorySessions] = useState<MemorySessionSummary[]>([]);
+  const [ignoredOutcomeIds, setIgnoredOutcomeIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -80,7 +89,32 @@ export default function AgriSense() {
   const profile = result?.farmProfile;
   const activeStage = normalizeStage(searchParams.get("stage"));
 
-  async function submitMessage(messageText = input, workflowStage: WorkflowStage = activeStage === "trace" ? "full" : activeStage) {
+  useEffect(() => {
+    if (!useMemory) return;
+    if (!user?.id && !farmerId && !farmId) return;
+    let cancelled = false;
+    getAgriSenseMemory({ userId: user?.id, farmerId, farmId, limit: 8 })
+      .then((memory) => {
+        if (cancelled) return;
+        setRememberedOutcomes(memory.outcomes.filter((outcome) => !ignoredOutcomeIds.includes(outcome.id)));
+        setMemorySessions(memory.sessions);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRememberedOutcomes([]);
+          setMemorySessions([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, farmerId, farmId, useMemory, ignoredOutcomeIds]);
+
+  async function submitMessage(
+    messageText = input,
+    workflowStage: WorkflowStage = activeStage === "trace" ? "full" : activeStage,
+    acceptedOutcomeIds?: string[],
+  ) {
     const text = messageText.trim();
     if (!text || loading) return;
 
@@ -95,7 +129,11 @@ export default function AgriSense() {
         sessionId,
         farmerId,
         farmId,
+        userId: user?.id,
         preferredLanguage: language,
+        useMemory,
+        acceptedOutcomeIds,
+        ignoredOutcomeIds,
         workflowStage,
         triggerReason: workflowStage === "weather" ? "weather_refreshed" : workflowStage === "full" ? "user_requested_replan" : undefined,
       });
@@ -104,6 +142,9 @@ export default function AgriSense() {
       setFarmerId(response.farmerId);
       setFarmId(response.farmId);
       setResult(response);
+      if (response.rememberedOutcomes) {
+        setRememberedOutcomes(response.rememberedOutcomes.filter((outcome) => !ignoredOutcomeIds.includes(outcome.id)));
+      }
       if (response.seasonPlan) {
         localStorage.setItem("agrisense.latestPlan", JSON.stringify(response));
       }
@@ -138,6 +179,15 @@ export default function AgriSense() {
       ? "continue intake"
       : `continue from ${stageLabels[stage]}`;
     void submitMessage(message, stage);
+  }
+
+  function ignoreOutcome(id: string) {
+    setIgnoredOutcomeIds((current) => current.includes(id) ? current : [...current, id]);
+    setRememberedOutcomes((current) => current.filter((outcome) => outcome.id !== id));
+  }
+
+  function useOutcome(outcome: MemoryOutcome) {
+    void submitMessage(`Use remembered context: ${outcome.title}`, activeStage === "trace" ? "full" : activeStage, [outcome.id]);
   }
 
   return (
@@ -197,6 +247,16 @@ export default function AgriSense() {
           {error}
         </div>
       )}
+
+      <MemoryPanel
+        useMemory={useMemory}
+        outcomes={rememberedOutcomes}
+        sessions={memorySessions}
+        onToggle={setUseMemory}
+        onUse={useOutcome}
+        onIgnore={ignoreOutcome}
+        onViewTrace={() => selectStage("trace")}
+      />
 
       <div className="grid min-h-[720px] grid-cols-1 gap-4 xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.45fr)_minmax(320px,0.95fr)]">
         <section className="flex min-h-[560px] flex-col rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
@@ -337,6 +397,112 @@ function WorkflowStageSidebar({
           );
         })}
       </div>
+    </section>
+  );
+}
+
+function MemoryPanel({
+  useMemory,
+  outcomes,
+  sessions,
+  onToggle,
+  onUse,
+  onIgnore,
+  onViewTrace,
+}: {
+  useMemory: boolean;
+  outcomes: MemoryOutcome[];
+  sessions: MemorySessionSummary[];
+  onToggle: (enabled: boolean) => void;
+  onUse: (outcome: MemoryOutcome) => void;
+  onIgnore: (id: string) => void;
+  onViewTrace: () => void;
+}) {
+  const visibleOutcomes = outcomes.slice(0, 5);
+
+  return (
+    <section className="mb-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Remembered From Previous Sessions</h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Ranked farm facts, prior decisions, financial results, risks, and pending tasks.
+          </p>
+        </div>
+        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-gray-700 dark:text-gray-200">
+          <input
+            type="checkbox"
+            checked={useMemory}
+            onChange={(event) => onToggle(event.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+          />
+          Use previous sessions
+        </label>
+      </div>
+
+      {!useMemory ? (
+        <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">Memory recall is off for this session.</p>
+      ) : visibleOutcomes.length === 0 ? (
+        <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">No previous outcomes found yet.</p>
+      ) : (
+        <div className="mt-4 grid gap-3 xl:grid-cols-5">
+          {visibleOutcomes.map((outcome) => (
+            <div key={outcome.id} className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-gray-900 dark:text-white">{outcome.title}</p>
+                  <p className="mt-1 text-[11px] capitalize text-gray-500 dark:text-gray-400">
+                    {outcome.kind.replace("_", " ")} · {Math.round(outcome.score)}
+                  </p>
+                </div>
+              </div>
+              <p className="mt-2 line-clamp-3 text-xs leading-5 text-gray-500 dark:text-gray-400">{outcome.summary}</p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => onUse(outcome)}
+                  className="rounded-lg bg-brand-500 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-brand-600"
+                >
+                  Use
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onIgnore(outcome.id)}
+                  className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-200 dark:hover:bg-white/[0.06]"
+                >
+                  Ignore
+                </button>
+                <button
+                  type="button"
+                  onClick={onViewTrace}
+                  className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-200 dark:hover:bg-white/[0.06]"
+                >
+                  Source
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {useMemory && sessions.length > 0 && (
+        <div className="mt-4 border-t border-gray-200 pt-3 dark:border-gray-800">
+          <p className="text-xs font-semibold text-gray-900 dark:text-white">Session History</p>
+          <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            {sessions.slice(0, 4).map((session) => (
+              <div key={session.id} className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-white/[0.04]">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-gray-900 dark:text-white">{shortId(session.id)}</p>
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400">{session.status}</span>
+                </div>
+                <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
+                  {session.selectedCrop ?? session.channel} · {formatDate(session.updatedAt.slice(0, 10))}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -12,6 +12,7 @@ import type {
   CropRecommendation,
   IntakeProfile,
   IntakeTraceEvent,
+  MemoryOutcome,
   SeasonPlanResult,
   WeatherForecast,
 } from '@/api/types';
@@ -33,9 +34,13 @@ interface SessionState {
   weather?: WeatherForecast;
   cropRankings?: CropRecommendation[];
   seasonPlan?: SeasonPlanResult;
+  rememberedOutcomes: MemoryOutcome[];
+  useMemory: boolean;
   bubbles: ChatBubble[];
   sending: boolean;
-  send: (text: string) => Promise<void>;
+  send: (text: string, acceptedOutcomeIds?: string[]) => Promise<void>;
+  ignoreOutcome: (id: string) => void;
+  setUseMemory: (enabled: boolean) => void;
   reset: () => void;
 }
 
@@ -52,11 +57,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [weather, setWeather] = useState<WeatherForecast>();
   const [cropRankings, setCropRankings] = useState<CropRecommendation[]>();
   const [seasonPlan, setSeasonPlan] = useState<SeasonPlanResult>();
+  const [rememberedOutcomes, setRememberedOutcomes] = useState<MemoryOutcome[]>([]);
+  const [ignoredOutcomeIds, setIgnoredOutcomeIds] = useState<string[]>([]);
+  const [useMemory, setUseMemory] = useState(true);
   const [bubbles, setBubbles] = useState<ChatBubble[]>([]);
   const [sending, setSending] = useState(false);
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, acceptedOutcomeIds?: string[]) => {
       const message = text.trim();
       if (message === '' || sending) return;
       setSending(true);
@@ -67,6 +75,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           sessionId,
           farmerId,
           farmId,
+          useMemory,
+          acceptedOutcomeIds,
+          ignoredOutcomeIds,
         });
         setSessionId(res.sessionId);
         setFarmerId(res.farmerId);
@@ -75,6 +86,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (res.weather) setWeather(res.weather);
         if (res.cropRankings) setCropRankings(res.cropRankings);
         if (res.seasonPlan) setSeasonPlan(res.seasonPlan);
+        if (res.rememberedOutcomes) {
+          setRememberedOutcomes(res.rememberedOutcomes.filter((outcome) => !ignoredOutcomeIds.includes(outcome.id)));
+        }
         setBubbles((prev) => [
           ...prev,
           {
@@ -94,8 +108,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setSending(false);
       }
     },
-    [sessionId, farmerId, farmId, sending],
+    [sessionId, farmerId, farmId, useMemory, ignoredOutcomeIds, sending],
   );
+
+  const ignoreOutcome = useCallback((id: string) => {
+    setIgnoredOutcomeIds((prev) => prev.includes(id) ? prev : [...prev, id]);
+    setRememberedOutcomes((prev) => prev.filter((outcome) => outcome.id !== id));
+  }, []);
 
   const reset = useCallback(() => {
     setSessionId(undefined);
@@ -105,6 +124,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setWeather(undefined);
     setCropRankings(undefined);
     setSeasonPlan(undefined);
+    setRememberedOutcomes([]);
+    setIgnoredOutcomeIds([]);
     setBubbles([]);
   }, []);
 
@@ -117,12 +138,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       weather,
       cropRankings,
       seasonPlan,
+      rememberedOutcomes,
+      useMemory,
       bubbles,
       sending,
       send,
+      ignoreOutcome,
+      setUseMemory,
       reset,
     }),
-    [sessionId, farmerId, farmId, profile, weather, cropRankings, seasonPlan, bubbles, sending, send, reset],
+    [sessionId, farmerId, farmId, profile, weather, cropRankings, seasonPlan, rememberedOutcomes, useMemory, bubbles, sending, send, ignoreOutcome, reset],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

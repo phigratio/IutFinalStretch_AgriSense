@@ -1,5 +1,8 @@
 import { Router } from "express";
 import { randomUUID } from "node:crypto";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "../generated/prisma/client.js";
+import { config } from "../config.js";
 import { createTemporalClient, temporalTaskQueue } from "../temporal/client.js";
 import { ensureAgriSenseSchedules, describeAgriSenseSchedules } from "../temporal/schedules.js";
 import { AGRISENSE_SCHEDULES } from "../temporal/types.js";
@@ -22,6 +25,67 @@ temporalRouter.post("/schedules/ensure", async (_req, res, next) => {
   try {
     const client = await createTemporalClient();
     res.json(await ensureAgriSenseSchedules(client));
+  } catch (error) {
+    next(error);
+  }
+});
+
+temporalRouter.get("/alerts", async (req, res, next) => {
+  try {
+    res.json(await withPrisma(async (prisma) => {
+      const limit = positiveInt(req.query.limit, 20);
+      return prisma.$queryRaw`
+        SELECT
+          a."id",
+          a."farm_id" AS "farmId",
+          a."session_id" AS "sessionId",
+          a."plan_id" AS "planId",
+          a."alert_type" AS "alertType",
+          a."severity",
+          a."title",
+          a."message",
+          a."recommendation",
+          a."rule_id" AS "ruleId",
+          a."trigger_date" AS "triggerDate",
+          a."raw_evidence" AS "rawEvidence",
+          a."fingerprint",
+          a."status",
+          a."created_at" AS "createdAt",
+          f."location_text" AS "locationText",
+          f."current_crop" AS "currentCrop",
+          f."target_season" AS "targetSeason",
+          p."crop" AS "planCrop"
+        FROM "proactive_alerts" a
+        LEFT JOIN "farm_profiles" f ON f."id" = a."farm_id"
+        LEFT JOIN "season_plans" p ON p."id" = a."plan_id"
+        ORDER BY a."created_at" DESC
+        LIMIT ${limit}
+      `;
+    }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+temporalRouter.get("/job-runs", async (req, res, next) => {
+  try {
+    res.json(await withPrisma(async (prisma) => {
+      const limit = positiveInt(req.query.limit, 10);
+      return prisma.$queryRaw`
+        SELECT
+          "id",
+          "workflow_type" AS "workflowType",
+          "workflow_id" AS "workflowId",
+          "status",
+          "started_at" AS "startedAt",
+          "finished_at" AS "finishedAt",
+          "summary",
+          "error_message" AS "errorMessage"
+        FROM "temporal_job_runs"
+        ORDER BY "started_at" DESC
+        LIMIT ${limit}
+      `;
+    }));
   } catch (error) {
     next(error);
   }
@@ -65,3 +129,21 @@ temporalRouter.get("/workflows/:workflowId/result", async (req, res, next) => {
     next(error);
   }
 });
+
+async function withPrisma<T>(fn: (prisma: PrismaClient) => Promise<T>): Promise<T> {
+  if (!config.databaseUrl) throw new Error("DATABASE_URL is not configured");
+  const prisma = new PrismaClient({
+    adapter: new PrismaPg({ connectionString: config.databaseUrl }),
+  });
+  try {
+    return await fn(prisma);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+function positiveInt(value: unknown, fallback: number): number {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const parsed = typeof raw === "string" ? Number(raw) : Number.NaN;
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= 100 ? parsed : fallback;
+}

@@ -21,6 +21,9 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
           channel: req.body.channel ?? "web",
           preferredLanguage: req.body.preferredLanguage,
           selectedCrop: req.body.selectedCrop,
+          useMemory: req.body.useMemory,
+          acceptedOutcomeIds: req.body.acceptedOutcomeIds,
+          ignoredOutcomeIds: req.body.ignoredOutcomeIds,
           workflowStage: req.body.workflowStage,
           triggerReason: req.body.triggerReason,
         }),
@@ -44,6 +47,9 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
           channel: req.body.channel ?? "web",
           preferredLanguage: req.body.preferredLanguage,
           selectedCrop: req.body.selectedCrop,
+          useMemory: req.body.useMemory,
+          acceptedOutcomeIds: req.body.acceptedOutcomeIds,
+          ignoredOutcomeIds: req.body.ignoredOutcomeIds,
           workflowStage: req.body.workflowStage,
           triggerReason: req.body.triggerReason,
         }),
@@ -67,6 +73,9 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
           channel: req.body.channel ?? "web",
           preferredLanguage: req.body.preferredLanguage,
           selectedCrop: req.body.selectedCrop,
+          useMemory: req.body.useMemory,
+          acceptedOutcomeIds: req.body.acceptedOutcomeIds,
+          ignoredOutcomeIds: req.body.ignoredOutcomeIds,
           workflowStage: req.body.workflowStage ?? "full",
           triggerReason: req.body.triggerReason ?? "user_requested_replan",
         }),
@@ -79,6 +88,22 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
   router.get("/sessions/:sessionId/trace", async (req: Request, res: Response): Promise<void> => {
     try {
       res.json(await service.listTrace(String(req.params.sessionId)));
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
+
+  router.get("/memory", async (req: Request, res: Response): Promise<void> => {
+    try {
+      res.json(
+        await service.getMemory({
+          userId: stringQuery(req.query.userId),
+          farmerId: stringQuery(req.query.farmerId),
+          farmId: stringQuery(req.query.farmId),
+          bdappsMobile: stringQuery(req.query.bdappsMobile),
+          limit: numberQuery(req.query.limit),
+        }),
+      );
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
@@ -101,3 +126,13 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
 }
 
 export const agrisenseRouter = createAgriSenseRouter();
+
+function stringQuery(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function numberQuery(value: unknown): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}

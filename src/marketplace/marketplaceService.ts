@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mem0Client, type Mem0Client } from "../rag/mem0Client.js";
 import { type IntakeTraceEvent } from "../agent/intakeSchema.js";
+import { contextHydrator } from "../context/contextService.js";
 import { getDefaultMarketplaceStore, type MarketplaceStore } from "./marketplaceStore.js";
 import {
   type MarketPriceIntelligence,
@@ -23,14 +24,25 @@ export class MarketplaceService {
     const trace: IntakeTraceEvent[] = [];
     const userId = input.userId ?? "demo-farmer";
     const runId = input.sessionId ?? randomUUID();
-    const crop = normalizeCrop(input.crop ?? inferCrop(input.itemName));
+    const hydratedContext = await contextHydrator.hydrate({
+      message: `${input.itemName} ${input.crop ?? ""} marketplace supplier and price intelligence`,
+      userId: input.userId,
+      tenantId: input.tenantId,
+      farmerId: input.farmerId,
+      farmId: input.farmId,
+      sessionId: input.sessionId,
+      cropId: input.crop,
+      limit: 8,
+    });
+    trace.push(...hydratedContext.trace);
+    const crop = normalizeCrop(input.crop ?? hydratedContext.profile?.currentCrop ?? inferCrop(input.itemName));
     const needs: MarketplaceNeed = {
       itemName: input.itemName.trim(),
       quantity: input.quantity,
       unit: input.unit?.trim() || "kg",
-      district: input.district?.trim() || "Gazipur",
-      latitude: input.latitude,
-      longitude: input.longitude,
+      district: input.district?.trim() || districtFromProfile(hydratedContext.profile?.locationText) || "Gazipur",
+      latitude: input.latitude ?? hydratedContext.profile?.latitude,
+      longitude: input.longitude ?? hydratedContext.profile?.longitude,
     };
 
     const seedStarted = Date.now();
@@ -133,6 +145,7 @@ export class MarketplaceService {
       supplierOffers,
       priceIntelligence,
       memory: memoryResult,
+      context: hydratedContext,
       trace,
       seeded: true,
     };
@@ -217,6 +230,10 @@ function normalizeCrop(crop: string): string {
   const normalized = crop.trim().toLowerCase();
   if (normalized.includes("boro") || normalized.includes("aman") || normalized.includes("dhan")) return "rice";
   return normalized;
+}
+
+function districtFromProfile(locationText: string | undefined): string | undefined {
+  return locationText?.split(",")[0]?.trim() || undefined;
 }
 
 function normalizeMemoryResults(value: unknown): unknown[] {

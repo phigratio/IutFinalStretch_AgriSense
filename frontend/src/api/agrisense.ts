@@ -135,6 +135,101 @@ export interface TraceEvent {
   latencyMs: number;
 }
 
+export type MemoryOutcomeKind =
+  | "farm_fact"
+  | "crop_decision"
+  | "financial_result"
+  | "risk_warning"
+  | "pending_task"
+  | "farmer_preference";
+
+export interface MemoryOutcome {
+  id: string;
+  userId?: string;
+  farmerId?: string;
+  farmId?: string;
+  sessionId?: string;
+  planId?: string;
+  kind: MemoryOutcomeKind;
+  title: string;
+  summary: string;
+  valueJson: Record<string, unknown>;
+  score: number;
+  sourceTraceIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemorySessionSummary {
+  id: string;
+  status: string;
+  channel: string;
+  selectedCrop?: string;
+  summary?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemoryLookupResult {
+  outcomes: MemoryOutcome[];
+  sessions: MemorySessionSummary[];
+}
+
+export interface ContextMemoryItem {
+  id: string;
+  title: string;
+  content: string;
+  score: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface KbHit {
+  text: string;
+  score: number;
+  docKey?: string;
+  scope?: "hub" | "tenant";
+  tenantId?: string;
+  source?: string;
+  page?: string;
+  citation: string;
+}
+
+export interface ContextBundle {
+  identity: {
+    cacheKey: string;
+    memoryUserId: string;
+    userId?: string;
+    tenantId?: string;
+    farmerId?: string;
+    farmId?: string;
+    sessionId?: string;
+    bdappsMobile?: string;
+  };
+  cache: {
+    status: "hit" | "miss" | "refresh";
+    ttlMs: number;
+    retrievedAt: string;
+  };
+  profile?: IntakeProfile;
+  profileSnapshot?: IntakeProfile;
+  memory: {
+    outcomes: MemoryOutcome[];
+    sessions: MemorySessionSummary[];
+    mem0: ContextMemoryItem[];
+  };
+  priorAnalyses: Array<{
+    id: string;
+    kind: string;
+    title: string;
+    summary: string;
+    score: number;
+    createdAt: string;
+  }>;
+  kbHits: KbHit[];
+  trace: TraceEvent[];
+  warnings: string[];
+}
+
 export interface AgriSenseMessageResult {
   sessionId: string;
   farmerId: string;
@@ -148,6 +243,9 @@ export interface AgriSenseMessageResult {
   retrievedEvidence?: RetrievedEvidence[];
   cropRankings?: CropRecommendation[];
   seasonPlan?: SeasonPlanResult;
+  rememberedOutcomes?: MemoryOutcome[];
+  memoryTrace?: TraceEvent[];
+  context?: ContextBundle;
   trace: TraceEvent[];
 }
 
@@ -161,6 +259,11 @@ export function sendAgriSenseMessage(input: {
   bdappsMobile?: string;
   preferredLanguage?: "en" | "bn" | "banglish";
   selectedCrop?: string;
+  userId?: string;
+  tenantId?: string;
+  useMemory?: boolean;
+  acceptedOutcomeIds?: string[];
+  ignoredOutcomeIds?: string[];
   workflowStage?: WorkflowStage;
   triggerReason?: "intake_completed" | "profile_updated" | "weather_refreshed" | "crop_selected" | "user_requested_replan" | "daily_forecast_check";
 }): Promise<AgriSenseMessageResult> {
@@ -176,4 +279,40 @@ export function getAgriSenseTrace(sessionId: string): Promise<unknown[]> {
 
 export function getAgriSensePlan(planId: string): Promise<unknown> {
   return apiFetch<unknown>(`/api/agrisense/plans/${planId}`);
+}
+
+export function getAgriSenseMemory(input: {
+  userId?: string;
+  farmerId?: string;
+  farmId?: string;
+  bdappsMobile?: string;
+  limit?: number;
+}): Promise<MemoryLookupResult> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  const query = params.toString();
+  return apiFetch<MemoryLookupResult>(`/api/agrisense/memory${query ? `?${query}` : ""}`);
+}
+
+export function getAgriSenseContext(input: {
+  message?: string;
+  userId?: string;
+  tenantId?: string;
+  farmerId?: string;
+  farmId?: string;
+  sessionId?: string;
+  bdappsMobile?: string;
+  language?: "en" | "bn" | "banglish";
+  cropId?: string;
+  refresh?: boolean;
+  limit?: number;
+}): Promise<ContextBundle> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  const query = params.toString();
+  return apiFetch<ContextBundle>(`/api/context${query ? `?${query}` : ""}`);
 }

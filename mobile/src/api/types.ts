@@ -34,6 +34,31 @@ export interface IntakeTraceEvent {
   latencyMs: number;
 }
 
+export type MemoryOutcomeKind =
+  | "farm_fact"
+  | "crop_decision"
+  | "financial_result"
+  | "risk_warning"
+  | "pending_task"
+  | "farmer_preference";
+
+export interface MemoryOutcome {
+  id: string;
+  userId?: string;
+  farmerId?: string;
+  farmId?: string;
+  sessionId?: string;
+  planId?: string;
+  kind: MemoryOutcomeKind;
+  title: string;
+  summary: string;
+  valueJson: Record<string, unknown>;
+  score: number;
+  sourceTraceIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface WeatherDaily {
   date: string;
   rainfallMm: number;
@@ -113,6 +138,8 @@ export interface AgriSenseMessageResult {
   weather?: WeatherForecast;
   cropRankings?: CropRecommendation[];
   seasonPlan?: SeasonPlanResult;
+  rememberedOutcomes?: MemoryOutcome[];
+  memoryTrace?: IntakeTraceEvent[];
   trace: IntakeTraceEvent[];
 }
 
