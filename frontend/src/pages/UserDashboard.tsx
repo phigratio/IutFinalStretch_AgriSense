@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Link, Navigate } from "react-router-dom";
-import { getOnboardingMe, type OnboardingMe } from "../api/onboarding.js";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
+import { getOnboardingMe, saveOwnProfile, type OnboardingMe, type OnboardingProfile } from "../api/onboarding.js";
 import {
   sendAgriSenseMessage,
   type AgriSenseMessageResult,
@@ -50,28 +50,23 @@ function monthLabel(date: Date): string {
   return `${bnMonthName(new Date(date.getFullYear(), date.getMonth(), 15))} · ${EN_MONTHS[date.getMonth()]}`;
 }
 
-type Tab = "home" | "weather" | "crops" | "plan" | "money" | "why";
-const TABS: { id: Tab; label: string }[] = [
-  { id: "home", label: "🏠 হোম" },
-  { id: "weather", label: "🌦️ আবহাওয়া" },
-  { id: "crops", label: "🌾 ফসল" },
-  { id: "plan", label: "📅 পরিকল্পনা" },
-  { id: "money", label: "💰 খরচ-লাভ" },
-  { id: "why", label: "💡 কেন" },
-];
+type Tab = "home" | "weather" | "crops" | "plan" | "money" | "why" | "profile";
 
 export default function UserDashboard() {
   const { user } = useAuth();
+  const [params] = useSearchParams();
+  const tab: Tab = (params.get("tab") as Tab) || "home";
   const [status, setStatus] = useState<OnboardingMe | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("home");
   const [result, setResult] = useState<AgriSenseMessageResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
 
-  useEffect(() => {
-    getOnboardingMe().then(setStatus).catch((err: unknown) => setError(err instanceof Error ? err.message : "ড্যাশবোর্ড লোড করা যায়নি"));
+  const reload = useCallback(async () => {
+    try { setStatus(await getOnboardingMe()); }
+    catch (err) { setError(err instanceof Error ? err.message : "ড্যাশবোর্ড লোড করা যায়নি"); }
   }, []);
+  useEffect(() => { void reload(); }, [reload]);
 
   const profile = status?.onboarding;
   const profileMessage = useMemo(() => {
@@ -119,30 +114,13 @@ export default function UserDashboard() {
 
       {error ? <div className="portal-alert portal-alert--error">{error}</div> : null}
 
-      {/* Top navigation bar */}
-      <nav className="mb-4 flex gap-2 overflow-x-auto pb-1" aria-label="বিভাগ">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition ${
-              tab === t.id
-                ? "bg-brand-500 text-white"
-                : "border border-gray-200 bg-white text-gray-600 hover:border-brand-300 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-300"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
-
       {tab === "home" && <HomeTab profile={profile ?? null} result={result} busy={busy} onRun={() => void run(profileMessage)} onAsk={(q) => void run(q)} error={runError} />}
       {tab === "weather" && (result?.weather ? <WeatherTab weather={result.weather} /> : need)}
       {tab === "crops" && (result?.cropRankings?.length ? <CropsTab crops={result.cropRankings} /> : need)}
       {tab === "plan" && (result?.seasonPlan ? <PlanTab plan={result.seasonPlan} /> : need)}
       {tab === "money" && (result?.seasonPlan ? <MoneyTab plan={result.seasonPlan} /> : need)}
       {tab === "why" && (result ? <WhyTab profile={profile ?? null} result={result} /> : need)}
+      {tab === "profile" && <ProfileTab profile={profile ?? null} onSaved={reload} />}
     </>
   );
 }
@@ -201,7 +179,7 @@ function HomeTab({ profile, result, busy, onRun, onAsk, error }: {
       </section>
 
       <section className="portal-workbench">
-        <div className="portal-section-heading"><div><h2>আপনার খামার</h2><p>{profile?.filledBy === "tenant" ? "একজন টেন্যান্ট আপনার হয়ে তথ্য দিয়েছেন।" : "আপনি নিজে তথ্য দিয়েছেন।"}</p></div><Link to="/onboarding?edit=1" className="portal-button portal-button--quiet">তথ্য বদলান</Link></div>
+        <div className="portal-section-heading"><div><h2>আপনার খামার</h2><p>{profile?.filledBy === "tenant" ? "একজন টেন্যান্ট আপনার হয়ে তথ্য দিয়েছেন।" : "আপনি নিজে তথ্য দিয়েছেন।"}</p></div><Link to="/user/dashboard?tab=profile" className="portal-button portal-button--quiet">তথ্য বদলান</Link></div>
         <dl className="portal-profile-grid">
           <ProfileItem label="জেলা" value={profile?.district} />
           <ProfileItem label="জমি" value={profile?.farmSizeDecimals != null ? `${profile.farmSizeDecimals} শতক` : undefined} />
@@ -525,6 +503,84 @@ function WhyTab({ profile, result }: { profile: OnboardingMe["onboarding"]; resu
       ) : null}
     </section>
   );
+}
+
+const SOIL_OPTS = [{ v: "sandy", bn: "বেলে" }, { v: "loam", bn: "দোআঁশ" }, { v: "clay", bn: "এঁটেল" }, { v: "silt", bn: "পলি" }];
+const WATER_OPTS = [{ v: "rainfed", bn: "বৃষ্টিনির্ভর" }, { v: "limited_irrigation", bn: "সীমিত সেচ" }, { v: "reliable_irrigation", bn: "নিশ্চিত সেচ" }];
+const SEASON_OPTS = [{ v: "kharif1", bn: "আউশ" }, { v: "kharif2_aman", bn: "আমন" }, { v: "rabi", bn: "রবি" }, { v: "boro", bn: "বোরো" }];
+const fieldCls = "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white";
+
+/** Editable farmer profile — updates in place (does not go through onboarding). */
+function ProfileTab({ profile, onSaved }: { profile: OnboardingProfile | null; onSaved: () => Promise<void> }) {
+  const [form, setForm] = useState({
+    fullName: profile?.fullName ?? "", phone: profile?.phone ?? "", district: profile?.district ?? "", upazila: profile?.upazila ?? "",
+    farmSizeDecimals: profile?.farmSizeDecimals != null ? String(profile.farmSizeDecimals) : "",
+    soilTexture: profile?.soilTexture ?? "", waterAvailability: profile?.waterAvailability ?? "",
+    budgetBdt: profile?.budgetBdt != null ? String(profile.budgetBdt) : "", targetSeason: profile?.targetSeason ?? "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const set = (k: keyof typeof form, v: string) => setForm((o) => ({ ...o, [k]: v }));
+  const valid = form.district.trim() && form.phone.trim();
+
+  async function save() {
+    setBusy(true); setMsg(null); setErr(null);
+    try {
+      const body: OnboardingProfile = {
+        district: form.district.trim(), phone: form.phone.trim(),
+        fullName: form.fullName.trim() || undefined, upazila: form.upazila.trim() || undefined,
+        farmSizeDecimals: form.farmSizeDecimals ? Number(form.farmSizeDecimals) : undefined,
+        soilTexture: form.soilTexture || undefined, waterAvailability: form.waterAvailability || undefined,
+        budgetBdt: form.budgetBdt ? Number(form.budgetBdt) : undefined, targetSeason: form.targetSeason || undefined,
+      };
+      await saveOwnProfile(body);
+      await onSaved();
+      setMsg("আপনার তথ্য হালনাগাদ হয়েছে।");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "সংরক্ষণ করা যায়নি।");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="portal-workbench">
+      <div className="portal-section-heading"><div><h2>আমার তথ্য</h2><p>আপনার খামারের তথ্য এখানে হালনাগাদ করুন।</p></div></div>
+      {msg ? <p className="portal-inline-message portal-inline-message--success" role="status">✓ {msg}</p> : null}
+      {err ? <p className="portal-inline-message portal-inline-message--error" role="alert">{err}</p> : null}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="পূর্ণ নাম"><input className={fieldCls} value={form.fullName} onChange={(e) => set("fullName", e.target.value)} /></Field>
+        <Field label="মোবাইল নম্বর *"><input className={fieldCls} value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="017XXXXXXXX" /></Field>
+        <Field label="জেলা *"><input className={fieldCls} value={form.district} onChange={(e) => set("district", e.target.value)} /></Field>
+        <Field label="উপজেলা"><input className={fieldCls} value={form.upazila} onChange={(e) => set("upazila", e.target.value)} /></Field>
+        <Field label="জমির পরিমাণ (শতক)"><input type="number" className={fieldCls} value={form.farmSizeDecimals} onChange={(e) => set("farmSizeDecimals", e.target.value)} /></Field>
+        <Field label="বাজেট (টাকা)"><input type="number" className={fieldCls} value={form.budgetBdt} onChange={(e) => set("budgetBdt", e.target.value)} /></Field>
+        <Field label="মাটির ধরন">
+          <select className={fieldCls} value={form.soilTexture} onChange={(e) => set("soilTexture", e.target.value)}>
+            <option value="">— নির্বাচন —</option>{SOIL_OPTS.map((s) => <option key={s.v} value={s.v}>{s.bn}</option>)}
+          </select>
+        </Field>
+        <Field label="সেচ সুবিধা">
+          <select className={fieldCls} value={form.waterAvailability} onChange={(e) => set("waterAvailability", e.target.value)}>
+            <option value="">— নির্বাচন —</option>{WATER_OPTS.map((w) => <option key={w.v} value={w.v}>{w.bn}</option>)}
+          </select>
+        </Field>
+        <Field label="মৌসুম">
+          <select className={fieldCls} value={form.targetSeason} onChange={(e) => set("targetSeason", e.target.value)}>
+            <option value="">— নির্বাচন —</option>{SEASON_OPTS.map((s) => <option key={s.v} value={s.v}>{s.bn}</option>)}
+          </select>
+        </Field>
+      </div>
+      <button type="button" onClick={() => void save()} disabled={busy || !valid} className="portal-button portal-button--primary mt-5 w-full">
+        {busy ? "সংরক্ষণ হচ্ছে…" : "হালনাগাদ করুন"}
+      </button>
+    </section>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label className="block"><span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">{label}</span>{children}</label>;
 }
 
 function Chip({ children }: { children: React.ReactNode }) {

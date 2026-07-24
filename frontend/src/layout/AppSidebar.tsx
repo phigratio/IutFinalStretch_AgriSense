@@ -46,10 +46,15 @@ const otherNav: NavItem[] = [
   { name: "Season Calendar", path: "/calendar", icon: <CalendarIcon /> },
 ];
 
-// Farmer (user) — minimal, farmer-facing links.
+// Farmer (user) — the dashboard tabs live in the sidebar.
 const userNav: NavItem[] = [
-  { name: "আমার ড্যাশবোর্ড", path: "/user/dashboard", icon: <GridIcon /> },
-  { name: "আমার তথ্য", path: "/onboarding?edit=1", icon: <UserIcon /> },
+  { name: "হোম", path: "/user/dashboard", icon: <GridIcon /> },
+  { name: "আবহাওয়া", path: "/user/dashboard?tab=weather", icon: <SearchSidebarIcon /> },
+  { name: "ফসল", path: "/user/dashboard?tab=crops", icon: <BoxIcon /> },
+  { name: "পরিকল্পনা", path: "/user/dashboard?tab=plan", icon: <CalendarIcon /> },
+  { name: "লাভ-খরচ", path: "/user/dashboard?tab=money", icon: <CreditCardIcon /> },
+  { name: "কেন", path: "/user/dashboard?tab=why", icon: <ListIcon /> },
+  { name: "আমার তথ্য", path: "/user/dashboard?tab=profile", icon: <UserIcon /> },
 ];
 
 // Tenant — the tenant workbench.
