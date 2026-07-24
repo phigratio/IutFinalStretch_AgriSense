@@ -147,6 +147,47 @@ export interface SeasonPlanResult {
   retrievedEvidence: RetrievedEvidence[];
 }
 
+export interface ScenarioDeltas {
+  rainfallPct?: number;
+  budgetPct?: number;
+  pricePct?: number;
+  costPct?: number;
+  yieldPct?: number;
+}
+
+export interface ScenarioSimulationResult {
+  id?: string;
+  sessionId?: string;
+  farmId?: string;
+  planId?: string;
+  scenarioLabel: string;
+  deltas: ScenarioDeltas;
+  baseline: {
+    farmProfile: IntakeProfile;
+    weather: WeatherForecast;
+    cropRankings: CropRecommendation[];
+    seasonPlan: SeasonPlanResult;
+  };
+  scenario: {
+    farmProfile: IntakeProfile;
+    weather: WeatherForecast;
+    cropRankings: CropRecommendation[];
+    seasonPlan: SeasonPlanResult;
+  };
+  comparison: {
+    revenueBdt: number;
+    costBdt: number;
+    netProfitBdt: number;
+    roiPct: number;
+    breakEvenYieldKg: number;
+    irrigationEvents: number;
+    rainfall7dMm: number;
+    budgetSurplusBdt: number;
+  };
+  recommendation: string;
+  trace: TraceEvent[];
+}
+
 export interface TraceEvent {
   traceId?: string;
   kind: "tool" | "plan" | "error";
@@ -338,4 +379,23 @@ export function getAgriSenseContext(input: {
   }
   const query = params.toString();
   return apiFetch<ContextBundle>(`/api/context${query ? `?${query}` : ""}`);
+}
+
+export function simulateAgriSenseScenario(input: {
+  sessionId?: string;
+  farmerId?: string;
+  farmId?: string;
+  planId?: string;
+  userId?: string;
+  tenantId?: string;
+  selectedCrop?: string;
+  preferredLanguage?: "en" | "bn" | "banglish";
+  message?: string;
+  deltas?: ScenarioDeltas;
+  baseline?: AgriSenseMessageResult;
+}): Promise<ScenarioSimulationResult> {
+  return apiFetch<ScenarioSimulationResult>("/api/agrisense/scenarios/simulate", {
+    method: "POST",
+    body: input,
+  });
 }

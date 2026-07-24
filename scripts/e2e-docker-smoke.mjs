@@ -8,6 +8,7 @@ const state = {
   sessionId: undefined,
   farmId: undefined,
   planId: undefined,
+  baseline: undefined,
   temporalWorkflowId: undefined,
 };
 
@@ -18,6 +19,7 @@ const tests = [
   ["agent intake complete turn", testAgentIntakeComplete],
   ["agrisense full plan workflow", testAgriSensePlan],
   ["agrisense trace and plan readback", testAgriSenseReadbacks],
+  ["agrisense scenario simulation", testAgriSenseScenarioSimulation],
   ["finance summary and ledger", testFinanceManagement],
   ["temporal schedules API", testTemporalSchedules],
   ["temporal manual memory workflow", testTemporalManualWorkflow],
@@ -45,7 +47,7 @@ async function testFrontendHealth() {
 }
 
 async function testFrontendPages() {
-  for (const page of ["/agrisense", "/agent-intake", "/finance", "/temporal", "/payments", "/bdapps"]) {
+  for (const page of ["/agrisense", "/agrisense?stage=scenario", "/agent-intake", "/finance", "/temporal", "/payments", "/bdapps"]) {
     const response = await fetch(`${baseUrl}${page}`);
     const text = await response.text();
     assert(response.ok, `${page} returned ${response.status}`);
@@ -99,6 +101,7 @@ async function testAgriSensePlan() {
   state.sessionId = result.sessionId;
   state.farmId = result.farmId;
   state.planId = result.seasonPlan.id;
+  state.baseline = result;
 }
 
 async function testAgriSenseReadbacks() {
@@ -112,6 +115,29 @@ async function testAgriSenseReadbacks() {
   const plan = await requestJson(`/api/agrisense/plans/${state.planId}`);
   assert(plan.id, "plan readback missing id");
   assert(plan.items?.length > 0, "plan items readback empty");
+}
+
+async function testAgriSenseScenarioSimulation() {
+  assert(state.baseline, "baseline AgriSense result from previous test missing");
+  assert(state.sessionId, "sessionId from previous test missing");
+
+  const result = await requestJson("/api/agrisense/scenarios/simulate", {
+    method: "POST",
+    body: {
+      sessionId: state.sessionId,
+      farmId: state.farmId,
+      planId: state.planId,
+      message: "What if rainfall drops 30%?",
+      deltas: { rainfallPct: -30 },
+      baseline: state.baseline,
+    },
+  });
+
+  assert(result.id, "scenario simulation persistence id missing");
+  assertEqual(result.deltas.rainfallPct, -30, "scenario rainfall delta");
+  assert(result.scenario?.seasonPlan?.financials, "scenario financials missing");
+  assert(typeof result.comparison?.netProfitBdt === "number", "scenario comparison net profit missing");
+  assert(result.trace?.some((event) => event.toolName === "scenario.compare"), "scenario compare trace missing");
 }
 
 async function testFinanceManagement() {

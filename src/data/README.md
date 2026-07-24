@@ -33,3 +33,4 @@ FRG-2018 / BARC / BRRI / BARI / FAO values, fill the `page` column (currently `T
 | `srdi_fertility.csv` | district | default fertility class when no soil test |
 | `crop_aliases.json` | cropId | Bangla/English crop-name resolution |
 | `soil_fit_matrix.json` | cropId × texture | soilFit score |
+| `pest_disease_rules.csv` | cropId, growth stage, weather thresholds | pest & disease risk assessment |

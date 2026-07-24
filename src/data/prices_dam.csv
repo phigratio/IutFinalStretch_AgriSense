@@ -4,6 +4,7 @@ rice_boro,Rice (coarse),Dhaka,52,kg,retail,2026-05-15,WFP/HDX,https://data.humda
 wheat,Wheat,Dhaka,40,kg,retail,2026-05-15,WFP/HDX,https://data.humdata.org/dataset/wfp-food-prices-for-bangladesh,wfp_food_prices_bgd.csv,NA,2026-07-24,real,cross_checked
 maize,Maize,Dhaka,30,kg,retail,2026-05-15,WFP/HDX,https://data.humdata.org/dataset/wfp-food-prices-for-bangladesh,wfp_food_prices_bgd.csv,NA,2026-07-24,real,cross_checked
 potato,Potatoes,Dhaka,25,kg,retail,2026-05-15,WFP/HDX,https://data.humdata.org/dataset/wfp-food-prices-for-bangladesh,wfp_food_prices_bgd.csv,NA,2026-07-24,real,cross_checked
+tomato,Tomatoes,Dhaka,70,kg,retail,2026-05-15,WFP/HDX,https://data.humdata.org/dataset/wfp-food-prices-for-bangladesh,wfp_food_prices_bgd.csv,NA,2026-07-24,real,cross_checked
 mustard,Oil (mustard),Dhaka,90,kg,retail,2026-05-15,WFP/HDX,https://data.humdata.org/dataset/wfp-food-prices-for-bangladesh,wfp_food_prices_bgd.csv,NA,2026-07-24,real,cross_checked
 lentil,Lentils (masur),Dhaka,110,kg,retail,2026-05-15,WFP/HDX,https://data.humdata.org/dataset/wfp-food-prices-for-bangladesh,wfp_food_prices_bgd.csv,NA,2026-07-24,real,cross_checked
 onion,Onions,Dhaka,60,kg,retail,2026-05-15,WFP/HDX,https://data.humdata.org/dataset/wfp-food-prices-for-bangladesh,wfp_food_prices_bgd.csv,NA,2026-07-24,real,cross_checked

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { runPipeline, seasonFittingCrops, type OrchestratorProfile } from "./orchestrator.js";
 import { InMemoryTraceWriter } from "../tools/trace.js";
 import { WeatherUnavailableError, type ForecastResult, type NormalsResult } from "../tools/weather.js";
-import { resolveCrop } from "../data/crops.js";
+import { CROP_IDS, resolveCrop } from "../data/crops.js";
 
 const profile = (): OrchestratorProfile => ({
   locationText: "Kushtia",
@@ -53,7 +53,7 @@ describe("orchestrator happy path", () => {
       getForecast: async () => fakeForecast(),
       getNormals: async () => fakeNormals(),
     });
-    expect(r.ranking.length).toBe(8);
+    expect(r.ranking.length).toBe(CROP_IDS.length);
     expect(r.chosen.recommended).toBe(true);
     expect(r.plan.tasks.length).toBeGreaterThan(0);
     expect(r.financials.totalCostBdt).toBeGreaterThan(0);

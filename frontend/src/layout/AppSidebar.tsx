@@ -22,6 +22,7 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { name: "Dashboard", path: "/admin/dashboard", icon: <GridIcon /> },
   { name: "AgriSense Full", path: "/agrisense", icon: <BoxIcon /> },
+  { name: "Pest Risk", path: "/pest-risk", icon: <SearchSidebarIcon /> },
   { name: "Agri Weather", path: "/agrisense?stage=weather", icon: <SearchSidebarIcon /> },
   { name: "Agri Evidence", path: "/agrisense?stage=evidence", icon: <SearchSidebarIcon /> },
   { name: "Crop Ranking", path: "/agrisense?stage=crop_ranking", icon: <BoxIcon /> },

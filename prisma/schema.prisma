@@ -120,6 +120,7 @@ model FarmerProfile {
   farms          FarmProfile[]
   sessions       AgentSession[]
   memoryOutcomes AgentMemoryOutcome[]
+  pestAssessments PestDiseaseAssessment[]
 
   @@index([userId])
   @@index([bdappsMobile])
@@ -155,6 +156,7 @@ model FarmProfile {
   plans             SeasonPlan[]
   orders            MarketplaceOrder[]
   memoryOutcomes    AgentMemoryOutcome[]
+  pestAssessments   PestDiseaseAssessment[]
 
   @@index([farmerId])
   @@index([locationText])
@@ -264,6 +266,7 @@ model AgentSession {
   weather        WeatherSnapshot[]
   plans          SeasonPlan[]
   memoryOutcomes AgentMemoryOutcome[]
+  pestAssessments PestDiseaseAssessment[]
 
   @@index([userId])
   @@index([farmerId])
@@ -340,6 +343,7 @@ model SeasonPlan {
   items             SeasonPlanItem[]
   payments          BdappsPayment[]
   memoryOutcomes    AgentMemoryOutcome[]
+  pestAssessments   PestDiseaseAssessment[]
 
   @@index([sessionId])
   @@index([farmId])
@@ -397,6 +401,39 @@ model ProactiveAlert {
   @@index([status])
   @@index([deliveryStatus])
   @@map("proactive_alerts")
+}
+
+model PestDiseaseAssessment {
+  id              String        @id @default(uuid()) @db.Uuid
+  farmerId        String?       @map("farmer_id") @db.Uuid
+  farmer          FarmerProfile? @relation(fields: [farmerId], references: [id], onDelete: SetNull)
+  farmId          String?       @map("farm_id") @db.Uuid
+  farm            FarmProfile?  @relation(fields: [farmId], references: [id], onDelete: SetNull)
+  sessionId       String?       @map("session_id") @db.Uuid
+  session         AgentSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  planId          String?       @map("plan_id") @db.Uuid
+  plan            SeasonPlan?   @relation(fields: [planId], references: [id], onDelete: SetNull)
+  cropId          String        @map("crop_id")
+  cropLabel       String        @map("crop_label")
+  growthStage     String        @map("growth_stage")
+  daysAfterSowing Int?          @map("days_after_sowing")
+  locationText    String        @map("location_text")
+  areaAcres       Decimal       @map("area_acres") @db.Decimal(10, 2)
+  highestSeverity String        @map("highest_severity")
+  risks           Json
+  weather         Json
+  trace           Json          @default("[]")
+  sourceTraceIds  String[]      @default([]) @map("source_trace_ids")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([farmerId])
+  @@index([farmId])
+  @@index([sessionId])
+  @@index([planId])
+  @@index([cropId])
+  @@index([highestSeverity])
+  @@index([createdAt])
+  @@map("pest_disease_assessments")
 }
 
 model TemporalJobRun {
@@ -490,6 +527,26 @@ model FarmFinanceEntry {
   @@index([season])
   @@index([source])
   @@map("farm_finance_entries")
+}
+
+model ScenarioSimulation {
+  id             String   @id @default(uuid()) @db.Uuid
+  sessionId      String?  @map("session_id") @db.Uuid
+  farmId         String?  @map("farm_id") @db.Uuid
+  planId         String?  @map("plan_id") @db.Uuid
+  scenarioLabel  String   @map("scenario_label")
+  scenarioInput  Json     @default("{}") @map("scenario_input")
+  baselineResult Json     @default("{}") @map("baseline_result")
+  scenarioResult Json     @default("{}") @map("scenario_result")
+  deltaResult    Json     @default("{}") @map("delta_result")
+  recommendation String
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([sessionId])
+  @@index([farmId])
+  @@index([planId])
+  @@index([createdAt])
+  @@map("scenario_simulations")
 }
 
 // ---- Multi-tenant knowledge base (navid/kb) --------------------------------

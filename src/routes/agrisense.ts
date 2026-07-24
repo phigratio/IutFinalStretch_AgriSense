@@ -85,6 +85,29 @@ export function createAgriSenseRouter(service: AgriSenseService = agriSenseServi
     }
   });
 
+  router.post("/scenarios/simulate", async (req: Request, res: Response): Promise<void> => {
+    try {
+      res.json(
+        await service.simulateScenario({
+          sessionId: req.body.sessionId,
+          userId: req.body.userId,
+          tenantId: req.body.tenantId,
+          farmerId: req.body.farmerId,
+          farmId: req.body.farmId,
+          planId: req.body.planId,
+          bdappsMobile: req.body.bdappsMobile,
+          preferredLanguage: req.body.preferredLanguage,
+          selectedCrop: req.body.selectedCrop,
+          message: req.body.message,
+          deltas: req.body.deltas,
+          baseline: req.body.baseline,
+        }),
+      );
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
+
   router.get("/sessions/:sessionId/trace", async (req: Request, res: Response): Promise<void> => {
     try {
       res.json(await service.listTrace(String(req.params.sessionId)));

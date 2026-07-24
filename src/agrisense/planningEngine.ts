@@ -108,7 +108,7 @@ const CROPS: CropBaseline[] = [
   },
 ];
 
-export function rankCrops(profile: IntakeProfile, weather: WeatherForecast, evidence: RetrievedEvidence[] = []): CropRecommendation[] {
+export function rankCrops(profile: IntakeProfile, weather: WeatherForecast, evidence: RetrievedEvidence[] = [], limit = 3): CropRecommendation[] {
   const area = profile.sizeAcres ?? 1;
   const budget = profile.budgetBdt ?? 0;
   const season = normalizePlanningSeason(profile.targetSeason);
@@ -152,7 +152,7 @@ export function rankCrops(profile: IntakeProfile, weather: WeatherForecast, evid
     };
   })
     .sort((a, b) => b.suitabilityScore - a.suitabilityScore)
-    .slice(0, 3);
+    .slice(0, limit);
 }
 
 export function selectCrop(
@@ -244,8 +244,8 @@ function buildSchedulerTasks(input: SchedulerBuildInput): { tasks: SeasonPlanTas
   const fertilizerTasks = input.tasks.filter((task) => isFertilizerStage(task.stage));
   const irrigationTasks = input.tasks.filter((task) => task.stage === "irrigation");
   const fertilizerWeights = fertilizerTasks.map((task) => fertilizerRawCost(task));
-  const fertilizerWeightTotal = fertilizerWeights.reduce((sum, value) => sum + value, 0);
-  const irrigationCostPerTask = irrigationTasks.length > 0 ? roundMoney(irrigationBudget / irrigationTasks.length) : undefined;
+  const fertilizerAllocations = allocateCosts(fertilizerBudget, fertilizerWeights);
+  const irrigationAllocations = allocateCosts(irrigationBudget, irrigationTasks.map(() => 1));
 
   const tasks = input.tasks.map((task) => {
     const phase = mapSchedulerPhase(task.stage);
@@ -256,21 +256,23 @@ function buildSchedulerTasks(input: SchedulerBuildInput): { tasks: SeasonPlanTas
     }));
     const taskIndex = fertilizerTasks.indexOf(task);
     const allocatedFertilizerCost = taskIndex >= 0
-      ? allocateCost(fertilizerBudget, fertilizerWeights[taskIndex] ?? 0, fertilizerWeightTotal, taskIndex, fertilizerTasks.length)
+      ? fertilizerAllocations[taskIndex]
       : undefined;
-    const inputCostWeightTotal = rawInputs.reduce((sum, item) => sum + inputUnitPrice(item.item) * item.quantity, 0);
+    const inputAllocations = allocatedFertilizerCost === undefined
+      ? []
+      : allocateCosts(allocatedFertilizerCost, rawInputs.map((item) => inputUnitPrice(item.item) * item.quantity));
     const inputs = rawInputs.map((item, itemIndex) => {
-      const rawCost = inputUnitPrice(item.item) * item.quantity;
       const totalCostBdt = allocatedFertilizerCost === undefined
         ? undefined
-        : allocateCost(allocatedFertilizerCost, rawCost, inputCostWeightTotal, itemIndex, rawInputs.length);
+        : inputAllocations[itemIndex];
       return {
         ...item,
         unitCostBdt: item.quantity > 0 && totalCostBdt !== undefined ? roundMoney(totalCostBdt / item.quantity) : undefined,
         totalCostBdt,
       };
     });
-    const irrigationCost = phase === "irrigation" ? irrigationCostPerTask : undefined;
+    const irrigationIndex = irrigationTasks.indexOf(task);
+    const irrigationCost = irrigationIndex >= 0 ? irrigationAllocations[irrigationIndex] : undefined;
     const quantity = inputs.length > 0
       ? round2(inputs.reduce((sum, item) => sum + item.quantity, 0))
       : phase === "irrigation"
@@ -435,11 +437,19 @@ function inputUnitPrice(item: string): number {
   return 1;
 }
 
-function allocateCost(total: number, weight: number, weightTotal: number, index: number, count: number): number {
-  if (count <= 0) return 0;
-  if (weightTotal <= 0) return roundMoney(total / count);
-  const raw = total * (weight / weightTotal);
-  return index === count - 1 ? roundMoney(total - roundMoney(total * ((weightTotal - weight) / weightTotal))) : roundMoney(raw);
+function allocateCosts(total: number, weights: number[]): number[] {
+  if (weights.length === 0) return [];
+  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+  const rawAllocations = weightTotal > 0
+    ? weights.map((weight) => total * (weight / weightTotal))
+    : weights.map(() => total / weights.length);
+  let allocated = 0;
+  return rawAllocations.map((value, index) => {
+    if (index === rawAllocations.length - 1) return roundMoney(total - allocated);
+    const rounded = roundMoney(value);
+    allocated += rounded;
+    return rounded;
+  });
 }
 
 function taskTotalCost(

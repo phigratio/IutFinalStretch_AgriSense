@@ -4,6 +4,7 @@
   "wheat": ["wheat", "গম"],
   "maize": ["maize", "corn", "ভুট্টা"],
   "potato": ["potato", "potatoes", "আলু"],
+  "tomato": ["tomato", "tomatoes", "টমেটো"],
   "mustard": ["mustard", "mustard seed", "সরিষা", "সরষে"],
   "lentil": ["lentil", "lentils", "masur", "masoor", "মসুর", "মসুর ডাল"],
   "onion": ["onion", "onions", "পেঁয়াজ", "পিঁয়াজ"]

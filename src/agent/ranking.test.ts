@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { rankCrops, RANK_WEIGHTS, type RankProfile } from "./ranking.js";
+import { CROP_IDS } from "../data/crops.js";
 
 const baseProfile = (over: Partial<RankProfile> = {}): RankProfile => ({
   areaHa: 0.81,
@@ -22,7 +23,7 @@ describe("rankCrops", () => {
 
   it("returns every candidate with subscores, reasons and sources", () => {
     const ranked = rankCrops(baseProfile(), weather, normals);
-    expect(ranked.length).toBe(8);
+    expect(ranked.length).toBe(CROP_IDS.length);
     for (const r of ranked) {
       expect(r.reasons.length).toBeGreaterThan(0);
       expect(r.sources.length).toBeGreaterThan(0);

@@ -4,6 +4,7 @@
   "wheat":       { "loam": 1.0, "silt": 0.9, "clay": 0.7, "sandy": 0.6, "unknown": 0.7 },
   "maize":       { "loam": 1.0, "silt": 0.9, "sandy": 0.7, "clay": 0.6, "unknown": 0.7 },
   "potato":      { "loam": 1.0, "sandy": 0.9, "silt": 0.8, "clay": 0.5, "unknown": 0.7 },
+  "tomato":      { "loam": 1.0, "sandy": 0.85, "silt": 0.8, "clay": 0.5, "unknown": 0.7 },
   "mustard":     { "loam": 1.0, "silt": 0.9, "clay": 0.7, "sandy": 0.6, "unknown": 0.7 },
   "lentil":      { "loam": 1.0, "silt": 0.8, "sandy": 0.7, "clay": 0.6, "unknown": 0.7 },
   "onion":       { "loam": 1.0, "silt": 0.9, "sandy": 0.8, "clay": 0.5, "unknown": 0.7 }

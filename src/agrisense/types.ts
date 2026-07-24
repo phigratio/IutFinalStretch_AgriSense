@@ -130,6 +130,49 @@ export interface SeasonPlanResult {
   retrievedEvidence: RetrievedEvidence[];
 }
 
+export interface ScenarioDeltas {
+  rainfallPct?: number;
+  budgetPct?: number;
+  pricePct?: number;
+  costPct?: number;
+  yieldPct?: number;
+}
+
+export interface ScenarioComparison {
+  revenueBdt: number;
+  costBdt: number;
+  netProfitBdt: number;
+  roiPct: number;
+  breakEvenYieldKg: number;
+  irrigationEvents: number;
+  rainfall7dMm: number;
+  budgetSurplusBdt: number;
+}
+
+export interface ScenarioSimulationResult {
+  id?: string;
+  sessionId?: string;
+  farmId?: string;
+  planId?: string;
+  scenarioLabel: string;
+  deltas: ScenarioDeltas;
+  baseline: {
+    farmProfile: IntakeProfile;
+    weather: WeatherForecast;
+    cropRankings: CropRecommendation[];
+    seasonPlan: SeasonPlanResult;
+  };
+  scenario: {
+    farmProfile: IntakeProfile;
+    weather: WeatherForecast;
+    cropRankings: CropRecommendation[];
+    seasonPlan: SeasonPlanResult;
+  };
+  comparison: ScenarioComparison;
+  recommendation: string;
+  trace: IntakeTraceEvent[];
+}
+
 export type MemoryOutcomeKind =
   | "farm_fact"
   | "crop_decision"

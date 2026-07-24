@@ -4,6 +4,7 @@ rice_boro,boro,12,15,1,31,155,transplanting,BARC,https://barc.gov.bd,BARC Crop C
 wheat,rabi,11,1,11,30,110,sowing,BARC,https://barc.gov.bd,BARC Crop Calendar,TODO,2026-07-24,manual,unverified
 maize,rabi,11,1,12,15,145,sowing,BARC,https://barc.gov.bd,BARC Crop Calendar,TODO,2026-07-24,manual,unverified
 potato,rabi,11,1,11,30,90,planting,BARC,https://barc.gov.bd,BARC Crop Calendar,TODO,2026-07-24,manual,unverified
+tomato,rabi,10,15,11,30,100,transplanting,BARI,https://bari.gov.bd,Tomato Production Guide,TODO,2026-07-24,manual,unverified
 mustard,rabi,10,15,11,15,85,sowing,BARC,https://barc.gov.bd,BARC Crop Calendar,TODO,2026-07-24,manual,unverified
 lentil,rabi,10,20,11,20,110,sowing,BARC,https://barc.gov.bd,BARC Crop Calendar,TODO,2026-07-24,manual,unverified
 onion,rabi,11,1,12,15,120,transplanting,BARC,https://barc.gov.bd,BARC Crop Calendar,TODO,2026-07-24,manual,unverified
