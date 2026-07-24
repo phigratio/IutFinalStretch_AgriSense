@@ -1,24 +1,26 @@
 /**
- * Home / connection screen — proves the phone can reach the backend before
- * any demo flow starts (venue-wifi isolation is our #1 device risk). Shows
- * the resolved API base URL, live /health status, and a retry button.
- * Chat/Plan/Money/Trace live in their own tabs (see components/app-tabs.tsx).
+ * Home — a warm welcome, the live backend-connection check (venue-wifi is our #1
+ * device risk), and quick actions into the core flows. Terracotta & Sage theme,
+ * Bangla-first, no emojis.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Pressable, View } from 'react-native';
+import { router } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 
 import { pingBackend } from '@/api/client';
+import { Screen, Card, Button, LanguageToggle, type IconName } from '@/components/ui';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useLanguage } from '@/i18n/language';
 
 type Conn = { state: 'checking' } | { state: 'ok'; detail: string } | { state: 'down'; detail: string };
 
 export default function HomeScreen() {
-  const [conn, setConn] = useState<Conn>({ state: 'checking' });
   const theme = useTheme();
+  const { t } = useLanguage();
+  const [conn, setConn] = useState<Conn>({ state: 'checking' });
 
   const check = useCallback(async () => {
     setConn({ state: 'checking' });
@@ -30,89 +32,77 @@ export default function HomeScreen() {
     void check();
   }, [check]);
 
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <ThemedText type="title" style={styles.title}>
-            AgriSense 🌾
-          </ThemedText>
-          <ThemedText themeColor="textSecondary" style={styles.title}>
-            Your season, planned: weather-aware crops, dated tasks, honest numbers.
-          </ThemedText>
-        </ThemedView>
+  const ok = conn.state === 'ok';
+  const dotColor = conn.state === 'checking' ? theme.textSecondary : ok ? theme.success : theme.error;
 
-        <ThemedView
-          type="backgroundElement"
-          style={[styles.stepContainer, { borderColor: theme.border }]}>
-          <ThemedText type="subtitle">Backend connection</ThemedText>
-          {conn.state === 'checking' ? (
-            <ActivityIndicator color={theme.brand} />
-          ) : (
-            <>
-              <ThemedText themeColor={conn.state === 'ok' ? 'success' : 'error'}>
-                {conn.state === 'ok' ? '✅ Connected' : '❌ Not reachable'}
-              </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {conn.detail}
-              </ThemedText>
-              {conn.state === 'down' && (
-                <ThemedText type="small" themeColor="textSecondary">
-                  Phone and laptop must share one network (use the hotspot). Override with
-                  EXPO_PUBLIC_API_URL in mobile/.env if the auto-detected host is wrong.
-                </ThemedText>
-              )}
-            </>
-          )}
-          <Pressable onPress={check} style={[styles.button, { backgroundColor: theme.brand }]}>
-            <ThemedText type="smallBold" style={styles.buttonLabel}>
-              Re-check
-            </ThemedText>
-          </Pressable>
-        </ThemedView>
-      </SafeAreaView>
-    </ThemedView>
+  return (
+    <Screen
+      title="AgriSense"
+      subtitle="Your season, planned: weather-aware crops, dated tasks, honest numbers."
+      right={<LanguageToggle />}>
+      <Card>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.two }}>
+            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: dotColor }} />
+            <ThemedText type="smallBold">{t('Backend connection')}</ThemedText>
+          </View>
+          <ThemedText type="small" themeColor={conn.state === 'checking' ? 'textSecondary' : ok ? 'success' : 'error'}>
+            {conn.state === 'checking' ? t('Loading…') : ok ? t('Connected') : t('Not reachable')}
+          </ThemedText>
+        </View>
+        {conn.state !== 'checking' ? (
+          <ThemedText type="small" themeColor="textSecondary">
+            {conn.detail}
+          </ThemedText>
+        ) : null}
+        {conn.state === 'down' ? (
+          <ThemedText type="small" themeColor="textSecondary">
+            Phone and laptop must share one network (use the hotspot). Override with EXPO_PUBLIC_API_URL in mobile/.env if the
+            auto-detected host is wrong.
+          </ThemedText>
+        ) : null}
+        <Button label="Re-check" icon="refresh-cw" variant="ghost" onPress={() => void check()} />
+      </Card>
+
+      <View style={{ gap: Spacing.two }}>
+        <QuickAction icon="message-circle" label="Start a conversation" sub="Tell the agent about your farm" route="/chat" />
+        <QuickAction icon="calendar" label="View season plan" sub="Dated tasks, crops and finances" route="/plan" />
+        <QuickAction icon="shopping-bag" label="Market prices" sub="Sell, store or wait guidance" route="/market" />
+      </View>
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.three,
-    backgroundColor: 'transparent',
-  },
-  title: {
-    textAlign: 'center',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.three,
-    borderWidth: 1,
-  },
-  button: {
-    alignSelf: 'flex-start',
-    paddingVertical: Spacing.two + Spacing.half,
-    paddingHorizontal: Spacing.three + Spacing.one,
-    borderRadius: Spacing.two + Spacing.half,
-  },
-  buttonLabel: { color: '#ffffff' },
-});
+function QuickAction({ icon, label, sub, route }: { icon: IconName; label: string; sub: string; route: '/chat' | '/plan' | '/market' }) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  return (
+    <Pressable
+      onPress={() => router.push(route)}
+      style={({ pressed }) => [
+        {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: Spacing.three,
+          backgroundColor: theme.backgroundElement,
+          borderColor: theme.border,
+          borderWidth: 1,
+          borderRadius: Radius.lg,
+          padding: Spacing.three,
+        },
+        pressed && { backgroundColor: theme.backgroundSelected },
+      ]}>
+      <View
+        style={{ width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.brandSoft }}>
+        <Feather name={icon} size={18} color={theme.brand} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <ThemedText type="smallBold">{t(label)}</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          {t(sub)}
+        </ThemedText>
+      </View>
+      <Feather name="chevron-right" size={18} color={theme.textSecondary} />
+    </Pressable>
+  );
+}

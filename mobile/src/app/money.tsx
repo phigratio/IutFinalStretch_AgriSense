@@ -46,7 +46,7 @@ function ResultCard({ result }: { result: CheckoutResult }) {
         style={[styles.card, { backgroundColor: theme.successSoft, borderColor: theme.success }]}>
         <View style={styles.cardTitleRow}>
           <ThemedText type="subtitle" themeColor="success">
-            ✅ Payment received
+            Payment received
           </ThemedText>
           {result.mock && <MockBadge theme={theme} />}
         </View>
@@ -58,7 +58,7 @@ function ResultCard({ result }: { result: CheckoutResult }) {
           </ThemedText>
         )}
         <ThemedText type="small" themeColor="textSecondary">
-          {result.smsSent ? '📩 receipt SMS sent to your phone' : 'receipt SMS not sent'}
+          {result.smsSent ? 'Receipt SMS sent to your phone' : 'Receipt SMS not sent'}
         </ThemedText>
       </View>
     );
@@ -70,7 +70,7 @@ function ResultCard({ result }: { result: CheckoutResult }) {
         style={[styles.card, { backgroundColor: theme.warningSoft, borderColor: theme.warning }]}>
         <View style={styles.cardTitleRow}>
           <ThemedText type="subtitle" themeColor="warning">
-            💸 Not enough balance
+            Not enough balance
           </ThemedText>
           {result.mock && <MockBadge theme={theme} />}
         </View>
@@ -86,7 +86,7 @@ function ResultCard({ result }: { result: CheckoutResult }) {
     <View style={[styles.card, { backgroundColor: theme.errorSoft, borderColor: theme.error }]}>
       <View style={styles.cardTitleRow}>
         <ThemedText type="subtitle" themeColor="error">
-          ❌ Payment failed
+          Payment failed
         </ThemedText>
         {result.mock && <MockBadge theme={theme} />}
       </View>
@@ -190,7 +190,7 @@ export default function MoneyScreen() {
             />
             {error && (
               <ThemedText type="small" themeColor="error">
-                ⚠️ {error}
+                {error}
               </ThemedText>
             )}
             <Pressable

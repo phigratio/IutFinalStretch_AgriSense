@@ -69,13 +69,13 @@ export default function AccountScreen() {
             <ActivityIndicator color={theme.brand} />
           ) : user ? (
             <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
-              <ThemedText type="subtitle">👋 {user.name}</ThemedText>
+              <ThemedText type="subtitle">{user.name}</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
                 {user.email}
               </ThemedText>
               <View style={[styles.statusRow, { backgroundColor: channelActive ? theme.successSoft : theme.warningSoft }]}>
                 <ThemedText type="small" themeColor={channelActive ? 'success' : 'warning'}>
-                  {channelActive ? '📩 SMS alerts enabled' : '⏳ SMS channel pending confirmation'}
+                  {channelActive ? 'SMS alerts enabled' : 'SMS channel pending confirmation'}
                 </ThemedText>
               </View>
               <ThemedText type="small" themeColor="textSecondary">
@@ -133,7 +133,7 @@ export default function AccountScreen() {
                     {sending ? <ActivityIndicator color="#fff" /> : <ThemedText type="smallBold" style={styles.btnLabel}>Verify & sign in</ThemedText>}
                   </Pressable>
                   <Pressable onPress={() => { setStep('phone'); setMsg(undefined); }}>
-                    <ThemedText type="link">← change number</ThemedText>
+                    <ThemedText type="link">Change number</ThemedText>
                   </Pressable>
                 </>
               )}
@@ -145,7 +145,7 @@ export default function AccountScreen() {
               )}
               {error && (
                 <ThemedText type="small" themeColor="error">
-                  ⚠️ {error}
+                  {error}
                 </ThemedText>
               )}
             </ThemedView>

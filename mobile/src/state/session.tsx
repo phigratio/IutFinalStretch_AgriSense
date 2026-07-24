@@ -162,7 +162,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async (image: LeafImagePart) => {
       if (sending) return;
       setSending(true);
-      setBubbles((prev) => [...prev, { id: bubbleId(), role: 'farmer', text: '🍃 Sent a leaf photo for diagnosis.' }]);
+      setBubbles((prev) => [...prev, { id: bubbleId(), role: 'farmer', text: 'Sent a leaf photo for diagnosis.' }]);
       try {
         const diagnosis = await postLeafDiagnosis({
           image,

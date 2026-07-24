@@ -108,7 +108,7 @@ function EvidencePanel({ evidence }: { evidence: RetrievedEvidence[] }) {
             </ThemedText>
             {item.citation && (
               <ThemedText type="small" themeColor="brand" numberOfLines={1}>
-                📚 {item.citation}
+                {item.citation}
               </ThemedText>
             )}
           </View>
@@ -134,8 +134,8 @@ function CropCard({ rec }: { rec: CropRecommendation }) {
         </View>
       </View>
       <View style={styles.metricRow}>
-        <ThemedText type="small" themeColor="textSecondary">💧 {rec.waterNeed}</ThemedText>
-        <ThemedText type="small" themeColor={RISK_COLOR[rec.riskLevel]}>⚠️ {rec.riskLevel}</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">Water: {rec.waterNeed}</ThemedText>
+        <ThemedText type="small" themeColor={RISK_COLOR[rec.riskLevel]}>Risk: {rec.riskLevel}</ThemedText>
         <ThemedText type="small" themeColor={rec.netProfitBdt >= 0 ? 'success' : 'error'}>
           {tk(rec.netProfitBdt)} · {Math.round(rec.roiPct)}%
         </ThemedText>
@@ -152,7 +152,7 @@ function CropCard({ rec }: { rec: CropRecommendation }) {
             {rec.factors.evidenceFit != null ? ` · evidence ${pct(rec.factors.evidenceFit)}` : ''}
           </ThemedText>
           {rec.citations.length > 0 && (
-            <ThemedText type="small" themeColor="brand">📚 {rec.citations.join(' · ')}</ThemedText>
+            <ThemedText type="small" themeColor="brand">{rec.citations.join(' · ')}</ThemedText>
           )}
         </View>
       )}
@@ -251,7 +251,7 @@ function TaskRow({ task }: { task: SeasonPlanResult['tasks'][number] }) {
       )}
       {task.organicAlternative && (
         <ThemedText type="small" themeColor="success">
-          🌿 organic: {task.organicAlternative}
+          Organic: {task.organicAlternative}
         </ThemedText>
       )}
       {task.weatherNote && (
