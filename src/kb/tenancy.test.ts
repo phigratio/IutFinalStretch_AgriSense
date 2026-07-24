@@ -33,6 +33,18 @@ describe("tenant resolution by district", () => {
 });
 
 describe("write access", () => {
+  it("returns a tenant member's dashboard context with its district", async () => {
+    const tenant = await store.createTenant({ slug: "dist-kushtia", name: "Kushtia Office" });
+    await store.addJurisdiction(tenant.slug, "Kushtia");
+    await store.addMember(tenant.slug, "user-1", "tenant_admin");
+
+    await expect(store.getTenantForUser("user-1")).resolves.toMatchObject({
+      slug: "dist-kushtia",
+      role: "tenant_admin",
+      jurisdictions: [{ district: "Kushtia" }],
+    });
+  });
+
   it("allows a tenant_admin member to write their tenant", async () => {
     const t = await store.createTenant({ slug: "dist-kushtia", name: "K" });
     await store.addMember(t.id, "user-1", "tenant_admin");

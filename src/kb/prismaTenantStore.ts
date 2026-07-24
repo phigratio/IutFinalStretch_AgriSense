@@ -7,7 +7,7 @@
 
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
-import { HUB, type TenantStore, type TenantRecord, type TenantRole, type CreateTenantInput } from "./tenancy.js";
+import { HUB, type TenantStore, type TenantRecord, type TenantRole, type CreateTenantInput, type TenantContextRecord } from "./tenancy.js";
 import {
   resolveTableFrom,
   type TableOverrideStore,
@@ -89,6 +89,26 @@ export class PrismaTenantStore implements TenantStore {
     if (!id) return undefined;
     const m = await this.prisma.tenantMember.findFirst({ where: { tenantId: id, userId } });
     return (m?.role as TenantRole | undefined) ?? undefined;
+  }
+
+  async getTenantForUser(userId: string): Promise<TenantContextRecord | undefined> {
+    const membership = await this.prisma.tenantMember.findFirst({
+      where: { userId },
+      include: { tenant: { include: { jurisdictions: true } } },
+      orderBy: { id: "asc" },
+    });
+    if (!membership) return undefined;
+    return {
+      id: membership.tenant.id,
+      slug: membership.tenant.slug,
+      name: membership.tenant.name,
+      kind: membership.tenant.kind,
+      role: membership.role as TenantRole,
+      jurisdictions: membership.tenant.jurisdictions.map(({ district, upazila }) => ({
+        district,
+        upazila: upazila ?? undefined,
+      })),
+    };
   }
 }
 

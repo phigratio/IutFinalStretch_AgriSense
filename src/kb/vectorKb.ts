@@ -36,6 +36,8 @@ export interface KbChunkMeta {
   season?: string;
   source: string;
   sourceUrl?: string;
+  /** Optional illustrative image (e.g. a Cloudinary URL) surfaced with the hit. */
+  imageUrl?: string;
   page?: string;
   dataOrigin: string; // real | manual | mock
   verificationStatus: "verified" | "cross_checked" | "unverified";
@@ -48,7 +50,11 @@ export interface KbHit {
   docKey?: string;
   scope?: "hub" | "tenant";
   tenantId?: string;
+  title?: string;
   source?: string;
+  sourceUrl?: string;
+  imageUrl?: string;
+  docType?: string;
   page?: string;
   citation: string;
   verificationStatus: KbChunkMeta["verificationStatus"];
@@ -86,6 +92,7 @@ export async function addChunk(
     title: meta.title ?? meta.docKey,
     source: meta.source,
     sourceUrl: meta.sourceUrl,
+    imageUrl: meta.imageUrl,
     page: meta.page,
     cropId: meta.cropId,
     mem0Ids: ids,
@@ -179,7 +186,11 @@ export async function searchKB(
     docKey: h.metadata.docKey,
     scope: h.metadata.scope,
     tenantId: h.metadata.tenantId,
+    title: h.metadata.title,
     source: h.metadata.source,
+    sourceUrl: h.metadata.sourceUrl,
+    imageUrl: h.metadata.imageUrl,
+    docType: h.metadata.docType,
     page: h.metadata.page,
     citation: citationOf(h.metadata),
     verificationStatus: h.metadata.verificationStatus,

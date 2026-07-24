@@ -637,6 +637,7 @@ model KbDocument {
   title      String
   source     String
   sourceUrl  String?  @map("source_url")
+  imageUrl   String?  @map("image_url")
   page       String?
   cropId     String?  @map("crop_id")
   mem0Ids    String[] @default([]) @map("mem0_ids")

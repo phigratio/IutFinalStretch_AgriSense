@@ -23,7 +23,11 @@ export interface KbHit {
   docKey?: string;
   scope?: "hub" | "tenant";
   tenantId?: string;
+  title?: string;
   source?: string;
+  sourceUrl?: string;
+  imageUrl?: string;
+  docType?: string;
   page?: string;
   citation: string;
   verificationStatus: "verified" | "cross_checked" | "unverified";
@@ -48,6 +52,37 @@ export interface KbIngestionJob {
   processedChunks: number;
   errorMessage?: string;
   createdAt: string;
+}
+
+export interface TenantContext {
+  id: string;
+  slug: string;
+  name: string;
+  kind: string;
+  role: "tenant_admin" | "hub_admin";
+  jurisdictions: Array<{ district: string; upazila?: string }>;
+}
+
+export function getTenantContext() {
+  return apiFetch<TenantContext>("/api/tenant/context");
+}
+
+export function uploadTenantKbFile(tenantId: string, userId: string, form: FormData) {
+  return apiFetch<KbIngestionJob>(`/api/tenants/${encodeURIComponent(tenantId)}/kb/uploads`, {
+    method: "POST", body: form, headers: tenantHeaders(userId),
+  });
+}
+
+export function addTenantKbLink(tenantId: string, userId: string, body: { url: string; title?: string }) {
+  return apiFetch<{ ok: true; docKey: string; title: string; chunks: number }>(`/api/tenants/${encodeURIComponent(tenantId)}/kb/links`, {
+    method: "POST", body, headers: tenantHeaders(userId),
+  });
+}
+
+export function listTenantKbJobs(tenantId: string, userId: string) {
+  return apiFetch<KbIngestionJob[]>(`/api/tenants/${encodeURIComponent(tenantId)}/kb/jobs`, {
+    headers: tenantHeaders(userId),
+  });
 }
 
 export function uploadKbFiles(form: FormData) {
@@ -78,6 +113,16 @@ export function postTenantDocument(tenantId: string, userId: string, body: Recor
   return apiFetch(`/api/tenants/${encodeURIComponent(tenantId)}/kb/docs`, {
     method: "POST", body, headers: tenantHeaders(userId),
   });
+}
+
+/** Upload an illustration image to Cloudinary; returns the hosted URL to attach to a doc. */
+export function uploadTenantKbImage(tenantId: string, userId: string, file: File) {
+  const form = new FormData();
+  form.set("file", file);
+  return apiFetch<{ imageUrl: string; publicId: string; width?: number; height?: number }>(
+    `/api/tenants/${encodeURIComponent(tenantId)}/kb/image`,
+    { method: "POST", body: form, headers: tenantHeaders(userId) },
+  );
 }
 
 export function listTenantDocuments(tenantId: string, userId: string) {

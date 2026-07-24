@@ -6,6 +6,7 @@ import { InMemoryPriceStore } from "../kb/priceStore.js";
 import { InMemoryTenantStore, HUB } from "../kb/tenancy.js";
 import type { IngestedPrice } from "../kb/ingest/wfpPrices.js";
 import { InMemoryTableOverrideStore } from "../kb/tableStore.js";
+import { fetchKnowledgeLink } from "./tenants.js";
 
 const app = createApp();
 let priceStore: InMemoryPriceStore;
@@ -41,6 +42,10 @@ beforeEach(async () => {
 });
 
 describe("canonical tenant routes and isolation", () => {
+  it("blocks local-network knowledge links", async () => {
+    await expect(fetchKnowledgeLink("http://localhost/private")).rejects.toThrow(/Local links/);
+  });
+
   it("allows a member to read its tenant and blocks another user", async () => {
     expect((await request(app).get("/api/tenants/dist-kushtia").set("x-user-id", "u-tenant")).status).toBe(200);
     expect((await request(app).get("/api/tenants/dist-kushtia").set("x-user-id", "tenant-b")).status).toBe(403);
