@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-      - rag-mem0
-      - auth-google-oauth-production
   pull_request:
     branches:
       - main
