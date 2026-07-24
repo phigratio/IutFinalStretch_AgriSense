@@ -20,13 +20,13 @@ export class ApiError extends Error {
 
 export async function apiFetch<T>(
   path: string,
-  init?: { method?: "GET" | "POST"; body?: unknown },
+  init?: { method?: "GET" | "POST"; body?: unknown; headers?: Record<string, string> },
 ): Promise<T> {
   const url = `${apiBaseUrl()}${path}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { ...(init?.headers ?? {}) };
     if (init?.body !== undefined) headers["Content-Type"] = "application/json";
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;

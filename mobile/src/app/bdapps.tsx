@@ -113,7 +113,7 @@ export default function BdappsScreen() {
                 <TextInput style={inputStyle} value={otp} onChangeText={setOtp} placeholder="OTP" placeholderTextColor={theme.textSecondary} keyboardType="numeric" />
               </>
             )}
-            {error && <ThemedText type="small" themeColor="error">⚠️ {error}</ThemedText>}
+            {error && <ThemedText type="small" themeColor="error">{error}</ThemedText>}
             <Pressable onPress={() => void execute()} disabled={loading} style={[styles.runBtn, { backgroundColor: theme.brand }, loading && styles.busy]}>
               {loading ? <ActivityIndicator color="#fff" /> : <ThemedText type="smallBold" style={styles.runLabel}>Run action</ThemedText>}
             </Pressable>

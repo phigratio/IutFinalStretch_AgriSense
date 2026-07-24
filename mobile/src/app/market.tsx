@@ -75,7 +75,7 @@ function SupplierCard({ offer, rank, best, mobile, sessionId }: {
         description: `Booking: ${offer.requestedQuantity} ${offer.unit} ${offer.itemName} — ${offer.supplierName}`,
         sessionId,
       });
-      if (res.ok) setResult(`✅ Paid ${tk(res.amountBdt)}${res.mock ? ' (MOCK)' : ''} · trx ${res.internalTrxId ?? res.externalTrxId}`);
+      if (res.ok) setResult(`Paid ${tk(res.amountBdt)}${res.mock ? ' (MOCK)' : ''} · trx ${res.internalTrxId ?? res.externalTrxId}`);
       else setError(`${res.statusCode}: ${res.statusDetail ?? 'payment failed'}`);
     } catch (err) {
       setError((err as Error).message);
@@ -108,7 +108,7 @@ function SupplierCard({ offer, rank, best, mobile, sessionId }: {
         {busy ? <ActivityIndicator color="#fff" /> : <ThemedText type="smallBold" style={styles.buyLabel}>Buy · pay {tk(deposit)} deposit (bKash/Robi)</ThemedText>}
       </Pressable>
       {result && <ThemedText type="small" themeColor="success">{result}</ThemedText>}
-      {error && <ThemedText type="small" themeColor="error">⚠️ {error}</ThemedText>}
+      {error && <ThemedText type="small" themeColor="error">{error}</ThemedText>}
     </View>
   );
 }
@@ -218,7 +218,7 @@ export default function MarketScreen() {
             </View>
             <TextInput style={inputStyle} value={district} onChangeText={setDistrict} placeholder="District" placeholderTextColor={theme.textSecondary} />
             <TextInput style={inputStyle} value={crop} onChangeText={setCrop} placeholder="Crop (rice/maize/mustard)" placeholderTextColor={theme.textSecondary} />
-            {error && <ThemedText type="small" themeColor="error">⚠️ {error}</ThemedText>}
+            {error && <ThemedText type="small" themeColor="error">{error}</ThemedText>}
             <Pressable onPress={() => void run()} disabled={loading} style={[styles.runBtn, { backgroundColor: theme.brand }, loading && styles.busy]}>
               {loading ? <ActivityIndicator color="#fff" /> : <ThemedText type="smallBold" style={styles.runLabel}>Run marketplace agent</ThemedText>}
             </Pressable>

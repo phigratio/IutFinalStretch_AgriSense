@@ -65,7 +65,7 @@ export default function TraceScreen() {
         </ThemedText>
         {error && (
           <ThemedText type="small" themeColor="error" style={styles.heading}>
-            ⚠️ {error}
+            {error}
           </ThemedText>
         )}
         <FlatList

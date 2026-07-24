@@ -32,7 +32,7 @@ export function TraceChip({ event }: { event: TraceEvent }) {
         onPress={() => setOpen((v) => !v)}
         style={[styles.chip, { backgroundColor: failed ? theme.errorSoft : theme.brandSoft }]}>
         <ThemedText type="small" themeColor={failed ? 'error' : 'brand'}>
-          {failed ? '⚠️' : '🔧'} {event.toolName} · {event.latencyMs}ms {open ? '▴' : '▾'}
+          {event.toolName} · {event.latencyMs}ms {open ? '▾' : '▸'}
         </ThemedText>
       </Pressable>
       {open && (

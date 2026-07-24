@@ -1,50 +1,50 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * AgriSense mobile design tokens — "Terracotta & Sage" (earthen) theme.
+ * Warm clay primary, soft sage secondary, cream surfaces, espresso text; light
+ * and dark. One source of truth for every screen (see components/ui.tsx). No
+ * emojis anywhere — signals come from color + icons.
  */
 
 import '@/global.css';
 
 import { Platform } from 'react-native';
 
-/**
- * Palette aligned with the team's TailAdmin-style design tokens
- * (brand indigo #465fff, gray scale, success/warning/error accents):
- * screens sit on gray-50, cards are white with gray-200 borders (dark:
- * gray-900 body, gray-dark cards, gray-800 borders).
- */
 export const Colors = {
   light: {
-    text: '#101828', // gray-900
-    textSecondary: '#667085', // gray-500
-    background: '#f9fafb', // gray-50 body
-    backgroundElement: '#ffffff', // white cards
-    backgroundSelected: '#ecf3ff', // brand-50
-    border: '#e4e7ec', // gray-200
-    brand: '#465fff', // brand-500
-    brandSoft: '#ecf3ff', // brand-50
-    success: '#039855', // success-600
-    successSoft: '#ecfdf3', // success-50
-    warning: '#dc6803', // warning-600
-    warningSoft: '#fffaeb', // warning-50
-    error: '#d92d20', // error-600
-    errorSoft: '#fef3f2', // error-50
+    text: '#2E2117', // espresso
+    textSecondary: '#7C6A5B', // muted taupe
+    background: '#F6EFE6', // warm cream body
+    backgroundElement: '#FFFFFF', // white cards
+    backgroundSelected: '#F3E4D8', // terracotta tint (selected)
+    border: '#E7DBCB', // warm sand
+    brand: '#B4552E', // terracotta (primary)
+    brandSoft: '#F4E4DA', // terracotta tint
+    secondary: '#5E7C52', // sage green
+    secondarySoft: '#E7EDDF', // sage tint
+    success: '#4B7A3F', // forest/sage good
+    successSoft: '#E7EFE0',
+    warning: '#B0721A', // ochre/amber
+    warningSoft: '#F6E9D3',
+    error: '#A83A2C', // clay-red risk
+    errorSoft: '#F4E0DA',
   },
   dark: {
-    text: '#f2f4f7', // gray-100
-    textSecondary: '#98a2b3', // gray-400
-    background: '#101828', // gray-900 body
-    backgroundElement: '#1a2231', // gray-dark cards
-    backgroundSelected: '#161950', // brand-950
-    border: '#1d2939', // gray-800
-    brand: '#7592ff', // brand-400 (contrast on dark)
-    brandSoft: '#161950', // brand-950
-    success: '#12b76a', // success-500
-    successSoft: '#0f2a1e',
-    warning: '#f79009', // warning-500
-    warningSoft: '#2a1e0b',
-    error: '#f04438', // error-500
-    errorSoft: '#2a1211',
+    text: '#F1E7DB',
+    textSecondary: '#B7A794',
+    background: '#1E1712', // warm near-black
+    backgroundElement: '#2A2019', // warm dark card
+    backgroundSelected: '#3A2519',
+    border: '#3A2E24',
+    brand: '#D07A50', // brighter terracotta on dark
+    brandSoft: '#3A2419',
+    secondary: '#8CA87E', // sage light
+    secondarySoft: '#26301F',
+    success: '#7FA96E',
+    successSoft: '#1F2A18',
+    warning: '#D69A45',
+    warningSoft: '#2E2411',
+    error: '#DD6A58',
+    errorSoft: '#2E1612',
   },
 } as const;
 
@@ -52,13 +52,9 @@ export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
     sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
     rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
   default: {
@@ -83,6 +79,14 @@ export const Spacing = {
   four: 24,
   five: 32,
   six: 64,
+} as const;
+
+/** Corner radii — soft, rounded, friendly. */
+export const Radius = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  pill: 999,
 } as const;
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;

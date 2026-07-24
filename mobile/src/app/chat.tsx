@@ -18,6 +18,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 
 import { TraceChipRow } from '@/components/trace-chips';
 import { ThemedText } from '@/components/themed-text';
@@ -110,7 +111,7 @@ function ProfileStrip() {
       type="backgroundElement"
       style={[styles.profileStrip, { borderColor: theme.border }]}>
       <ThemedText type="small" themeColor="textSecondary">
-        🧑‍🌾 {bits.join(' · ')}
+        {bits.join(' · ')}
       </ThemedText>
     </ThemedView>
   );
@@ -191,7 +192,7 @@ function Bubble({ item, onHint }: { item: ChatBubble; onHint: (text: string) => 
           isError && { backgroundColor: theme.errorSoft, borderColor: theme.error },
         ]}>
         <ThemedText themeColor={isError ? 'error' : 'text'}>
-          {isError ? `⚠️ ${item.text}` : item.text}
+          {item.text}
         </ThemedText>
         <TraceChipRow trace={item.trace} />
         {item.diagnosis && <LeafResultCard diagnosis={item.diagnosis} />}
@@ -291,7 +292,7 @@ export default function ChatScreen() {
                 { borderColor: theme.border, backgroundColor: theme.backgroundElement },
                 sending && styles.sendBtnDisabled,
               ]}>
-              <ThemedText type="smallBold">🍃</ThemedText>
+              <Feather name="camera" size={18} color={theme.text} />
             </Pressable>
             <Pressable
               onPress={submit}
