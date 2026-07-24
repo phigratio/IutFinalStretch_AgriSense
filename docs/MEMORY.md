@@ -231,6 +231,22 @@
   bdapps-verify with the same phone don't fork into 2 AppUsers. Backend for P1/P2/P3 done;
   next = web frontend (verify-phone button) then mobile sign-in, per build order.
 
+- 24Jul ~21:45 — Claude session (with Labib) — **R1 + web phase shipped.** R1 (aea518e):
+  pest/disease alerts now deliver by SMS (hooked deliverPendingAlerts into pest alert
+  creation; dispatcher is alert-type-agnostic so weather+plan+pest+scenario all covered) —
+  live-verified a blast-risk SMS. **Web-backend (225ec31):** added authenticated
+  `POST /auth/bdapps/verify-phone` + `BdappsAuthService.activatePhoneForUser` — a logged-in
+  web user (email/Google) verifies their phone to enable BDApps; channel activates on THEIR
+  existing AppUser (no new user/token) — sidesteps the duplicate-user problem (R3). Live-
+  verified: email signup → verify-phone → channelActive, no new token. **Web-UI (a3930f3):**
+  `frontend/src/api/channel.ts` + a Bengali "এসএমএস সতর্কতা" (SMS alerts) card on
+  UserDashboard — farmer verifies the onboarding phone → OTP → channel active; frontend tsc +
+  vite build green. bdapps login route flow: `/auth/bdapps/otp/request` (shared) →
+  `/auth/bdapps/otp/verify` (mobile SIGN-IN, new user+token) OR `/auth/bdapps/verify-phone`
+  (web, authenticated, activates channel on current user). Next: mobile sign-in UI (reuses
+  these endpoints). NOTE: keep running `prisma generate && migrate deploy` after pulls —
+  teammates keep evolving the schema (imageUrl, tenant phone, voice route, etc).
+
 ## 8. Session log (append-only: `HH:MM — <who> — <what changed>`)
 
 - 24Jul 11:00 — Claude session 1 (with A) — Read problem statement, bdapps cheatsheet/DGD/
