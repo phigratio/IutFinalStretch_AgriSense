@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { getOnboardingMe, type OnboardingMe } from "../api/onboarding.js";
-import { sendAgriSenseMessage, type AgriSenseMessageResult, type CropRecommendation } from "../api/agrisense.js";
+import {
+  sendAgriSenseMessage,
+  type AgriSenseMessageResult,
+  type CropRecommendation,
+  type WeatherForecast,
+  type SeasonPlanResult,
+  type RetrievedEvidence,
+} from "../api/agrisense.js";
 import PageMeta from "../components/common/PageMeta.js";
 import { PortalLoader } from "../components/common/DashboardLanding.js";
 import { useAuth } from "../context/AuthContext.js";
@@ -10,73 +17,42 @@ const SOIL: Record<string, string> = { sandy: "বেলে", loam: "দোআ�
 const WATER: Record<string, string> = { rainfed: "বৃষ্টিনির্ভর", limited_irrigation: "সীমিত সেচ", reliable_irrigation: "নিশ্চিত সেচ" };
 const SEASON: Record<string, string> = { kharif1: "আউশ", kharif2_aman: "আমন", rabi: "রবি", boro: "বোরো" };
 const LEVEL: Record<string, string> = { low: "কম", medium: "মাঝারি", high: "বেশি" };
-
 const CROP_BN: Record<string, string> = {
+  rice: "ধান", paddy: "ধান", dhan: "ধান",
   rice_boro: "বোরো ধান", boro: "বোরো ধান", "boro rice": "বোরো ধান",
   rice_t_aman: "আমন ধান", aman: "আমন ধান", "t. aman": "আমন ধান", "transplanted aman rice": "আমন ধান",
   wheat: "গম", maize: "ভুট্টা", potato: "আলু", mustard: "সরিষা", lentil: "মসুর ডাল", onion: "পেঁয়াজ", jute: "পাট",
 };
-const cropBn = (crop: string): string => CROP_BN[crop.trim().toLowerCase()] ?? crop;
+const cropBn = (c: string): string => CROP_BN[c.trim().toLowerCase()] ?? c;
 const taka = (n?: number): string => (n == null ? "—" : `৳${Math.round(n).toLocaleString("bn-BD")}`);
+const bn = (n?: number): string => (n == null ? "—" : Math.round(n).toLocaleString("bn-BD"));
+const pct = (s: number): number => (s > 1 ? Math.round(s) : Math.round(s * 100));
+const day = (d?: string): string => (d ? d.slice(0, 10) : "");
+
+type Tab = "home" | "weather" | "crops" | "plan" | "money" | "why";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "home", label: "🏠 হোম" },
+  { id: "weather", label: "🌦️ আবহাওয়া" },
+  { id: "crops", label: "🌾 ফসল" },
+  { id: "plan", label: "📅 পরিকল্পনা" },
+  { id: "money", label: "💰 খরচ-লাভ" },
+  { id: "why", label: "💡 কেন" },
+];
 
 export default function UserDashboard() {
   const { user } = useAuth();
   const [status, setStatus] = useState<OnboardingMe | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("home");
+  const [result, setResult] = useState<AgriSenseMessageResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
 
   useEffect(() => {
     getOnboardingMe().then(setStatus).catch((err: unknown) => setError(err instanceof Error ? err.message : "ড্যাশবোর্ড লোড করা যায়নি"));
   }, []);
 
-  if (user?.role !== "user") return <Navigate to="/" replace />;
-  if (!status && !error) return <PortalLoader />;
-  if (status && !status.profileComplete) return <Navigate to="/onboarding" replace />;
-
   const profile = status?.onboarding;
-
-  return (
-    <>
-      <PageMeta title="আমার ড্যাশবোর্ড · AgriSense" description="সহজ কৃষি পরামর্শ" />
-      <section className="portal-intro">
-        <div>
-          <p className="portal-kicker">কৃষক ড্যাশবোর্ড</p>
-          <h1 className="portal-title">স্বাগতম, {profile?.fullName || user.name} 🌾</h1>
-          <p className="portal-lede">আপনার খামারের তথ্য অনুযায়ী সহজ ভাষায় পরামর্শ নিচে দেখুন।</p>
-        </div>
-        <span className="portal-status portal-status--success">✓ প্রোফাইল সম্পূর্ণ</span>
-      </section>
-
-      {error ? <div className="portal-alert portal-alert--error">{error}</div> : null}
-
-      <Advisor profile={profile ?? null} />
-
-      <section className="portal-workbench" aria-labelledby="farm-profile-title">
-        <div className="portal-section-heading">
-          <div>
-            <h2 id="farm-profile-title">আপনার খামার</h2>
-            <p>{profile?.filledBy === "tenant" ? "একজন টেন্যান্ট আপনার হয়ে তথ্য দিয়েছেন।" : "আপনি নিজে তথ্য দিয়েছেন।"}</p>
-          </div>
-          <Link to="/onboarding?edit=1" className="portal-button portal-button--quiet">তথ্য বদলান</Link>
-        </div>
-        <dl className="portal-profile-grid">
-          <ProfileItem label="জেলা" value={profile?.district} />
-          <ProfileItem label="জমি" value={profile?.farmSizeDecimals != null ? `${profile.farmSizeDecimals} শতক` : undefined} />
-          <ProfileItem label="মাটি" value={profile?.soilTexture ? SOIL[profile.soilTexture] ?? profile.soilTexture : undefined} />
-          <ProfileItem label="সেচ" value={profile?.waterAvailability ? WATER[profile.waterAvailability] ?? profile.waterAvailability : undefined} />
-          <ProfileItem label="বাজেট" value={profile?.budgetBdt != null ? taka(profile.budgetBdt) : undefined} />
-          <ProfileItem label="মৌসুম" value={profile?.targetSeason ? SEASON[profile.targetSeason] ?? profile.targetSeason : undefined} />
-        </dl>
-      </section>
-    </>
-  );
-}
-
-function Advisor({ profile }: { profile: OnboardingMe["onboarding"] }) {
-  const [result, setResult] = useState<AgriSenseMessageResult | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [question, setQuestion] = useState("");
-
   const profileMessage = useMemo(() => {
     if (!profile) return "";
     const parts = [
@@ -87,122 +63,299 @@ function Advisor({ profile }: { profile: OnboardingMe["onboarding"] }) {
       profile.budgetBdt != null ? `বাজেট ${profile.budgetBdt} টাকা` : "",
       profile.targetSeason ? `${SEASON[profile.targetSeason] ?? profile.targetSeason} মৌসুম` : "",
     ].filter(Boolean);
-    return `${parts.join(", ")}। আমার জন্য সবচেয়ে লাভজনক ফসল কোনটি এবং কেন?`;
+    return `${parts.join(", ")}। আমার জন্য সবচেয়ে লাভজনক ফসল কোনটি, মৌসুম পরিকল্পনা ও খরচ-লাভসহ জানাও।`;
   }, [profile]);
 
-  async function ask(message: string) {
+  async function run(message: string) {
     if (!message.trim()) return;
-    setBusy(true); setError(null);
+    setBusy(true); setRunError(null);
     try {
-      const res = await sendAgriSenseMessage({ message, preferredLanguage: "bn" });
-      setResult(res);
+      setResult(await sendAgriSenseMessage({ message, preferredLanguage: "bn", workflowStage: "full" }));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "পরামর্শ তৈরি করা যায়নি। একটু পরে আবার চেষ্টা করুন।");
+      setRunError(reason instanceof Error ? reason.message : "পরামর্শ তৈরি করা যায়নি। একটু পরে আবার চেষ্টা করুন।");
     } finally {
       setBusy(false);
     }
   }
 
-  function onAsk(event: FormEvent) {
-    event.preventDefault();
-    void ask(question);
-  }
+  if (user?.role !== "user") return <Navigate to="/" replace />;
+  if (!status && !error) return <PortalLoader />;
+  if (status && !status.profileComplete) return <Navigate to="/onboarding" replace />;
 
-  const crops = (result?.cropRankings ?? []).slice(0, 3);
-  const top = crops[0];
+  const need = <NeedAdvice busy={busy} onRun={() => void run(profileMessage)} error={runError} />;
 
   return (
-    <section className="portal-workbench" aria-labelledby="advisor-title">
-      <div className="portal-section-heading">
+    <>
+      <PageMeta title="আমার ড্যাশবোর্ড · AgriSense" description="সহজ কৃষি পরামর্শ" />
+      <section className="portal-intro">
         <div>
-          <h2 id="advisor-title">আজকের পরামর্শ</h2>
-          <p>এক চাপে জেনে নিন আপনার জমিতে কোন ফসল ভালো হবে।</p>
+          <p className="portal-kicker">কৃষক ড্যাশবোর্ড</p>
+          <h1 className="portal-title">স্বাগতম, {profile?.fullName || user.name} 🌾</h1>
+          <p className="portal-lede">আপনার খামারের তথ্য অনুযায়ী সহজ ভাষায় পরামর্শ, আবহাওয়া, পরিকল্পনা ও খরচ-লাভ দেখুন।</p>
         </div>
-      </div>
+        <span className="portal-status portal-status--success">✓ প্রোফাইল সম্পূর্ণ</span>
+      </section>
 
-      {!result && (
-        <button type="button" onClick={() => void ask(profileMessage)} disabled={busy} className="portal-button portal-button--primary w-full text-base">
-          {busy ? "পরামর্শ তৈরি হচ্ছে…" : "🌱 আমার জন্য সেরা ফসল দেখুন"}
-        </button>
-      )}
+      {error ? <div className="portal-alert portal-alert--error">{error}</div> : null}
 
-      {error ? <p className="portal-inline-message portal-inline-message--error" role="alert">{error}</p> : null}
+      {/* Top navigation bar */}
+      <nav className="mb-4 flex gap-2 overflow-x-auto pb-1" aria-label="বিভাগ">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition ${
+              tab === t.id
+                ? "bg-brand-500 text-white"
+                : "border border-gray-200 bg-white text-gray-600 hover:border-brand-300 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-300"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
 
-      {top && (
-        <div className="mt-4 rounded-2xl border border-brand-200 bg-brand-50 p-5 dark:border-brand-500/30 dark:bg-brand-500/10">
-          <p className="text-sm text-gray-500 dark:text-gray-400">আপনার জমির জন্য সেরা ফসল</p>
-          <p className="mt-1 text-2xl font-bold text-brand-700 dark:text-brand-300">{cropBn(top.crop)}</p>
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            <Tile label="সম্ভাব্য লাভ" value={taka(top.netProfitBdt)} />
-            <Tile label="পানির প্রয়োজন" value={LEVEL[top.waterNeed] ?? top.waterNeed} />
-            <Tile label="ঝুঁকি" value={LEVEL[top.riskLevel] ?? top.riskLevel} />
-          </div>
-        </div>
-      )}
+      {tab === "home" && <HomeTab profile={profile ?? null} result={result} busy={busy} onRun={() => void run(profileMessage)} onAsk={(q) => void run(q)} error={runError} />}
+      {tab === "weather" && (result?.weather ? <WeatherTab weather={result.weather} /> : need)}
+      {tab === "crops" && (result?.cropRankings?.length ? <CropsTab crops={result.cropRankings} /> : need)}
+      {tab === "plan" && (result?.seasonPlan ? <PlanTab plan={result.seasonPlan} /> : need)}
+      {tab === "money" && (result?.seasonPlan ? <MoneyTab plan={result.seasonPlan} /> : need)}
+      {tab === "why" && (result ? <WhyTab profile={profile ?? null} result={result} /> : need)}
+    </>
+  );
+}
 
-      {result?.assistantMessage && (
-        <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-          <p className="mb-1 text-xs font-medium text-brand-600 dark:text-brand-300">🤖 AgriSense বলছে</p>
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800 dark:text-gray-100">{result.assistantMessage}</p>
-        </div>
-      )}
-
-      {crops.length > 1 && (
-        <div className="mt-4">
-          <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">অন্য ভালো ফসল</p>
-          <div className="space-y-2">
-            {crops.slice(1).map((c: CropRecommendation) => (
-              <div key={c.crop} className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800">
-                <span className="font-medium text-gray-800 dark:text-gray-100">{cropBn(c.crop)}</span>
-                <span className="text-gray-500 dark:text-gray-400">সম্ভাব্য লাভ {taka(c.netProfitBdt)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {result?.seasonPlan?.tasks?.length ? (
-        <div className="mt-4">
-          <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">প্রথম কয়েকটি কাজ</p>
-          <ol className="space-y-2">
-            {result.seasonPlan.tasks.slice(0, 4).map((t, i) => (
-              <li key={i} className="flex gap-3 rounded-xl border border-gray-200 p-3 text-sm dark:border-gray-800">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700 dark:bg-brand-500/20 dark:text-brand-300">{i + 1}</span>
-                <span>
-                  <span className="font-medium text-gray-800 dark:text-gray-100">{t.title}</span>
-                  {t.startDate ? <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">({t.startDate})</span> : null}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </div>
-      ) : null}
-
-      {/* Plain-language question box */}
-      <form onSubmit={onAsk} className="mt-5 flex flex-col gap-2 sm:flex-row">
-        <input
-          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="যেকোনো প্রশ্ন লিখুন — যেমন: সার কখন দেব?"
-        />
-        <button type="submit" disabled={busy || !question.trim()} className="portal-button portal-button--quiet whitespace-nowrap">
-          {busy ? "…" : "প্রশ্ন করুন"}
-        </button>
-      </form>
+function NeedAdvice({ busy, onRun, error }: { busy: boolean; onRun: () => void; error: string | null }) {
+  return (
+    <section className="portal-workbench">
+      <p className="mb-3 text-sm text-gray-600 dark:text-gray-300">এই তথ্য দেখতে আগে পরামর্শ তৈরি করুন।</p>
+      <button type="button" onClick={onRun} disabled={busy} className="portal-button portal-button--primary w-full text-base">
+        {busy ? "পরামর্শ তৈরি হচ্ছে…" : "🌱 আমার জন্য পরামর্শ তৈরি করুন"}
+      </button>
+      {error ? <p className="portal-inline-message portal-inline-message--error mt-3" role="alert">{error}</p> : null}
     </section>
   );
 }
 
-function Tile({ label, value }: { label: string; value: string }) {
+function HomeTab({ profile, result, busy, onRun, onAsk, error }: {
+  profile: OnboardingMe["onboarding"]; result: AgriSenseMessageResult | null; busy: boolean; onRun: () => void; onAsk: (q: string) => void; error: string | null;
+}) {
+  const [question, setQuestion] = useState("");
+  const top = result?.cropRankings?.[0];
+  function submit(e: FormEvent) { e.preventDefault(); if (question.trim()) onAsk(question.trim()); }
+
   return (
-    <div className="rounded-xl bg-white/70 p-3 text-center dark:bg-white/[0.04]">
-      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="mt-0.5 text-base font-bold text-gray-800 dark:text-gray-100">{value}</p>
+    <div className="space-y-4">
+      <section className="portal-workbench">
+        <div className="portal-section-heading"><div><h2>আজকের পরামর্শ</h2><p>এক চাপে জেনে নিন আপনার জমিতে কোন ফসল ভালো হবে।</p></div></div>
+        {!result && (
+          <button type="button" onClick={onRun} disabled={busy} className="portal-button portal-button--primary w-full text-base">
+            {busy ? "পরামর্শ তৈরি হচ্ছে…" : "🌱 আমার জন্য সেরা ফসল দেখুন"}
+          </button>
+        )}
+        {error ? <p className="portal-inline-message portal-inline-message--error" role="alert">{error}</p> : null}
+
+        {top && (
+          <div className="mt-4 rounded-2xl border border-brand-200 bg-brand-50 p-5 dark:border-brand-500/30 dark:bg-brand-500/10">
+            <p className="text-sm text-gray-500 dark:text-gray-400">আপনার জমির জন্য সেরা ফসল</p>
+            <p className="mt-1 text-2xl font-bold text-brand-700 dark:text-brand-300">{cropBn(top.crop)}</p>
+            <div className="mt-4 grid grid-cols-3 gap-3">
+              <Tile label="সম্ভাব্য লাভ" value={taka(top.netProfitBdt)} />
+              <Tile label="পানির প্রয়োজন" value={LEVEL[top.waterNeed] ?? top.waterNeed} />
+              <Tile label="ঝুঁকি" value={LEVEL[top.riskLevel] ?? top.riskLevel} />
+            </div>
+          </div>
+        )}
+        {result?.assistantMessage && (
+          <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+            <p className="mb-1 text-xs font-medium text-brand-600 dark:text-brand-300">🤖 AgriSense বলছে</p>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800 dark:text-gray-100">{result.assistantMessage}</p>
+          </div>
+        )}
+        <form onSubmit={submit} className="mt-5 flex flex-col gap-2 sm:flex-row">
+          <input className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white" value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="যেকোনো প্রশ্ন লিখুন — যেমন: সার কখন দেব?" />
+          <button type="submit" disabled={busy || !question.trim()} className="portal-button portal-button--quiet whitespace-nowrap">{busy ? "…" : "প্রশ্ন করুন"}</button>
+        </form>
+      </section>
+
+      <section className="portal-workbench">
+        <div className="portal-section-heading"><div><h2>আপনার খামার</h2><p>{profile?.filledBy === "tenant" ? "একজন টেন্যান্ট আপনার হয়ে তথ্য দিয়েছেন।" : "আপনি নিজে তথ্য দিয়েছেন।"}</p></div><Link to="/onboarding?edit=1" className="portal-button portal-button--quiet">তথ্য বদলান</Link></div>
+        <dl className="portal-profile-grid">
+          <ProfileItem label="জেলা" value={profile?.district} />
+          <ProfileItem label="জমি" value={profile?.farmSizeDecimals != null ? `${profile.farmSizeDecimals} শতক` : undefined} />
+          <ProfileItem label="মাটি" value={profile?.soilTexture ? SOIL[profile.soilTexture] ?? profile.soilTexture : undefined} />
+          <ProfileItem label="সেচ" value={profile?.waterAvailability ? WATER[profile.waterAvailability] ?? profile.waterAvailability : undefined} />
+          <ProfileItem label="বাজেট" value={profile?.budgetBdt != null ? taka(profile.budgetBdt) : undefined} />
+          <ProfileItem label="মৌসুম" value={profile?.targetSeason ? SEASON[profile.targetSeason] ?? profile.targetSeason : undefined} />
+        </dl>
+      </section>
     </div>
   );
 }
 
+function WeatherTab({ weather }: { weather: WeatherForecast }) {
+  const next = weather.daily.slice(0, 7);
+  const rain = next.reduce((s, d) => s + (d.rainfallMm || 0), 0);
+  const tmin = next.length ? Math.min(...next.map((d) => d.temperatureMinC)) : undefined;
+  const tmax = next.length ? Math.max(...next.map((d) => d.temperatureMaxC)) : undefined;
+  return (
+    <section className="portal-workbench">
+      <div className="portal-section-heading">
+        <div><h2>আবহাওয়া</h2><p>{weather.locationText} · {weather.provider === "mock" ? "নমুনা তথ্য" : "সরাসরি আবহাওয়া সেবা (Open-Meteo)"}</p></div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <Tile label="আগামী ৭ দিনে বৃষ্টি" value={`${bn(rain)} মিমি`} />
+        <Tile label="সর্বনিম্ন তাপমাত্রা" value={tmin != null ? `${bn(tmin)}°C` : "—"} />
+        <Tile label="সর্বোচ্চ তাপমাত্রা" value={tmax != null ? `${bn(tmax)}°C` : "—"} />
+      </div>
+      <div className="mt-4 space-y-2">
+        {next.map((d) => (
+          <div key={d.date} className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800">
+            <span className="font-medium text-gray-800 dark:text-gray-100">{day(d.date)}</span>
+            <span className="text-gray-500 dark:text-gray-400">🌧️ {bn(d.rainfallMm)} মিমি · 🌡️ {bn(d.temperatureMinC)}–{bn(d.temperatureMaxC)}°C</span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-xs text-gray-400">এই তথ্য প্রকৃত আবহাওয়া সেবা থেকে নেওয়া — কোনো অনুমান নয়।</p>
+    </section>
+  );
+}
+
+function CropsTab({ crops }: { crops: CropRecommendation[] }) {
+  return (
+    <section className="portal-workbench">
+      <div className="portal-section-heading"><div><h2>ফসলের পরামর্শ</h2><p>আপনার জমি, মৌসুম ও আবহাওয়া অনুযায়ী সেরা ফসলগুলো।</p></div></div>
+      <div className="space-y-3">
+        {crops.map((c, i) => (
+          <div key={c.crop} className={`rounded-2xl border p-4 ${i === 0 ? "border-brand-200 bg-brand-50 dark:border-brand-500/30 dark:bg-brand-500/10" : "border-gray-200 dark:border-gray-800"}`}>
+            <div className="flex items-center justify-between">
+              <span className="text-lg font-bold text-gray-800 dark:text-gray-100">{i === 0 ? "⭐ " : ""}{cropBn(c.crop)}</span>
+              <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-brand-600 dark:bg-white/[0.06] dark:text-brand-300">উপযুক্ততা {pct(c.suitabilityScore)}%</span>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+              <Tile label="সম্ভাব্য লাভ" value={taka(c.netProfitBdt)} />
+              <Tile label="পানি" value={LEVEL[c.waterNeed] ?? c.waterNeed} />
+              <Tile label="ঝুঁকি" value={LEVEL[c.riskLevel] ?? c.riskLevel} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PlanTab({ plan }: { plan: SeasonPlanResult }) {
+  return (
+    <section className="portal-workbench">
+      <div className="portal-section-heading"><div><h2>মৌসুম পরিকল্পনা — {cropBn(plan.crop)}</h2><p>বপন {day(plan.sowDate)} · ফসল কাটা {day(plan.harvestStartDate)} – {day(plan.harvestEndDate)}</p></div></div>
+      <ol className="space-y-3">
+        {plan.tasks.map((t, i) => (
+          <li key={i} className="rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
+            <div className="flex items-start gap-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700 dark:bg-brand-500/20 dark:text-brand-300">{i + 1}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-gray-800 dark:text-gray-100">{t.title}</span>
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-white/[0.06] dark:text-gray-400">{day(t.startDate)}{t.endDate && t.endDate !== t.startDate ? ` – ${day(t.endDate)}` : ""}</span>
+                </div>
+                {t.description ? <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{t.description}</p> : null}
+                <div className="mt-1 flex flex-wrap gap-x-4 text-xs text-gray-500 dark:text-gray-400">
+                  {t.quantity != null ? <span>পরিমাণ: {bn(t.quantity)} {t.unit ?? ""}</span> : null}
+                  {t.totalCostBdt != null ? <span>খরচ: {taka(t.totalCostBdt)}</span> : null}
+                  {t.organicAlternative ? <span>জৈব বিকল্প: {t.organicAlternative}</span> : null}
+                </div>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function MoneyTab({ plan }: { plan: SeasonPlanResult }) {
+  const f = plan.financials;
+  return (
+    <section className="portal-workbench">
+      <div className="portal-section-heading"><div><h2>খরচ ও লাভ — {cropBn(plan.crop)}</h2><p>সব হিসাব আপনার জমি ও বর্তমান বাজারদর অনুযায়ী।</p></div></div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <Tile label="সম্ভাব্য ফলন" value={`${bn(f.expectedYieldKg)} কেজি`} />
+        <Tile label="সম্ভাব্য আয়" value={taka(f.expectedRevenueBdt)} />
+        <Tile label="মোট খরচ" value={taka(f.totalCostBdt)} />
+        <Tile label="নিট লাভ" value={taka(f.netProfitBdt)} />
+        <Tile label="লাভের হার (ROI)" value={`${bn(f.roiPct)}%`} />
+        <Tile label="খরচ ওঠার ফলন" value={`${bn(f.breakEvenYieldKg)} কেজি`} />
+      </div>
+      {f.costBreakdown?.length ? (
+        <div className="mt-4">
+          <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">খরচের বিস্তারিত</p>
+          <div className="divide-y divide-gray-200 rounded-xl border border-gray-200 dark:divide-gray-800 dark:border-gray-800">
+            {f.costBreakdown.map((c, i) => (
+              <div key={i} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                <span className="text-gray-700 dark:text-gray-200">{c.label}</span>
+                <span className="font-medium text-gray-800 dark:text-gray-100">{taka(c.amountBdt)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <p className="mt-3 text-xs text-gray-400">তথ্য বদলালে (জমি/বাজেট) এই হিসাবও বদলে যাবে।</p>
+    </section>
+  );
+}
+
+function WhyTab({ profile, result }: { profile: OnboardingMe["onboarding"]; result: AgriSenseMessageResult }) {
+  const reason = result.seasonPlan?.selectedCropReason || result.cropRankings?.[0]?.reasoning;
+  const evidence: RetrievedEvidence[] = result.retrievedEvidence ?? result.seasonPlan?.retrievedEvidence ?? [];
+  return (
+    <section className="portal-workbench space-y-4">
+      <div className="portal-section-heading"><div><h2>কেন এই পরামর্শ?</h2><p>কোন তথ্যের উপর ভিত্তি করে পরামর্শ দেওয়া হয়েছে।</p></div></div>
+
+      <div>
+        <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">আপনার যে তথ্য ব্যবহার হয়েছে</p>
+        <div className="flex flex-wrap gap-2 text-xs">
+          {profile?.district ? <Chip>জেলা: {profile.district}</Chip> : null}
+          {profile?.soilTexture ? <Chip>মাটি: {SOIL[profile.soilTexture] ?? profile.soilTexture}</Chip> : null}
+          {profile?.waterAvailability ? <Chip>সেচ: {WATER[profile.waterAvailability] ?? profile.waterAvailability}</Chip> : null}
+          {profile?.targetSeason ? <Chip>মৌসুম: {SEASON[profile.targetSeason] ?? profile.targetSeason}</Chip> : null}
+          {result.weather ? <Chip>আবহাওয়া: {result.weather.locationText}</Chip> : null}
+        </div>
+      </div>
+
+      {reason ? (
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+          <p className="mb-1 text-xs font-medium text-brand-600 dark:text-brand-300">কারণ</p>
+          <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-100">{reason}</p>
+        </div>
+      ) : null}
+
+      {evidence.length ? (
+        <div>
+          <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">তথ্যসূত্র</p>
+          <div className="space-y-2">
+            {evidence.slice(0, 6).map((e) => (
+              <div key={e.id} className="rounded-xl border border-gray-200 p-3 text-sm dark:border-gray-800">
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="font-medium text-gray-800 dark:text-gray-100">{e.title}</span>
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-white/[0.06] dark:text-gray-400">{e.source}</span>
+                </div>
+                <p className="line-clamp-2 text-xs text-gray-500 dark:text-gray-400">{e.citation ?? e.content}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function Chip({ children }: { children: React.ReactNode }) {
+  return <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600 dark:bg-white/[0.06] dark:text-gray-300">{children}</span>;
+}
+function Tile({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-xl bg-white/70 p-3 text-center dark:bg-white/[0.04]"><p className="text-xs text-gray-500 dark:text-gray-400">{label}</p><p className="mt-0.5 text-base font-bold text-gray-800 dark:text-gray-100">{value}</p></div>;
+}
 function ProfileItem({ label, value }: { label: string; value?: string }) {
   return <div><dt>{label}</dt><dd>{value || "—"}</dd></div>;
 }
