@@ -7,6 +7,7 @@ import { bdappsListenerRouter } from "./routes/bdappsListeners.js";
 import { bdappsTestRouter } from "./routes/bdappsTest.js";
 import { agentIntakeRouter } from "./routes/agentIntake.js";
 import { agrisenseRouter } from "./routes/agrisense.js";
+import { paymentsRouter } from "./routes/payments.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { notFoundHandler } from "./middleware/notFound.js";
 import { observabilityMiddleware } from "./middleware/observability.js";
@@ -23,6 +24,8 @@ export function createApp(): Application {
   app.use("/api/stats", statsRouter);
   app.use("/api/agent", agentIntakeRouter);
   app.use("/api/agrisense", agrisenseRouter);
+  // bdapps CaaS checkout + receipt readback (payments/service.ts).
+  app.use("/api/payments", paymentsRouter);
 
   // BDApps webhooks — register these URLs in provisioning (BDApps -> you).
   app.use("/bdapps", bdappsListenerRouter);
