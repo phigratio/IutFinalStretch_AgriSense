@@ -37,6 +37,8 @@ createRoot(rootEl).render(
             <Routes>
               {/* Everything inside the panel requires a valid session. */}
               <Route element={<ProtectedRoute />}>
+                {/* Standalone (no admin chrome) — the farmer's onboarding landing. */}
+                <Route path="/onboarding" element={<Onboarding />} />
                 <Route element={<AppLayout />}>
                   <Route index path="/" element={<HomeRedirect />} />
                   <Route path="/dashboard" element={<Dashboard />} />
@@ -45,7 +47,6 @@ createRoot(rootEl).render(
                   <Route path="/calendar" element={<Calendar />} />
                   <Route path="/agrisense" element={<AgriSense />} />
                   <Route path="/knowledge-base" element={<KnowledgeBase />} />
-                  <Route path="/onboarding" element={<Onboarding />} />
                   <Route path="/agent-intake" element={<AgentIntake />} />
                   <Route path="/temporal" element={<Temporal />} />
                   <Route path="/marketplace" element={<Marketplace />} />

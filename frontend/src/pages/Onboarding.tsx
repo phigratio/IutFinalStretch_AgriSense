@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useAuth } from "../context/AuthContext.js";
 import {
   getOnboardingMe,
   requestTenant,
@@ -23,6 +24,7 @@ const ROLE_BN: Record<UserRole, string> = { user: "ব্যবহারকা�
 type Choice = "tenant" | "self" | "assist";
 
 export default function Onboarding() {
+  const { user, logout } = useAuth();
   const [role, setRole] = useState<UserRole>("user");
   const [hasProfile, setHasProfile] = useState(false);
   const [choice, setChoice] = useState<Choice | null>(null);
@@ -54,7 +56,18 @@ export default function Onboarding() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8" style={{ fontFamily: "'Noto Sans Bengali', 'Hind Siliguri', system-ui, sans-serif" }}>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950" style={{ fontFamily: "'Noto Sans Bengali', 'Hind Siliguri', system-ui, sans-serif" }}>
+      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-5 py-3 dark:border-gray-800 dark:bg-gray-900">
+        <span className="text-lg font-bold text-brand-500">🌾 AgriSense</span>
+        <div className="flex items-center gap-3 text-sm">
+          {user && <span className="text-gray-500 dark:text-gray-400">{user.name}</span>}
+          <button onClick={logout} className="rounded-lg border border-gray-300 px-3 py-1.5 font-medium text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
+            লগ আউট
+          </button>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-2xl px-4 py-8">
       <h1 className="text-2xl font-bold text-gray-800 dark:text-white/90">স্বাগতম — নিবন্ধন সম্পূর্ণ করুন</h1>
       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
         আপনার বর্তমান ভূমিকা: <span className="font-semibold text-brand-500">{ROLE_BN[role]}</span>
@@ -87,6 +100,7 @@ export default function Onboarding() {
         {choice === "self" && <SelfProfileForm busy={busy} onSubmit={(b) => run(() => saveOwnProfile(b), "আপনার প্রোফাইল সংরক্ষিত হয়েছে।")} />}
         {choice === "assist" && <AssistForm busy={busy} onSubmit={(b) => run(() => requestAssist(b), "আপনার অনুরোধ পাঠানো হয়েছে। একজন টেন্যান্ট শীঘ্রই তথ্য পূরণ করবেন।")} />}
         {choice === "tenant" && <TenantForm busy={busy} onSubmit={(b) => run(() => requestTenant(b), "টেন্যান্ট হওয়ার আবেদন জমা হয়েছে। অ্যাডমিন পর্যালোচনা করবেন।")} />}
+      </div>
       </div>
     </div>
   );
