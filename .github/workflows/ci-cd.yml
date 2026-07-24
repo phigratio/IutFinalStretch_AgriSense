@@ -14,7 +14,7 @@ on:
       deploy_branch:
         description: "Branch to deploy to the VPS"
         required: false
-        default: "rag-mem0"
+        default: "main"
 
 concurrency:
   group: iut-ict-fest-${{ github.ref }}
@@ -70,7 +70,7 @@ jobs:
     name: Deploy to VPS
     runs-on: ubuntu-latest
     needs: ci
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/rag-mem0' || github.ref == 'refs/heads/auth-google-oauth-production'
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/auth-google-oauth-production'
     environment: production
     steps:
       - name: Start SSH agent
@@ -90,8 +90,11 @@ jobs:
           VPS_APP_DIR: ${{ vars.VPS_APP_DIR || '/srv/muqtadir/iut_ict_fest' }}
           DEPLOY_BRANCH: ${{ github.event.inputs.deploy_branch || vars.VPS_DEPLOY_BRANCH || github.ref_name }}
           PUBLIC_HOST: ${{ vars.PUBLIC_HOST }}
+          VPS_APP_BIND: ${{ vars.VPS_APP_BIND || '0.0.0.0' }}
           VPS_APP_PORT: ${{ vars.VPS_APP_PORT || '8093' }}
+          VPS_FRONTEND_BIND: ${{ vars.VPS_FRONTEND_BIND || '0.0.0.0' }}
           VPS_FRONTEND_PORT: ${{ vars.VPS_FRONTEND_PORT || '8095' }}
+          VPS_GRAFANA_BIND: ${{ vars.VPS_GRAFANA_BIND || '0.0.0.0' }}
           VPS_GRAFANA_PORT: ${{ vars.VPS_GRAFANA_PORT || '8094' }}
           POSTGRES_DB: ${{ vars.POSTGRES_DB || 'iut_ict_fest' }}
           POSTGRES_USER: ${{ vars.POSTGRES_USER || 'iut_ict_fest' }}
@@ -126,20 +129,20 @@ jobs:
           cat > .env.production.generated <<ENV
           NODE_ENV=production
           PUBLIC_HOST=$PUBLIC_HOST
-          VPS_APP_BIND=127.0.0.1
+          VPS_APP_BIND=$VPS_APP_BIND
           VPS_APP_PORT=$VPS_APP_PORT
-          VPS_FRONTEND_BIND=127.0.0.1
+          VPS_FRONTEND_BIND=$VPS_FRONTEND_BIND
           VPS_FRONTEND_PORT=$VPS_FRONTEND_PORT
-          VPS_GRAFANA_BIND=127.0.0.1
+          VPS_GRAFANA_BIND=$VPS_GRAFANA_BIND
           VPS_GRAFANA_PORT=$VPS_GRAFANA_PORT
           POSTGRES_DB=$POSTGRES_DB
           POSTGRES_USER=$POSTGRES_USER
           POSTGRES_PASSWORD=$POSTGRES_PASSWORD
           AUTH_TOKEN_SECRET=$AUTH_TOKEN_SECRET
           AUTH_TOKEN_TTL_SECONDS=3600
-          COOKIE_SECURE=true
-          FRONTEND_AUTH_SUCCESS_URL=https://$PUBLIC_HOST/
-          GOOGLE_CALLBACK_URL=https://$PUBLIC_HOST/auth/google/callback
+          COOKIE_SECURE=false
+          FRONTEND_AUTH_SUCCESS_URL=http://$PUBLIC_HOST:$VPS_FRONTEND_PORT/
+          GOOGLE_CALLBACK_URL=http://$PUBLIC_HOST:$VPS_FRONTEND_PORT/auth/google/callback
           GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
           GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
           OPENAI_API_KEY=$OPENAI_API_KEY
@@ -159,6 +162,8 @@ jobs:
           TEMPORAL_POSTGRES_PASSWORD=$TEMPORAL_POSTGRES_PASSWORD
           GRAFANA_ADMIN_USER=$GRAFANA_ADMIN_USER
           GRAFANA_ADMIN_PASSWORD=$GRAFANA_ADMIN_PASSWORD
+          GRAFANA_ROOT_URL=http://$PUBLIC_HOST:$VPS_GRAFANA_PORT/
+          GRAFANA_SERVE_FROM_SUB_PATH=false
           BDAPPS_APP_ID=$BDAPPS_APP_ID
           BDAPPS_PASSWORD=$BDAPPS_PASSWORD
           BDAPPS_APP_NAME=AgriSense
@@ -171,10 +176,36 @@ jobs:
           rm -f .env.production.generated
 
           ssh "$VPS_USER@$VPS_HOST" \
-            "VPS_APP_DIR='$VPS_APP_DIR' DEPLOY_BRANCH='$DEPLOY_BRANCH' VPS_APP_PORT='$VPS_APP_PORT' bash -s" <<'REMOTE'
+            "VPS_APP_DIR='$VPS_APP_DIR' DEPLOY_BRANCH='$DEPLOY_BRANCH' VPS_APP_PORT='$VPS_APP_PORT' VPS_FRONTEND_PORT='$VPS_FRONTEND_PORT' VPS_GRAFANA_PORT='$VPS_GRAFANA_PORT' GITHUB_RUN_ID='$GITHUB_RUN_ID' bash -s" <<'REMOTE'
           set -euo pipefail
 
           cd "$VPS_APP_DIR"
+          COMPOSE_FILES="-f docker-compose.yml -f docker-compose.vps-nginx.yml"
+          PREVIOUS_REF="$(git rev-parse --verify HEAD)"
+          ROLLBACK_ENV=".env.rollback.${GITHUB_RUN_ID}"
+          if [ -f .env ]; then
+            cp .env "$ROLLBACK_ENV"
+            chmod 600 "$ROLLBACK_ENV"
+          else
+            ROLLBACK_ENV=""
+          fi
+
+          rollback() {
+            set +e
+            echo "::warning::Deploy failed. Rolling back to ${PREVIOUS_REF}."
+            cd "$VPS_APP_DIR"
+            git reset --hard "$PREVIOUS_REF"
+            if [ -n "$ROLLBACK_ENV" ] && [ -f "$ROLLBACK_ENV" ]; then
+              cp "$ROLLBACK_ENV" .env
+              chmod 600 .env
+            fi
+            docker compose $COMPOSE_FILES up -d --build --remove-orphans
+            docker compose $COMPOSE_FILES ps
+            curl -fsS "http://127.0.0.1:$VPS_APP_PORT/health" || true
+            exit 1
+          }
+          trap rollback ERR
+
           git fetch origin "$DEPLOY_BRANCH"
           git checkout "$DEPLOY_BRANCH"
           git reset --hard "origin/$DEPLOY_BRANCH"
@@ -183,8 +214,24 @@ jobs:
           mv /tmp/iut_ict_fest.env .env
           chmod 600 .env
 
-          docker compose -f docker-compose.yml -f docker-compose.vps-nginx.yml config --quiet
-          docker compose -f docker-compose.yml -f docker-compose.vps-nginx.yml up -d --build --remove-orphans
-          docker compose -f docker-compose.yml -f docker-compose.vps-nginx.yml ps
-          curl -fsS "http://127.0.0.1:$VPS_APP_PORT/health"
+          docker compose $COMPOSE_FILES config --quiet
+          docker compose $COMPOSE_FILES build
+          docker compose $COMPOSE_FILES up -d --remove-orphans
+          docker compose $COMPOSE_FILES ps
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:$VPS_APP_PORT/health"; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "Backend health check failed after 30 attempts."
+              exit 1
+            fi
+            sleep 2
+          done
+
+          curl -fsSI "http://127.0.0.1:$VPS_FRONTEND_PORT/"
+          curl -fsSI "http://127.0.0.1:$VPS_GRAFANA_PORT/"
+          rm -f "$ROLLBACK_ENV"
+          trap - ERR
           REMOTE
