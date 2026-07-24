@@ -200,6 +200,20 @@
   alert → real SMS, hooks the existing Temporal weatherAlertSweep). Anyone pulling: run
   `npx prisma generate && npx prisma migrate deploy`.
 
+- 24Jul ~20:20 — Claude session (with Labib) — **P2 shipped (a03edb2): proactive alert →
+  real SMS delivery** — the headline "agent reaches the farmer off-app" feature. New
+  `src/notifications/smsDispatcher.ts` delivers pending `proactive_alerts` by SMS to the
+  farmer's masked BDApps channel (gated on channel activation → `skipped_no_channel` if
+  inactive). Additive migration `20260724210000_add_alert_delivery` (delivery_status/
+  sms_message_id/delivered_at on proactive_alerts). Hooked into the weather + plan-task
+  Temporal sweeps (best-effort). Dev route `POST /api/dev/{seed-demo-alert,deliver-alerts}`
+  for on-demand demo. **LIVE-VERIFIED: seeded alert → delivered → real BDApps messageId
+  12607242018482171 persisted, delivery_status=sent, real SMS to 01805758966.** tsc + 37
+  tests green. ⚠ Migration note: `prisma migrate dev` is broken by teammates' parallel-
+  timestamp migrations (shadow-DB replay hits marketplace_orders ordering) — use
+  `migrate deploy` (works fine); my P2 migration was hand-written + deployed. Next: P3
+  (BDApps login provider, backend→web→mobile).
+
 ## 8. Session log (append-only: `HH:MM — <who> — <what changed>`)
 
 - 24Jul 11:00 — Claude session 1 (with A) — Read problem statement, bdapps cheatsheet/DGD/
