@@ -34,6 +34,7 @@ const mainNav: NavItem[] = [
   { name: "Payments", path: "/payments", icon: <CreditCardIcon /> },
   { name: "BDApps", path: "/bdapps", icon: <PhoneIcon /> },
   { name: "Knowledge Base", path: "/knowledge-base", icon: <BoxIcon /> },
+  { name: "নিবন্ধন (Onboarding)", path: "/onboarding", icon: <UserIcon /> },
   { name: "Users", path: "/users", icon: <UserGroupIcon /> },
   { name: "Profile", path: "/profile", icon: <UserIcon /> },
 ];

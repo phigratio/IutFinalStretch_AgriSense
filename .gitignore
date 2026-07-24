@@ -38,3 +38,5 @@ Thumbs.db
 .cache/
 .tmp/
 *.tsbuildinfo
+# Added by code-review-graph
+.code-review-graph/

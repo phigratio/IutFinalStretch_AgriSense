@@ -16,6 +16,7 @@ export interface PublicAuthUser {
   email: string;
   name: string;
   emailVerified: boolean;
+  role: "user" | "tenant" | "admin";
 }
 
 export class AuthService {
@@ -67,7 +68,7 @@ export class AuthService {
 
   createResponse(user: AuthUser): AuthResponse {
     return {
-      accessToken: createAuthToken({ userId: user.id, email: user.email }),
+      accessToken: createAuthToken({ userId: user.id, email: user.email, role: user.role }),
       tokenType: "Bearer",
       user: toPublicUser(user),
     };
@@ -80,6 +81,7 @@ export function toPublicUser(user: AuthUser): PublicAuthUser {
     email: user.email,
     name: user.name,
     emailVerified: user.emailVerified,
+    role: user.role,
   };
 }
 
