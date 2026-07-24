@@ -189,7 +189,10 @@ function heuristicExtract(message: string): IntakeProfilePatch {
   }
 
   for (const soil of ["sandy loam", "sandy-loam", "clay loam", "clay-loam", "sandy", "loam", "clay", "silt"]) {
-    if (text.includes(soil)) patch.soilType = soil.replace("-", " ");
+    if (text.includes(soil)) {
+      patch.soilType = soil.replace("-", " ");
+      break;
+    }
   }
 
   for (const water of ["rainfed", "tubewell", "tube well", "canal", "pond", "mixed"]) {
