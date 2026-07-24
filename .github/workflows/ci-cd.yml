@@ -83,9 +83,25 @@ jobs:
           ssh-private-key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
 
       - name: Trust VPS host key
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
         run: |
+          : "${VPS_HOST:?Missing VPS_HOST secret}"
           mkdir -p ~/.ssh
-          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+          chmod 700 ~/.ssh
+          # Best-effort: pre-populate known_hosts. ssh-keyscan exits non-zero when
+          # the host is momentarily unreachable, which must NOT abort the deploy —
+          # the scp/ssh steps use StrictHostKeyChecking=accept-new and will trust
+          # the host on first connect regardless. Retry a few times, then move on.
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 15 -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+              echo "Host key fetched for $VPS_HOST."
+              break
+            fi
+            echo "ssh-keyscan attempt $attempt failed; retrying..."
+            sleep 5
+          done
+          true
 
       - name: Deploy
         env:
@@ -176,10 +192,11 @@ jobs:
           MOCK_BDAPPS_BALANCE=100
           ENV
 
-          scp .env.production.generated "$VPS_USER@$VPS_HOST:/tmp/iut_ict_fest.env"
+          SSH_OPTS="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=10"
+          scp $SSH_OPTS .env.production.generated "$VPS_USER@$VPS_HOST:/tmp/iut_ict_fest.env"
           rm -f .env.production.generated
 
-          ssh "$VPS_USER@$VPS_HOST" \
+          ssh $SSH_OPTS "$VPS_USER@$VPS_HOST" \
             "VPS_APP_DIR='$VPS_APP_DIR' DEPLOY_BRANCH='$DEPLOY_BRANCH' VPS_APP_PORT='$VPS_APP_PORT' VPS_FRONTEND_PORT='$VPS_FRONTEND_PORT' VPS_GRAFANA_PORT='$VPS_GRAFANA_PORT' GITHUB_RUN_ID='$GITHUB_RUN_ID' bash -s" <<'REMOTE'
           set -euo pipefail
 
