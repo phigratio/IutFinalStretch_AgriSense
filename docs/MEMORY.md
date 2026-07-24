@@ -25,9 +25,10 @@
 
 | Member | Name | GitHub | Owns |
 |--------|------|--------|------|
-| A — Agent core | ☐ | ☐ | server/agent, server/llm, server/tools, prompts |
-| B — Domain & data | ☐ | ☐ | server/engines, server/rag, openMeteo, seed data, kb-sources |
-| C — Product | ☐ | ☐ | web/, server/routes, server/db, bdapps, README, demo |
+| A — Agent core | ⚠ **UNASSIGNED — decide at next standup (20-pt rubric row!)** | ☐ | agent loop, LLM adapter, tools wiring, prompts |
+| B1 — Memory & schema | Mujahid | phigratio | prisma/schema.prisma, src/rag (mem0), docker infra |
+| B2 — Knowledge base | Navid | navid1111 | KB sources, ingestion, retrieval, engines data |
+| C — Product & bdapps | Labib | Kashshaf-Labib | mobile/ (Expo RN app), src/bdapps, src/payments, routes, README, demo |
 
 - Team name: ☐ → repo `<TeamName>AgriSense` (☐ URL once created)
 - Demo laptop: ☐ · Backup narrator: ☐
@@ -60,8 +61,17 @@
   declared** · live scraping brittle in 24h · README honesty per rules.
 - D10 — Commits by team members' own identities, conventional format, **no AI trailers**;
   README lists tools/APIs used per submission requirements. AI assistants are rules-allowed.
-- D11 — Stack TS end-to-end: Express 5 + SSE, Vite+React+Tailwind, vitest for engines/bdapps
-  request shapes · team fluency, one language across members.
+- D11 — Stack TS end-to-end: Express 5 + SSE, ~~Vite+React+Tailwind~~ (superseded by D12),
+  vitest for engines/bdapps request shapes · team fluency, one language across members.
+- D12 24Jul ~11:00 — **Frontend = React Native (Expo, Expo Go on Android phone)**, replaces
+  the planned Vite web app · pairs perfectly with bdapps (receipt SMS lands on the demo phone
+  on stage); backend stays the single brain, app is a thin client, all bdapps calls
+  server-side · rejected: web dashboard.
+- D13 24Jul ~11:00 — Team is building in THIS repo on **Postgres+Prisma+pgvector, docker,
+  self-hosted mem0+Neo4j** (Mujahid's PR #1) — supersedes D6 (SQLite) and the fresh-repo
+  execution of D1. D1's compliance warning stands as logged 24Jul in §8 — team's call, made
+  with eyes open. Memory = mem0 (`RagMemory`); RAG chunks = `RagDocument/RagDocumentChunk`
+  in pgvector.
 
 ## 4. Environment & credentials status (update as they land)
 
@@ -79,12 +89,19 @@
 **DONE**
 - 24Jul ~11:00 — Planning docs v1 written (PRD/ARCHITECTURE/RULES/PHASES/DESIGN/MEMORY) from
   problem statement + bdapps resources + rubric analysis.
+- 24Jul 10:41 — Prisma schema (farmer/farm/session/tool-call-trace/weather/plan/payment) +
+  mem0 RAG infra (docker: mem0-api + Neo4j + pgvector) merged — PR #1, Mujahid (823f6a0).
 
 **IN PROGRESS**
-- Phase 0 (all): P0-1 repo · P0-2 scaffold (A) · P0-3 keys+KB sources (B) · P0-4 bdapps provisioning (C).
+- Navid: knowledge base pipeline (sources → ingestion → retrieval).
+- Mujahid: mem0/memory layer bring-up (+ resolve the OpenAI-key question in §4).
+- Labib: bdapps provisioning + payment service + Expo RN app — detailed plan in
+  `docs/plans/PLAN-labib-bdapps-react-native.md` (deadlines: S1000 by 12:00, checkout svc
+  13:30, app skeleton CP1 15:00).
 
 **NEXT UP**
-- Phase 1 walking skeleton → CP1 15:00 (chat→weather→trace E2E). Then Phase 2 → CP2 22:00 (full Tier-0).
+- **Assign the agent-core owner (unowned!)** → then Phase 1 walking skeleton → CP1 15:00
+  (chat→weather→trace E2E on the phone). Then Phase 2 → CP2 22:00 (full Tier-0).
 
 **BLOCKED / RISKS WATCHLIST**
 - bdapps approval latency / IP whitelist — started at P0 deliberately; escalate to mentors if stuck by 13:00.
@@ -100,7 +117,10 @@
 
 ## 7. Open questions (answer & move to §3 as decisions)
 
-- Team name? (blocks repo creation — decide by 12:00)
+- **Who owns the agent core loop?** (biggest rubric item; Mujahid after mem0 bring-up is the
+  natural fit — decide at next standup)
+- ~~mem0: funded OpenAI key available, or reconfigure to Gemini?~~ → resolved, D14 (OpenAI ×3).
+- ~~Team name?~~ → repo is `IutFinalStretch_AgriSense`; verify underscore naming with organizers.
 - Does the venue share a static public IP for bdapps whitelisting, or NAT that changes? (C asks organizers)
 - ~~Is a funded Anthropic/OpenAI key available?~~ **Resolved:** funded OpenAI key held by the
   team → sole LLM provider (D3): `gpt-4o` for agent chat; RAG/memory/embeddings via mem0 (D5),
@@ -121,3 +141,13 @@
   code; recommended: create it now (P0-1) and keep this repo for planning/reference. Also
   verify naming with organizers: required pattern is `TeamNameAgriSense` (example shows no
   underscore).
+- 24Jul 11:10 — Claude session 1 (with Labib) — Reviewed teammate work (schema + mem0 PR #1,
+  .gitignore PR #2) and pre-event bdapps client coverage. Logged D12 (Expo React Native app)
+  + D13 (build on this repo / Postgres+mem0 stack). Wrote Labib's workstream plan →
+  `docs/plans/PLAN-labib-bdapps-react-native.md`. Flagged: agent loop UNOWNED, mem0 needs
+  OpenAI key or Gemini reconfig, venue-wifi/hotspot risk. Roles table (§2) filled.
+- 24Jul 11:30 — Claude session 1 (with Labib) — **$50 OpenAI credit claimed by each member
+  (~$150 total)** → D14: LLM = OpenAI `gpt-5-mini`, embeddings `text-embedding-3-small`
+  (1536 — schema unchanged), mem0 docker defaults work as-is; Gemini/Groq demoted to
+  failover. mem0 open question closed. Mujahid: set `OPENAI_API_KEY` in `.env` + compose env
+  and bring the stack up. Navid: embed KB chunks with `text-embedding-3-small` only.
