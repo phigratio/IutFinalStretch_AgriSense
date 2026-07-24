@@ -16,6 +16,60 @@ workflows, Prisma models). Diagrams are grouped by tier.
 
 ---
 
+## 0. Real-time & external data — where the KB gets its data
+
+**What is actually live vs periodic vs seeded.** The big honesty point: **only weather is truly
+real-time.** Market prices in the KB are *real but periodic* (a monthly WFP bulk file), and the
+`/api/marketplace` module's suppliers + price history are **seeded/mock** — a different thing from
+the KB's WFP prices.
+
+| Data (real-time-ish) | Source | Live? | How it's fetched | Feeds | Honesty |
+|---|---|---|---|---|---|
+| **Weather forecast** (16-day rain/temp) | **Open-Meteo** (keyless) | 🟢 **Live, per request** | `GET api.open-meteo.com/v1/forecast` | ranking `weatherFit`, season-plan weather-note, proactive alerts | **REAL** |
+| **Climate normals** (seasonal rainfall) | **Open-Meteo Archive** | 🟢 Live (historical, averaged *in code*) | `GET archive-api.open-meteo.com/v1/archive` | ranking `waterFit`, basis | **REAL** — labelled "historical normal 2016–2025", never a forecast |
+| **Geocoding** (district → lat/lon) | **Open-Meteo Geocoding** | 🟢 Live | `GET geocoding-api.open-meteo.com/v1/search` | grounding | **REAL** |
+| **Market prices** (BDT/kg by market/district) | **WFP via HDX** | 🟡 **Periodic** — monthly bulk CSV, refreshed on demand | CKAN `package_show` → `wfp_food_prices_bgd.csv` → `PriceObservation` | KB `/api/kb/prices` → revenue, break-even, profit | **REAL but lagged** — labelled "WFP monthly \<month\>", not a spot price |
+| **Tenant local prices** | Tenant admin | 🟡 Manual, on update | `POST /api/tenants/:t/prices` | overrides the hub price for that district | **REAL, local** (tenant-entered) |
+| **Price trend** (sell / store / wait) | *computed* from WFP history | derived | `resolvePriceSignal` over `PriceObservation` | KB `/api/kb/prices/signal` | REAL-derived; "trend only, not a forecast" |
+| **Voice transcript** (Bengali) | **Speechmatics** / OpenAI Whisper | 🟢 Live | `POST /api/voice/speechmatics` | onboarding intake | **REAL** |
+| **LLM extraction + narration** | **OpenAI** gpt-4o / gpt-4.1-mini | 🟢 Live | `api.openai.com` | intake fields, prose (never numbers) | **REAL** (paid) |
+| **SMS / OTP / charge** | **bdapps CaaS** | 🟢 Live sandbox *or* mock | bdapps API (`MOCK_BDAPPS` for dev) | alerts, checkout, channel | **REAL sandbox / MOCK** (declared) |
+| **Marketplace suppliers + catalog** | `seedData.ts` | 🔴 **Seeded, static** | `seededCatalog: true` | `/api/marketplace` supplier ranking | **MOCK / seeded** (declared, rules-OK) |
+| **Marketplace price history** (`MarketPrice`) | `seedData.ts` | 🔴 **Seeded, static** | `seededMarketPrices: true` | `/api/marketplace` sell/store/wait | **MOCK / seeded** — *separate from the real WFP `PriceObservation`* |
+| **Agronomy** (FRG doses, calendar, water, varieties, SRDI, soil-fit) | Public docs (FRG-2018, BARC, BRRI, BARI, FAO, SRDI) | ⚪ **Static, ingested once** | `src/data/*.csv` | ranking, season plan, financials | **MANUAL** — currently `unverified` placeholder baselines pending real transcription |
+| **Prose KB** (pest/practice advisory) | Public docs, chunked | ⚪ Static, ingested once | mem0 vectors | `query_knowledge_base` citations | **MANUAL** / curated |
+
+```mermaid
+flowchart LR
+    subgraph LIVE["🟢 Real-time (live per request)"]
+        OM[Open-Meteo forecast] --> Wx[Weather 16-day]
+        OMA[Open-Meteo archive] --> Norm[Climate normals]
+        OMG[Open-Meteo geocoding] --> Geo[lat/lon]
+        SMv[Speechmatics / Whisper] --> STT[Bengali transcript]
+        OAI[OpenAI] --> LLM[Extraction + prose]
+    end
+    subgraph PERIODIC["🟡 Periodic pull (refresh, not live)"]
+        WFPs[WFP / HDX monthly CSV] --> Px[(PriceObservation · hub)]
+        TenP[Tenant entry] --> Px
+    end
+    subgraph SEEDED["🔴 Seeded / mock (NOT real)"]
+        Seed[seedData.ts] --> Sup[(Marketplace suppliers)]
+        Seed --> MP[(MarketPrice history)]
+    end
+    subgraph STATIC["⚪ Curated static (ingested once)"]
+        Docs[FRG / BARC / BRRI / BARI / FAO / SRDI] --> CSV[(src/data CSV · manual)]
+        Docs --> Prose[(mem0 prose)]
+    end
+    Wx & Norm & Px & CSV & Prose --> Agent[Agent / KB answer]
+    MP & Sup --> Mkt["/api/marketplace"]
+```
+
+> ⚠️ **Two different price systems** — don't confuse them:
+> **(1)** KB `PriceObservation` = **real** WFP data (`/api/kb/prices`, drives the agent's financials).
+> **(2)** `MarketPrice` in the marketplace module = **seeded/mock** (`/api/marketplace` intel page).
+
+---
+
 ## 1. System context
 
 ```mermaid
