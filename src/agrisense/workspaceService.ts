@@ -371,11 +371,13 @@ function mapSessionCard(row: SessionRow): WorkspaceSessionCard {
 function mapWeatherCards(rows: WeatherRow[]): WorkspaceWeatherCard[] {
   const groups = new Map<string, WeatherRow[]>();
   for (const row of rows) {
-    const key = `${row.farm_id}:${row.session_id ?? "none"}:${row.created_at.toISOString()}`;
+    const key = `${row.farm_id}:${row.session_id ?? "none"}`;
     groups.set(key, [...(groups.get(key) ?? []), row]);
   }
   return [...groups.values()].map((group) => {
-    const first = group[0]!;
+    const first = group
+      .slice()
+      .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())[0]!;
     const daily = group
       .map((row): WeatherDaily => ({
         date: dateString(row.forecast_date),
@@ -385,20 +387,21 @@ function mapWeatherCards(rows: WeatherRow[]): WorkspaceWeatherCard[] {
         humidityPct: numberValue(row.humidity_pct),
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
+    const uniqueDaily = [...new Map(daily.map((day) => [day.date, day])).values()].slice(0, 7);
     const geocode = objectValue(objectValue(first.raw_response)?.geocode);
     const weather: WeatherForecast = {
       provider: first.provider === "mock" ? "mock" : "open-meteo",
       locationText: first.location_text,
       latitude: numberValue(geocode?.latitude) ?? 0,
       longitude: numberValue(geocode?.longitude) ?? 0,
-      daily,
+      daily: uniqueDaily,
       raw: first.raw_response,
     };
     return {
       farmId: first.farm_id,
       sessionId: first.session_id ?? undefined,
       weather,
-      rain7dMm: round1(daily.slice(0, 7).reduce((sum, day) => sum + day.rainfallMm, 0)),
+      rain7dMm: round1(uniqueDaily.reduce((sum, day) => sum + day.rainfallMm, 0)),
       refreshedAt: first.created_at.toISOString(),
     };
   });
