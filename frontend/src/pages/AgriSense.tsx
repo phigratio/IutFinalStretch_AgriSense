@@ -24,12 +24,15 @@ import {
   type WorkflowStage,
 } from "../api/agrisense.js";
 import { transcribeVoice } from "../api/voice.js";
+import { diagnoseLeaf, type LeafDiagnosisResult } from "../api/vision.js";
+import LeafResult from "../components/vision/LeafResult.js";
 import { useAuth } from "../context/AuthContext.js";
 import { ArrowUpIcon, BoxIcon, CalendarIcon, MicIcon, SearchIcon, StopIcon } from "../icons/index.js";
 
 interface ChatMessage {
   role: "farmer" | "agent";
   text: string;
+  diagnosis?: LeafDiagnosisResult;
 }
 
 type Language = "en" | "bn" | "banglish";
@@ -186,6 +189,7 @@ export default function AgriSense() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const leafInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimeoutRef = useRef<number | undefined>(undefined);
@@ -441,6 +445,35 @@ export default function AgriSense() {
     }
   }
 
+  async function diagnoseLeafPhoto(file: File) {
+    if (loading) return;
+    setError(null);
+    setLoading(true);
+    setMessages((current) => [...current, { role: "farmer", text: "🍃 Sent a leaf photo for diagnosis." }]);
+    try {
+      const diagnosis = await diagnoseLeaf({
+        file,
+        farmId,
+        sessionId,
+        crop: result?.seasonPlan?.crop,
+        locationText: profile?.locationText,
+        areaAcres: profile?.sizeAcres,
+        language,
+      });
+      setTrace((current) => [...current, ...diagnosis.trace]);
+      const summary = diagnosis.healthy
+        ? `No disease detected (${Math.round(diagnosis.confidence * 100)}% confidence). Keep monitoring the crop.`
+        : `${diagnosis.disease} on ${diagnosis.crop} — ${Math.round(diagnosis.confidence * 100)}% confidence, ${diagnosis.severity} severity.`;
+      setMessages((current) => [...current, { role: "agent", text: summary, diagnosis }]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Leaf diagnosis failed.";
+      setError(message);
+      setMessages((current) => [...current, { role: "agent", text: message }]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function selectStage(stage: ViewStage) {
     setSearchParams(stage === "full" ? {} : { stage });
   }
@@ -646,15 +679,21 @@ export default function AgriSense() {
           </div>
           <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-4">
             {messages.map((message, index) => (
-              <div
-                key={`${message.role}-${index}`}
-                className={`max-w-[92%] rounded-lg px-3 py-2 text-sm leading-6 ${
-                  message.role === "farmer"
-                    ? "ml-auto bg-brand-500 text-white"
-                    : "bg-gray-100 text-gray-800 dark:bg-white/[0.06] dark:text-gray-100"
-                }`}
-              >
-                {message.text}
+              <div key={`${message.role}-${index}`} className={`flex flex-col ${message.role === "farmer" ? "items-end" : "items-start"}`}>
+                <div
+                  className={`max-w-[92%] rounded-lg px-3 py-2 text-sm leading-6 ${
+                    message.role === "farmer"
+                      ? "bg-brand-500 text-white"
+                      : "bg-gray-100 text-gray-800 dark:bg-white/[0.06] dark:text-gray-100"
+                  }`}
+                >
+                  {message.text}
+                </div>
+                {message.diagnosis && (
+                  <div className="mt-2 w-full rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-white/[0.03]">
+                    <LeafResult result={message.diagnosis} />
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -667,6 +706,27 @@ export default function AgriSense() {
                 placeholder={language === "bn" ? "খামারের তথ্য লিখুন..." : language === "banglish" ? "Farm er details likhun..." : "Describe the farm..."}
                 className="h-11 min-w-0 flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-100"
               />
+              <input
+                ref={leafInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(event) => {
+                  const selected = event.target.files?.[0];
+                  event.target.value = "";
+                  if (selected) void diagnoseLeafPhoto(selected);
+                }}
+              />
+              <button
+                type="button"
+                disabled={loading || voiceStatus !== "idle"}
+                onClick={() => leafInputRef.current?.click()}
+                aria-label="Diagnose a leaf photo"
+                title="Diagnose a leaf photo"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-lg hover:bg-white disabled:opacity-60 dark:border-gray-800 dark:bg-white/[0.03]"
+              >
+                🍃
+              </button>
               <button
                 type="button"
                 disabled={loading || voiceStatus === "transcribing"}
