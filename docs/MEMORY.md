@@ -78,8 +78,12 @@
 - [ ] OpenAI key in `.env` as `OPENAI_API_KEY` (owner: B) — `gpt-4o` chat tested with curl?
       (same key feeds mem0's embedder)
 - [ ] mem0 stack up (owner: B) — `mem0-api` + `mem0-neo4j` running; `mem0Client` add/search round-trips?
-- [ ] bdapps Pro app provisioned: APP_ID ☐ · password in .env ☐ · venue public IP whitelisted ☐
-      (E1303 = re-check IP) · listener URLs set (ngrok) ☐ · first S1000 seen? ☐
+- [~] bdapps Pro app provisioning IN PROGRESS (24Jul, Labib): Allowed Host IP =
+      202.53.174.17 (current network — re-check on hotspot switch, E1303 = stale IP) ·
+      SMS shortcode **21213**, keyword **agrisms** (lowercase) · USSD service code **213**,
+      keyword **74756** (dial `*213*74756#`) · all traffic charging toggles = NO (only CaaS
+      direct debit ever charges) · listener URLs = example.com placeholders (swap to ngrok
+      if inbound SMS/USSD is demoed) · APP_ID ☐ · password in .env ☐ · first S1000 ☐
 - [ ] Repo created + 3 clones working
 - [ ] Test Robi SIM available for on-stage SMS? ☐
 - Venue wifi public IP: ☐ (recheck on network change) · Hotspot fallback tested: ☐
@@ -98,6 +102,17 @@
 - Labib: bdapps provisioning + payment service + Expo RN app — detailed plan in
   `docs/plans/PLAN-labib-bdapps-react-native.md` (deadlines: S1000 by 12:00, checkout svc
   13:30, app skeleton CP1 15:00).
+- Labib SHIPPED (commits 6c0f9d9→3d4e294): MOCK_BDAPPS offline mock + .env.example;
+  payments checkout service (list PI→balance→debit→SMS, persists bdapps_payments, logs CaaS
+  steps to agent_tool_calls via AgriSenseStore) + /api/payments routes, live-verified;
+  Expo SDK 57 app in mobile/ — Home (backend connection check, auto-resolves laptop from
+  Metro host), Chat (drives /api/agrisense/message, inline expandable tool-trace chips,
+  missing-field prefill chips), Plan (crop cards + season timeline + financials), Money
+  (CaaS checkout w/ receipt cards + honest MOCK badge), Trace (persisted session trace).
+  Backend suite 63 tests green; mobile tsc + expo web export green. NOTE: machine Node
+  upgraded 20.12→24 LTS (Prisma 7 needs ≥20.19) — other members may need the same.
+  STILL OPEN for Labib: real bdapps provisioning (APP_ID/password/IP whitelist → first real
+  S1000), phone-device smoke test via Expo Go, scrcpy setup.
 
 **NEXT UP**
 - **Assign the agent-core owner (unowned!)** → then Phase 1 walking skeleton → CP1 15:00
@@ -146,6 +161,14 @@
   + D13 (build on this repo / Postgres+mem0 stack). Wrote Labib's workstream plan →
   `docs/plans/PLAN-labib-bdapps-react-native.md`. Flagged: agent loop UNOWNED, mem0 needs
   OpenAI key or Gemini reconfig, venue-wifi/hotspot risk. Roles table (§2) filled.
+- 24Jul ~13:00 — Claude session (with Labib) — Iterative build of Labib's workstream, 6
+  commits pushed to main (see IN PROGRESS/SHIPPED note in §5): bdapps mock mode, payments
+  checkout service + routes (63 backend tests green, live-verified in mock mode), Expo
+  SDK 57 app with Home/Chat/Plan/Money/Trace tabs wired to Mujahid's /api/agrisense
+  endpoints + /api/payments. Node upgraded to 24 LTS on Labib's machine (Prisma 7 needs
+  ≥20.19). Next for Labib: bdapps provisioning → first real S1000, Expo Go smoke on phone,
+  scrcpy. Contract note: mobile/src/api/types.ts mirrors backend contracts — change both
+  sides in one commit.
 - 24Jul 11:30 — Claude session 1 (with Labib) — **$50 OpenAI credit claimed by each member
   (~$150 total)** → D14: LLM = OpenAI `gpt-5-mini`, embeddings `text-embedding-3-small`
   (1536 — schema unchanged), mem0 docker defaults work as-is; Gemini/Groq demoted to
