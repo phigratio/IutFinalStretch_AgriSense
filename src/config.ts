@@ -9,6 +9,9 @@ export const config = {
   googleCallbackUrl:
     process.env.GOOGLE_CALLBACK_URL ?? "http://localhost:3000/auth/google/callback",
   frontendAuthSuccessUrl: process.env.FRONTEND_AUTH_SUCCESS_URL,
+  mem0ApiUrl: process.env.MEM0_API_URL ?? "http://mem0-api:8000",
+  mem0ApiKey: process.env.MEM0_API_KEY,
+  ragEmbeddingDimensions: Number(process.env.RAG_EMBEDDING_DIMENSIONS) || 1536,
 };
 
 export function assertProductionConfig(): void {

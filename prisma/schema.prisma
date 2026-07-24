@@ -16,6 +16,11 @@ model AppUser {
   createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
   identities    AuthIdentity[]
+  ragMemories   RagMemory[]
+  ragDocuments  RagDocument[]
+  farmers       FarmerProfile[]
+  agentSessions AgentSession[]
+  payments      BdappsPayment[]
 
   @@map("app_users")
 }
@@ -31,4 +36,250 @@ model AuthIdentity {
   @@id([provider, providerUserId])
   @@index([userId])
   @@map("auth_identities")
+}
+
+model RagMemory {
+  id        String                  @id @default(uuid()) @db.Uuid
+  userId    String?                 @map("user_id") @db.Uuid
+  user      AppUser?                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId   String?                 @map("agent_id")
+  runId     String?                 @map("run_id")
+  role      String                  @default("memory")
+  content   String
+  metadata  Json                    @default("{}")
+  tags      String[]                @default([])
+  embedding Unsupported("vector(1536)")
+  createdAt DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([agentId])
+  @@index([runId])
+  @@map("rag_memories")
+}
+
+model RagDocument {
+  id        String             @id @default(uuid()) @db.Uuid
+  userId    String?            @map("user_id") @db.Uuid
+  user      AppUser?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceType String            @default("extension_manual") @map("source_type")
+  source    String
+  title     String?
+  citationUrl String?          @map("citation_url")
+  crop      String?
+  region    String?
+  language  String            @default("en")
+  metadata  Json               @default("{}")
+  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  chunks    RagDocumentChunk[]
+
+  @@index([userId])
+  @@index([source])
+  @@map("rag_documents")
+}
+
+model RagDocumentChunk {
+  id         String                  @id @default(uuid()) @db.Uuid
+  documentId String                  @map("document_id") @db.Uuid
+  document   RagDocument             @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  ordinal    Int
+  content    String
+  section    String?
+  crop       String?
+  season     String?
+  soilType   String?                 @map("soil_type")
+  tokenCount Int?                    @map("token_count")
+  metadata   Json                    @default("{}")
+  embedding  Unsupported("vector(1536)")
+  createdAt  DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([documentId, ordinal])
+  @@index([documentId])
+  @@map("rag_document_chunks")
+}
+
+model FarmerProfile {
+  id             String        @id @default(uuid()) @db.Uuid
+  userId         String?       @map("user_id") @db.Uuid
+  user           AppUser?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  bdappsMobile   String?       @map("bdapps_mobile")
+  preferredName  String?       @map("preferred_name")
+  preferredLanguage String     @default("en") @map("preferred_language")
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  farms          FarmProfile[]
+  sessions       AgentSession[]
+
+  @@index([userId])
+  @@index([bdappsMobile])
+  @@map("farmer_profiles")
+}
+
+model FarmProfile {
+  id                String            @id @default(uuid()) @db.Uuid
+  farmerId          String            @map("farmer_id") @db.Uuid
+  farmer            FarmerProfile     @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  name              String?
+  locationText      String            @map("location_text")
+  latitude          Decimal?          @db.Decimal(9, 6)
+  longitude         Decimal?          @db.Decimal(9, 6)
+  sizeAcres         Decimal           @map("size_acres") @db.Decimal(10, 2)
+  soilType          String            @map("soil_type")
+  waterAvailability String            @map("water_availability")
+  budgetBdt         Decimal           @map("budget_bdt") @db.Decimal(12, 2)
+  targetSeason      String            @map("target_season")
+  currentCrop       String?           @map("current_crop")
+  metadata          Json              @default("{}")
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sessions          AgentSession[]
+  weatherSnapshots  WeatherSnapshot[]
+  plans             SeasonPlan[]
+
+  @@index([farmerId])
+  @@index([locationText])
+  @@map("farm_profiles")
+}
+
+model AgentSession {
+  id             String          @id @default(uuid()) @db.Uuid
+  userId         String?         @map("user_id") @db.Uuid
+  user           AppUser?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  farmerId       String?         @map("farmer_id") @db.Uuid
+  farmer         FarmerProfile?  @relation(fields: [farmerId], references: [id], onDelete: SetNull)
+  farmId         String?         @map("farm_id") @db.Uuid
+  farm           FarmProfile?    @relation(fields: [farmId], references: [id], onDelete: SetNull)
+  channel        String          @default("web")
+  status         String          @default("intake")
+  missingFields  String[]        @default([]) @map("missing_fields")
+  goal           String?
+  summary        String?
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  toolCalls      AgentToolCall[]
+  weather        WeatherSnapshot[]
+  plans          SeasonPlan[]
+
+  @@index([userId])
+  @@index([farmerId])
+  @@index([farmId])
+  @@index([status])
+  @@map("agent_sessions")
+}
+
+model AgentToolCall {
+  id            String       @id @default(uuid()) @db.Uuid
+  sessionId     String       @map("session_id") @db.Uuid
+  session       AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  toolName      String       @map("tool_name")
+  purpose       String?
+  parameters    Json         @default("{}")
+  rawResponse   Json?        @map("raw_response")
+  status        String       @default("success")
+  errorMessage  String?      @map("error_message")
+  startedAt     DateTime     @default(now()) @map("started_at") @db.Timestamptz(6)
+  finishedAt    DateTime?    @map("finished_at") @db.Timestamptz(6)
+
+  @@index([sessionId])
+  @@index([toolName])
+  @@map("agent_tool_calls")
+}
+
+model WeatherSnapshot {
+  id            String        @id @default(uuid()) @db.Uuid
+  sessionId     String?       @map("session_id") @db.Uuid
+  session       AgentSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  farmId        String?       @map("farm_id") @db.Uuid
+  farm          FarmProfile?  @relation(fields: [farmId], references: [id], onDelete: SetNull)
+  provider      String
+  locationText  String        @map("location_text")
+  forecastDate  DateTime      @map("forecast_date") @db.Date
+  rainfallMm    Decimal?      @map("rainfall_mm") @db.Decimal(8, 2)
+  temperatureMinC Decimal?    @map("temperature_min_c") @db.Decimal(5, 2)
+  temperatureMaxC Decimal?    @map("temperature_max_c") @db.Decimal(5, 2)
+  humidityPct   Decimal?      @map("humidity_pct") @db.Decimal(5, 2)
+  rawResponse   Json          @map("raw_response")
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([sessionId])
+  @@index([farmId])
+  @@index([forecastDate])
+  @@map("weather_snapshots")
+}
+
+model SeasonPlan {
+  id                String           @id @default(uuid()) @db.Uuid
+  sessionId         String?          @map("session_id") @db.Uuid
+  session           AgentSession?    @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  farmId            String           @map("farm_id") @db.Uuid
+  farm              FarmProfile      @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  crop              String
+  rank              Int?
+  suitabilityScore  Decimal?         @map("suitability_score") @db.Decimal(5, 2)
+  waterNeed         String           @map("water_need")
+  riskLevel         String           @map("risk_level")
+  reasoning         String
+  retrievedChunkIds String[]         @default([]) @map("retrieved_chunk_ids")
+  weatherSnapshotIds String[]        @default([]) @map("weather_snapshot_ids")
+  expectedYieldUnit String           @default("kg") @map("expected_yield_unit")
+  expectedYield     Decimal          @map("expected_yield") @db.Decimal(12, 2)
+  expectedRevenueBdt Decimal         @map("expected_revenue_bdt") @db.Decimal(12, 2)
+  totalCostBdt      Decimal          @map("total_cost_bdt") @db.Decimal(12, 2)
+  netProfitBdt      Decimal          @map("net_profit_bdt") @db.Decimal(12, 2)
+  roiPct            Decimal          @map("roi_pct") @db.Decimal(8, 2)
+  breakEvenYield    Decimal          @map("break_even_yield") @db.Decimal(12, 2)
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  items             SeasonPlanItem[]
+  payments          BdappsPayment[]
+
+  @@index([sessionId])
+  @@index([farmId])
+  @@index([crop])
+  @@map("season_plans")
+}
+
+model SeasonPlanItem {
+  id          String     @id @default(uuid()) @db.Uuid
+  planId      String     @map("plan_id") @db.Uuid
+  plan        SeasonPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  itemType    String     @map("item_type")
+  title       String
+  description String
+  startDate   DateTime?  @map("start_date") @db.Date
+  endDate     DateTime?  @map("end_date") @db.Date
+  quantity    Decimal?   @db.Decimal(12, 2)
+  unit        String?
+  unitCostBdt Decimal?   @map("unit_cost_bdt") @db.Decimal(12, 2)
+  totalCostBdt Decimal?  @map("total_cost_bdt") @db.Decimal(12, 2)
+  reasoning   String?
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([planId])
+  @@index([itemType])
+  @@map("season_plan_items")
+}
+
+model BdappsPayment {
+  id                String      @id @default(uuid()) @db.Uuid
+  userId            String?     @map("user_id") @db.Uuid
+  user              AppUser?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  planId            String?     @map("plan_id") @db.Uuid
+  plan              SeasonPlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+  mobile            String
+  amountBdt         Decimal     @map("amount_bdt") @db.Decimal(12, 2)
+  status            String      @default("pending")
+  externalReference String?     @map("external_reference")
+  requestPayload    Json        @default("{}") @map("request_payload")
+  responsePayload   Json?       @map("response_payload")
+  receiptNumber     String?     @map("receipt_number")
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([planId])
+  @@index([mobile])
+  @@index([status])
+  @@map("bdapps_payments")
 }

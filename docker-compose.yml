@@ -18,6 +18,9 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:3000/auth/google/callback}
       FRONTEND_AUTH_SUCCESS_URL: ${FRONTEND_AUTH_SUCCESS_URL:-}
+      MEM0_API_URL: http://mem0-api:8000
+      MEM0_API_KEY: ${MEM0_API_KEY:-}
+      RAG_EMBEDDING_DIMENSIONS: ${RAG_EMBEDDING_DIMENSIONS:-1536}
       OTEL_SERVICE_NAME: iut-ict-fest-backend
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_METRIC_EXPORT_INTERVAL_MS: 5000
@@ -27,7 +30,7 @@ services:
       - observability
 
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     container_name: postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-iut_ict_fest}
@@ -42,6 +45,57 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - observability
+
+  mem0-api:
+    build:
+      context: .
+      dockerfile: deploy/mem0/Dockerfile
+    container_name: mem0-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mem0-neo4j:
+        condition: service_healthy
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      JWT_SECRET: ${MEM0_JWT_SECRET:-dev-only-change-this-mem0-jwt-secret}
+      ADMIN_API_KEY: ${MEM0_API_KEY:-dev-only-mem0-admin-key}
+      AUTH_DISABLED: ${MEM0_AUTH_DISABLED:-true}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-iut_ict_fest}
+      POSTGRES_USER: ${POSTGRES_USER:-iut_ict_fest}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-iut_ict_fest}
+      NEO4J_URI: bolt://mem0-neo4j:7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: ${MEM0_NEO4J_PASSWORD:-mem0-password}
+      MEM0_DEFAULT_LLM_MODEL: ${MEM0_DEFAULT_LLM_MODEL:-gpt-5-mini}
+      MEM0_DEFAULT_EMBEDDER_MODEL: ${MEM0_DEFAULT_EMBEDDER_MODEL:-text-embedding-3-small}
+    ports:
+      - "${MEM0_API_PORT:-8888}:8000"
+    volumes:
+      - mem0-history:/app/history
+    networks:
+      - observability
+
+  mem0-neo4j:
+    image: neo4j:5.26.4
+    container_name: mem0-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/${MEM0_NEO4J_PASSWORD:-mem0-password}
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - mem0-neo4j-data:/data
+      - mem0-neo4j-logs:/logs
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q --spider http://localhost:7474 || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 12
     networks:
       - observability
 
@@ -132,3 +186,6 @@ networks:
 volumes:
   tempo-data:
   postgres-data:
+  mem0-history:
+  mem0-neo4j-data:
+  mem0-neo4j-logs:
