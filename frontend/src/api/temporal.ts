@@ -3,9 +3,10 @@ import { apiFetch } from "./client.js";
 export interface TemporalSchedule {
   scheduleId: string;
   workflowType: string;
-  description: string;
+  description?: unknown;
   cronExpression: string;
   exists?: boolean;
+  args?: unknown[];
 }
 
 export interface TemporalSchedulesResult {

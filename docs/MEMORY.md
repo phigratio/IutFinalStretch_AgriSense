@@ -143,6 +143,49 @@
 - bdapps TAP doc (dev.bdapps.com/API_Documentation/bdapps_tap_api.html) — confirm CaaS flow
   matches DGD v1.1.3 shapes (C, during P3-C2).
 
+- 24Jul ~17:30 — Claude session (with Labib) — **Mobile app brought to feature parity with
+  the web frontend** (teammates had built out `frontend/` into a rich AgriSense workspace:
+  AgentIntake/AgriSense/Bdapps/Marketplace/Payments/Temporal pages). Synced mobile to the
+  evolved backend contract and replicated web features (commits 88657f1→d781d0e):
+  (1) API layer + session state mirror `frontend/src/api/*` — richer weather (humidity/ET0/
+  soil-moisture), `retrievedEvidence` RAG, itemized `costBreakdown` financials, workflow
+  stage / preferredLanguage / triggerReason on send; (2) Chat: language toggle (en/banglish/
+  bn) + starter-prompt chips; (3) Plan: full web stage panels (weather, RAG evidence w/
+  citations, crop factor breakdown, itemized costs, financial-invariant check); (4) new
+  **Market** tab (supplier compare + price intel + sell/store/wait + mem0 + trace) and
+  **Bdapps** console tab (SMS/OTP/balance/charge test routes). 7 tabs now. tsc + expo web
+  export green. NOTE for team: `mobile/src/api/types.ts` mirrors `frontend/src/api` — change
+  both in one commit. Mobile still runs via Expo **web** (localhost:8081) since Expo Go SDK 57
+  build is stuck in App/Play Store review (SDK 54 clients can't load it) — verified in Expo's
+  changelog, outside our control.
+
+- 24Jul ~18:00 — Claude session (with Labib) — **bdapps subscription CONFIRMED / REGISTERED**
+  (2nd confirmation SMS arrived: "Tk 1.00+VAT charged, monthly charge applicable, Welcome to
+  AgriSense! You are now subscribed"). Definitive live status (commits eb32ada, f87ecb9):
+  - ✅ **Working through the app, real:** SMS send (S1000), subscription getStatus
+    (REGISTERED), OTP request/verify for NEW numbers. **BUT** all subscriber-bearing calls
+    require the **masked subscriberId** from otp/verify — the raw `tel:8801…` is rejected
+    E1951 even when REGISTERED. Built `src/bdapps/subscriberStore.ts`: captures masked id at
+    otp/verify (keyed by referenceNo) and resolves every later call to it; wired into
+    routes/bdappsTest.ts + payments/service.ts. For already-REGISTERED numbers (bdapps then
+    refuses fresh OTP → E1351) seed via `BDAPPS_KNOWN_SUBSCRIBERS` env (masked id is stable
+    per number+app). Demo number seeded in .env. **Verified: SMS S1000 through
+    /api/bdapps/sms and subscription REGISTERED through the app.**
+  - ❌ **Still blocked, 100% bdapps-side:** CaaS `caas/list/pi` + `caas/balance/query` return
+    raw HTTP 404 (routes not provisioned for this app); `caas/direct/debit` returns **E1371
+    "App do not accept payments from given Payment Instrument"** for Mobile Account (tried
+    all name variants). "Limited production" approval + REGISTERED subscription did NOT
+    activate CaaS. Checkout now treats list/pi+balance as optional (skips 404s) and reaches
+    the debit, returning clean E1371 — will complete a real charge the instant bdapps
+    enables CaaS, zero code change.
+  - **ESCALATION STILL OPEN — email support@bdapps.com / call 09678232777, exact ask:**
+    "APP_139258 is REGISTERED and subscription charging works, but CaaS is not active:
+    caas/direct/debit → E1371 'App do not accept payments from given Payment Instrument'
+    (Mobile Account enabled in provisioning), caas/balance/query + caas/list/pi → raw 404.
+    Please activate CaaS direct-debit / payment instruments for this app."
+  - Infra note during this: teammate added `multer` dep + KB migrations (kb_ingestion_jobs);
+    ran `npm install` + `prisma generate` + `migrate deploy` to get backend booting.
+
 ## 8. Session log (append-only: `HH:MM — <who> — <what changed>`)
 
 - 24Jul 11:00 — Claude session 1 (with A) — Read problem statement, bdapps cheatsheet/DGD/
