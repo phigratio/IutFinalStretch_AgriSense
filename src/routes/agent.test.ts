@@ -31,7 +31,7 @@ const fakeNormals = async (): Promise<NormalsResult> => ({
   stale: true,
 });
 
-describe("POST /api/agent/message", () => {
+describe("POST /api/tier0/agent/message", () => {
   const app = createApp();
 
   beforeEach(() => {
@@ -45,7 +45,7 @@ describe("POST /api/agent/message", () => {
   });
 
   it("asks for missing fields on a vague opener (A3)", async () => {
-    const res = await request(app).post("/api/agent/message").send({ message: "I want to plant something" });
+    const res = await request(app).post("/api/tier0/agent/message").send({ message: "I want to plant something" });
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("intake");
     expect(res.body.missingFields.length).toBeGreaterThan(0);
@@ -55,7 +55,7 @@ describe("POST /api/agent/message", () => {
   it("drives a full turn to a recommendation with traceable numbers", async () => {
     const msg =
       "I'm in Kushtia with 2 acres of loam soil, reliable irrigation, budget 120000, planning Boro";
-    const res = await request(app).post("/api/agent/message").send({ message: msg });
+    const res = await request(app).post("/api/tier0/agent/message").send({ message: msg });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("complete");
@@ -65,7 +65,7 @@ describe("POST /api/agent/message", () => {
     expect(res.body.reply).toMatch(/Recommendation basis:/);
 
     // trace endpoint returns the tool calls for this session
-    const trace = await request(app).get(`/api/sessions/${res.body.sessionId}/trace`);
+    const trace = await request(app).get(`/api/tier0/sessions/${res.body.sessionId}/trace`);
     expect(trace.status).toBe(200);
     const tools = trace.body.events.map((e: { toolName: string }) => e.toolName);
     expect(tools).toContain("get_forecast");
@@ -73,23 +73,23 @@ describe("POST /api/agent/message", () => {
   });
 
   it("remembers state across turns and never re-asks a known field (A4)", async () => {
-    const first = await request(app).post("/api/agent/message").send({ message: "My farm is in Kushtia" });
+    const first = await request(app).post("/api/tier0/agent/message").send({ message: "My farm is in Kushtia" });
     expect(first.body.status).toBe("intake");
     expect(first.body.missingFields).not.toContain("district");
 
     const second = await request(app)
-      .post("/api/agent/message")
+      .post("/api/tier0/agent/message")
       .send({ sessionId: first.body.sessionId, message: "2 acres, loam, reliable irrigation, budget 120000, Boro" });
     expect(second.body.status).toBe("complete");
   });
 
   it("400s when message is missing", async () => {
-    const res = await request(app).post("/api/agent/message").send({});
+    const res = await request(app).post("/api/tier0/agent/message").send({});
     expect(res.status).toBe(400);
   });
 
   it("404s trace for an unknown session", async () => {
-    const res = await request(app).get("/api/sessions/does-not-exist/trace");
+    const res = await request(app).get("/api/tier0/sessions/does-not-exist/trace");
     expect(res.status).toBe(404);
   });
 });

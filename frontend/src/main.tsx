@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard.js";
 import Users from "./pages/Users.js";
 import Profile from "./pages/Profile.js";
 import Calendar from "./pages/Calendar.js";
+import AgriSense from "./pages/AgriSense.js";
 import SignIn from "./pages/SignIn.js";
 import NotFound from "./pages/NotFound.js";
 import "./index.css";
@@ -33,6 +34,7 @@ createRoot(rootEl).render(
                   <Route path="/users" element={<Users />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/calendar" element={<Calendar />} />
+                  <Route path="/agrisense" element={<AgriSense />} />
                 </Route>
               </Route>
               <Route path="/signin" element={<SignIn />} />

@@ -11,10 +11,12 @@ export const config = {
   frontendAuthSuccessUrl: process.env.FRONTEND_AUTH_SUCCESS_URL,
   mem0ApiUrl: process.env.MEM0_API_URL ?? "http://mem0-api:8000",
   mem0ApiKey: process.env.MEM0_API_KEY,
+  mem0PersistenceEnabled: process.env.MEM0_PERSISTENCE_ENABLED === "true",
   ragEmbeddingDimensions: Number(process.env.RAG_EMBEDDING_DIMENSIONS) || 1536,
   // Agent LLM — OpenAI is the sole provider for agent chat (D3). Embeddings go via mem0.
   openaiApiKey: process.env.OPENAI_API_KEY,
   openaiChatModel: process.env.OPENAI_CHAT_MODEL ?? "gpt-4o",
+  openaiIntakeModel: process.env.OPENAI_INTAKE_MODEL ?? "gpt-4.1-mini",
   // Fixed global identity for the shared agronomy knowledge base in mem0.
   mem0KbUserId: process.env.MEM0_KB_USER_ID ?? "agrisense-kb",
   mem0KbAgentId: process.env.MEM0_KB_AGENT_ID ?? "agrisense-kb",

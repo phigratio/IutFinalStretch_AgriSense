@@ -121,20 +121,20 @@ model FarmProfile {
   farmerId          String            @map("farmer_id") @db.Uuid
   farmer            FarmerProfile     @relation(fields: [farmerId], references: [id], onDelete: Cascade)
   name              String?
-  locationText      String            @map("location_text")
+  locationText      String?           @map("location_text")
   latitude          Decimal?          @db.Decimal(9, 6)
   longitude         Decimal?          @db.Decimal(9, 6)
-  sizeAcres         Decimal           @map("size_acres") @db.Decimal(10, 2)
+  sizeAcres         Decimal?          @map("size_acres") @db.Decimal(10, 2)
   areaHa            Decimal?          @map("area_ha") @db.Decimal(10, 4)
-  soilType          String            @map("soil_type")
+  soilType          String?           @map("soil_type")
   soilTexture       String?           @map("soil_texture")
   fertilityClass    String?           @map("fertility_class")
   fertilitySource   String?           @map("fertility_source")
   district          String?
   upazila           String?
-  waterAvailability String            @map("water_availability")
-  budgetBdt         Decimal           @map("budget_bdt") @db.Decimal(12, 2)
-  targetSeason      String            @map("target_season")
+  waterAvailability String?           @map("water_availability")
+  budgetBdt         Decimal?          @map("budget_bdt") @db.Decimal(12, 2)
+  targetSeason      String?           @map("target_season")
   currentCrop       String?           @map("current_crop")
   metadata          Json              @default("{}")
   createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)

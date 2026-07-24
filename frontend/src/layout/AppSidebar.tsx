@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useSidebar } from "../context/SidebarContext.js";
 import {
   CalendarIcon,
+  BoxIcon,
   GridIcon,
   HorizontalDotsIcon,
   UserGroupIcon,
@@ -17,6 +18,7 @@ interface NavItem {
 
 const mainNav: NavItem[] = [
   { name: "Dashboard", path: "/", icon: <GridIcon /> },
+  { name: "AgriSense", path: "/agrisense", icon: <BoxIcon /> },
   { name: "Users", path: "/users", icon: <UserGroupIcon /> },
   { name: "Profile", path: "/profile", icon: <UserIcon /> },
 ];
