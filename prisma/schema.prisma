@@ -515,6 +515,26 @@ model FarmFinanceEntry {
   @@map("farm_finance_entries")
 }
 
+model ScenarioSimulation {
+  id             String   @id @default(uuid()) @db.Uuid
+  sessionId      String?  @map("session_id") @db.Uuid
+  farmId         String?  @map("farm_id") @db.Uuid
+  planId         String?  @map("plan_id") @db.Uuid
+  scenarioLabel  String   @map("scenario_label")
+  scenarioInput  Json     @default("{}") @map("scenario_input")
+  baselineResult Json     @default("{}") @map("baseline_result")
+  scenarioResult Json     @default("{}") @map("scenario_result")
+  deltaResult    Json     @default("{}") @map("delta_result")
+  recommendation String
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([sessionId])
+  @@index([farmId])
+  @@index([planId])
+  @@index([createdAt])
+  @@map("scenario_simulations")
+}
+
 // ---- Multi-tenant knowledge base (navid/kb) --------------------------------
 
 model Tenant {

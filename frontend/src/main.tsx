@@ -12,6 +12,7 @@ import Users from "./pages/Users.js";
 import Profile from "./pages/Profile.js";
 import Calendar from "./pages/Calendar.js";
 import AgriSense from "./pages/AgriSense.js";
+import PestRisk from "./pages/PestRisk.js";
 import AgentIntake from "./pages/AgentIntake.js";
 import Temporal from "./pages/Temporal.js";
 import Marketplace from "./pages/Marketplace.js";
@@ -49,6 +50,7 @@ createRoot(rootEl).render(
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/calendar" element={<Calendar />} />
                   <Route path="/agrisense" element={<AgriSense />} />
+                  <Route path="/pest-risk" element={<PestRisk />} />
                   <Route path="/knowledge-base" element={<KnowledgeBase />} />
                   <Route path="/agent-intake" element={<AgentIntake />} />
                   <Route path="/temporal" element={<Temporal />} />

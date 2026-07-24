@@ -40,7 +40,7 @@ describe("mock isolation (spec §7.3)", () => {
   });
 });
 
-describe("typed accessors cover all 8 crops", () => {
+describe("typed accessors cover all 9 crops", () => {
   it("calendar, water, fertilizer, variety, price exist for every crop", () => {
     for (const cropId of CROP_IDS) {
       expect(getCalendar(cropId), `calendar ${cropId}`).toBeDefined();

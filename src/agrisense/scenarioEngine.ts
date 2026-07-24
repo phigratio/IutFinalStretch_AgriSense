@@ -42,7 +42,7 @@ export function extractScenarioDeltas(message = "", explicit: ScenarioDeltas = {
     /rain(?:fall)?\s+(?:increases?|rises?|barle|bare|বাড়(?:লে)?)\s+(?:by\s+)?(\d+(?:\.\d+)?)\s*%?/i,
   ], 1));
   assignPct(parsed, "budgetPct", explicit.budgetPct ?? matchPct(normalized, [
-    /budget\s+(?:cut|cuts|drops?|falls?|decreases?|kom(?:le)?|kome|কম(?:লে)?)\s+(?:by\s+)?(\d+(?:\.\d+)?)\s*%?/i,
+    /budget\s+(?:is\s+)?(?:cut|cuts|drops?|falls?|decreases?|kom(?:le)?|kome|কম(?:লে)?)\s+(?:by\s+)?(\d+(?:\.\d+)?)\s*%?/i,
     /(?:budget|বাজেট)\s+(\d+(?:\.\d+)?)\s*%?\s+(?:cut|kom(?:le)?|kome|less|কম)/i,
   ], -1));
   assignPct(parsed, "budgetPct", explicit.budgetPct ?? matchPct(normalized, [
@@ -148,14 +148,15 @@ function patchProfile(profile: IntakeProfile, deltas: ScenarioDeltas): IntakePro
 
 function patchWeather(weather: WeatherForecast, deltas: ScenarioDeltas): WeatherForecast {
   if (deltas.rainfallPct === undefined) return weather;
+  const rainfallPct = deltas.rainfallPct;
   return {
     ...weather,
     daily: weather.daily.map((day) => ({
       ...day,
-      rainfallMm: round2(Math.max(0, day.rainfallMm * factor(deltas.rainfallPct))),
+      rainfallMm: round2(Math.max(0, day.rainfallMm * factor(rainfallPct))),
       soilMoisture0To9cm: day.soilMoisture0To9cm === undefined
         ? undefined
-        : round2(Math.max(0, day.soilMoisture0To9cm * factor(deltas.rainfallPct))),
+        : round2(Math.max(0, day.soilMoisture0To9cm * factor(rainfallPct))),
     })),
     raw: {
       baselineProvider: weather.provider,

@@ -5,12 +5,15 @@ import {
   getAgriSenseContext,
   getAgriSenseMemory,
   sendAgriSenseMessage,
+  simulateAgriSenseScenario,
   type AgriSenseMessageResult,
   type ContextBundle,
   type CropRecommendation,
   type IntakeProfile,
   type MemoryOutcome,
   type MemorySessionSummary,
+  type ScenarioDeltas,
+  type ScenarioSimulationResult,
   type SeasonPlanTask,
   type TraceEvent,
   type WorkflowStage,
@@ -24,7 +27,7 @@ interface ChatMessage {
 }
 
 type Language = "en" | "bn" | "banglish";
-type ViewStage = WorkflowStage | "context" | "scheduler" | "trace";
+type ViewStage = WorkflowStage | "context" | "scheduler" | "scenario" | "trace";
 
 const starterMessages = [
   "I have 2 acres in Gazipur, what should I plant?",
@@ -59,6 +62,7 @@ const workflowStages: Array<{
   { id: "season_plan", label: "Season Plan", tool: "season.plan", description: "Generate dated farming actions for the selected crop." },
   { id: "scheduler", label: "Fertigation", tool: "fertigation.schedule", description: "Inspect FRG fertilizer splits, irrigation checkpoints, organic options, and costs." },
   { id: "financials", label: "Financial Math", tool: "finance.calculate", description: "Inspect costs, profit, ROI, and break-even." },
+  { id: "scenario", label: "Scenario", tool: "scenario.simulate", description: "Simulate rainfall, budget, price, cost, or yield shocks and compare changed numbers." },
   { id: "trace", label: "Agent Trace", tool: "trace.read", description: "Inspect every tool call, parameter, and raw response." },
   { id: "full", label: "Full Run", tool: "agent.plan", description: "Run the complete agent workflow end to end." },
 ];
@@ -85,6 +89,7 @@ export default function AgriSense() {
   const [rememberedOutcomes, setRememberedOutcomes] = useState<MemoryOutcome[]>([]);
   const [memorySessions, setMemorySessions] = useState<MemorySessionSummary[]>([]);
   const [contextBundle, setContextBundle] = useState<ContextBundle | null>(null);
+  const [scenarioResult, setScenarioResult] = useState<ScenarioSimulationResult | null>(null);
   const [ignoredOutcomeIds, setIgnoredOutcomeIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,7 +145,7 @@ export default function AgriSense() {
 
   async function submitMessage(
     messageText = input,
-    workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" || activeStage === "scheduler" ? "full" : activeStage,
+    workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" || activeStage === "scheduler" || activeStage === "scenario" ? "full" : activeStage,
     acceptedOutcomeIds?: string[],
   ) {
     const text = messageText.trim();
@@ -205,7 +210,7 @@ export default function AgriSense() {
 
   function runStage(stage: ViewStage) {
     selectStage(stage);
-    if (stage === "trace" || stage === "context" || stage === "scheduler") return;
+    if (stage === "trace" || stage === "context" || stage === "scheduler" || stage === "scenario") return;
     const message = stage === "intake"
       ? "continue intake"
       : `continue from ${stageLabels[stage]}`;
@@ -218,12 +223,45 @@ export default function AgriSense() {
   }
 
   function useOutcome(outcome: MemoryOutcome) {
-    const workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" || activeStage === "scheduler" ? "full" : activeStage;
+    const workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" || activeStage === "scheduler" || activeStage === "scenario" ? "full" : activeStage;
     void submitMessage(
       `Use remembered context: ${outcome.title}`,
       workflowStage,
       [outcome.id],
     );
+  }
+
+  async function runScenario(message: string, deltas?: ScenarioDeltas) {
+    if (!result?.weather || !result.cropRankings?.length || !result.seasonPlan) {
+      setError("Run a complete AgriSense plan before scenario simulation.");
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    setMessages((current) => [...current, { role: "farmer", text: message }]);
+    try {
+      const simulation = await simulateAgriSenseScenario({
+        sessionId,
+        farmerId,
+        farmId,
+        userId: user?.id,
+        preferredLanguage: language,
+        selectedCrop: result.seasonPlan.crop,
+        message,
+        deltas,
+        baseline: result,
+      });
+      setScenarioResult(simulation);
+      setTrace((current) => [...current, ...simulation.trace]);
+      setMessages((current) => [...current, { role: "agent", text: simulation.recommendation }]);
+      selectStage("scenario");
+    } catch (err) {
+      const text = err instanceof Error ? err.message : "Scenario simulation failed";
+      setError(text);
+      setMessages((current) => [...current, { role: "agent", text }]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -352,6 +390,9 @@ export default function AgriSense() {
             result={result}
             activePlan={activePlan}
             context={contextBundle ?? result?.context}
+            scenarioResult={scenarioResult}
+            loading={loading}
+            onSimulateScenario={runScenario}
           />
         </main>
 
@@ -383,10 +424,12 @@ function WorkflowStageSidebar({
     available.add("season_plan");
     available.add("financials");
   }
+
   if (result?.seasonPlan) {
     available.add("season_plan");
     available.add("scheduler");
     available.add("financials");
+    available.add("scenario");
   }
 
   return (
@@ -553,6 +596,9 @@ function StageContent({
   result,
   activePlan,
   context,
+  scenarioResult,
+  loading,
+  onSimulateScenario,
 }: {
   activeStage: ViewStage;
   profile?: IntakeProfile;
@@ -560,6 +606,9 @@ function StageContent({
   result: AgriSenseMessageResult | null;
   activePlan?: AgriSenseMessageResult["seasonPlan"];
   context?: ContextBundle | null;
+  scenarioResult: ScenarioSimulationResult | null;
+  loading: boolean;
+  onSimulateScenario: (message: string, deltas?: ScenarioDeltas) => void;
 }) {
   if (activeStage === "intake") return <ProfilePanel profile={profile} missingFields={missingFields} />;
   if (activeStage === "context") return <ContextPanel context={context ?? result?.context ?? null} />;
@@ -569,6 +618,7 @@ function StageContent({
   if (activeStage === "season_plan") return activePlan ? <SeasonPlanPanel plan={activePlan} /> : <EmptyStage title="Season Plan" text="Run crop ranking first, then continue into season planning." />;
   if (activeStage === "scheduler") return activePlan ? <FertigationPanel plan={activePlan} /> : <EmptyStage title="Fertigation" text="Run the season plan first to inspect fertilizer and irrigation scheduling." />;
   if (activeStage === "financials") return activePlan ? <FinancialPanel plan={activePlan} /> : <EmptyStage title="Financial Math" text="Run the season plan first to calculate costs, ROI, profit, and break-even." />;
+  if (activeStage === "scenario") return <ScenarioPanel result={scenarioResult} baselineReady={Boolean(activePlan)} loading={loading} onSimulate={onSimulateScenario} />;
   if (activeStage === "trace") return <EmptyStage title="Agent Trace" text="The trace inspector is open on the right side of this workspace." />;
 
   return (
@@ -582,9 +632,162 @@ function StageContent({
           <SeasonPlanPanel plan={activePlan} />
           <FertigationPanel plan={activePlan} />
           <FinancialPanel plan={activePlan} />
+          <ScenarioPanel result={scenarioResult} baselineReady={Boolean(activePlan)} loading={loading} onSimulate={onSimulateScenario} />
         </>
       )}
     </>
+  );
+}
+
+function ScenarioPanel({
+  result,
+  baselineReady,
+  loading,
+  onSimulate,
+}: {
+  result: ScenarioSimulationResult | null;
+  baselineReady: boolean;
+  loading: boolean;
+  onSimulate: (message: string, deltas?: ScenarioDeltas) => void;
+}) {
+  const [scenarioText, setScenarioText] = useState("What if rainfall drops 30%?");
+  const quickScenarios: Array<{ label: string; message: string; deltas: ScenarioDeltas }> = [
+    { label: "Rainfall -30%", message: "What if rainfall drops 30%?", deltas: { rainfallPct: -30 } },
+    { label: "Budget -40%", message: "What if my budget is cut 40%?", deltas: { budgetPct: -40 } },
+    { label: "Price -20%", message: "What if market price falls 20%?", deltas: { pricePct: -20 } },
+    { label: "Cost +15%", message: "What if input cost increases 15%?", deltas: { costPct: 15 } },
+  ];
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    onSimulate(scenarioText);
+  }
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Scenario Simulation</h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Recalculate the Bangladesh season plan when rainfall, budget, price, input cost, or yield changes.
+          </p>
+        </div>
+        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${baselineReady ? "bg-success-50 text-success-600" : "bg-warning-50 text-warning-600"}`}>
+          {baselineReady ? "Baseline ready" : "Need plan"}
+        </span>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {quickScenarios.map((scenario) => (
+          <button
+            key={scenario.label}
+            type="button"
+            disabled={!baselineReady || loading}
+            onClick={() => onSimulate(scenario.message, scenario.deltas)}
+            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-800 dark:bg-white/[0.04] dark:text-gray-200"
+          >
+            {scenario.label}
+          </button>
+        ))}
+      </div>
+
+      <form onSubmit={submit} className="mt-4 flex flex-col gap-2 sm:flex-row">
+        <input
+          value={scenarioText}
+          onChange={(event) => setScenarioText(event.target.value)}
+          placeholder="What if brishti 30% kome?"
+          className="h-11 min-w-0 flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-100"
+        />
+        <button
+          type="submit"
+          disabled={!baselineReady || loading}
+          className="inline-flex h-11 items-center justify-center rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Simulate
+        </button>
+      </form>
+
+      {!result ? (
+        <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+          Run a complete season plan, then simulate a rainfall or budget shock to see changed numbers.
+        </p>
+      ) : (
+        <div className="mt-5 space-y-4">
+          <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">{result.scenarioLabel}</p>
+                <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{result.recommendation}</p>
+              </div>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${result.comparison.netProfitBdt >= 0 ? "bg-success-50 text-success-600" : "bg-error-50 text-error-600"}`}>
+                {result.comparison.netProfitBdt >= 0 ? "+" : ""}{formatMoney(result.comparison.netProfitBdt)}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <ScenarioPlanCard title="Baseline" plan={result.baseline.seasonPlan} weather={result.baseline.weather} />
+            <ScenarioPlanCard title="Scenario" plan={result.scenario.seasonPlan} weather={result.scenario.weather} />
+          </div>
+
+          <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
+            <div className="grid grid-cols-[minmax(130px,1fr)_120px] border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500 dark:border-gray-800 dark:bg-white/[0.04]">
+              <div>Changed value</div>
+              <div className="text-right">Delta</div>
+            </div>
+            {[
+              ["7-day rainfall", `${result.comparison.rainfall7dMm >= 0 ? "+" : ""}${result.comparison.rainfall7dMm} mm`],
+              ["Revenue", signedMoney(result.comparison.revenueBdt)],
+              ["Cost", signedMoney(result.comparison.costBdt)],
+              ["Net profit", signedMoney(result.comparison.netProfitBdt)],
+              ["ROI", `${result.comparison.roiPct >= 0 ? "+" : ""}${result.comparison.roiPct}%`],
+              ["Break-even yield", `${result.comparison.breakEvenYieldKg >= 0 ? "+" : ""}${result.comparison.breakEvenYieldKg} kg`],
+              ["Irrigation events", `${result.comparison.irrigationEvents >= 0 ? "+" : ""}${result.comparison.irrigationEvents}`],
+              ["Budget surplus", signedMoney(result.comparison.budgetSurplusBdt)],
+            ].map(([label, value]) => (
+              <div key={label} className="grid grid-cols-[minmax(130px,1fr)_120px] border-b border-gray-100 px-3 py-2 text-sm last:border-0 dark:border-gray-800">
+                <div className="text-gray-600 dark:text-gray-300">{label}</div>
+                <div className="text-right font-semibold text-gray-900 dark:text-white">{value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+            <p className="text-xs font-semibold text-gray-900 dark:text-white">Scenario Trace</p>
+            <div className="mt-2 space-y-2">
+              {result.trace.map((event) => (
+                <details key={event.traceId ?? event.toolName} className="rounded-lg bg-gray-50 p-2 dark:bg-white/[0.04]">
+                  <summary className="cursor-pointer text-xs font-medium text-gray-800 dark:text-gray-100">
+                    {event.toolName}
+                  </summary>
+                  <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs text-gray-600 dark:text-gray-300">
+                    {JSON.stringify(event.rawResponse, null, 2)}
+                  </pre>
+                </details>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ScenarioPlanCard({ title, plan, weather }: { title: string; plan: ScenarioSimulationResult["baseline"]["seasonPlan"]; weather: ScenarioSimulationResult["baseline"]["weather"] }) {
+  return (
+    <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+      <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">{title}</p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Metric label="Crop" value={plan.crop} />
+        <Metric label="Rain 7d" value={`${weather.daily.slice(0, 7).reduce((sum, day) => sum + day.rainfallMm, 0).toFixed(1)} mm`} />
+        <Metric label="Yield" value={`${plan.financials.expectedYieldKg} kg`} />
+        <Metric label="Revenue" value={formatMoney(plan.financials.expectedRevenueBdt)} />
+        <Metric label="Cost" value={formatMoney(plan.financials.totalCostBdt)} />
+        <Metric label="Net" value={formatMoney(plan.financials.netProfitBdt)} />
+        <Metric label="ROI" value={`${plan.financials.roiPct}%`} />
+        <Metric label="Irrigation" value={plan.schedulerSummary?.irrigationEvents ?? plan.tasks.filter((task) => task.phase === "irrigation").length} />
+      </div>
+    </div>
   );
 }
 
@@ -1155,6 +1358,10 @@ function Metric({ label, value }: { label: string; value: string | number }) {
 
 function formatMoney(value: number): string {
   return `৳${new Intl.NumberFormat("en-BD", { maximumFractionDigits: 0 }).format(value)}`;
+}
+
+function signedMoney(value: number): string {
+  return `${value >= 0 ? "+" : ""}${formatMoney(value)}`;
 }
 
 function sumTaskCosts(tasks: SeasonPlanTask[], phase: string): number {

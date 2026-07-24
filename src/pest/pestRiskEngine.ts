@@ -183,21 +183,21 @@ function scoreRule(
     }
   }
 
-  if (rule.rain3dMinMm !== undefined) {
+  if (rule.rain3dMinMm !== undefined && rule.rain3dMinMm > 0) {
     if (weather.rain3dMm >= rule.rain3dMinMm) {
       score += 12;
       matchedConditions.push(`3-day rain ${weather.rain3dMm}mm >= ${rule.rain3dMinMm}mm`);
-    } else if (rule.rain3dMinMm > 0) {
+    } else {
       score -= 6;
       unmatchedConditions.push(`3-day rain ${weather.rain3dMm}mm below ${rule.rain3dMinMm}mm`);
     }
   }
 
-  if (rule.rain7dMinMm !== undefined) {
+  if (rule.rain7dMinMm !== undefined && rule.rain7dMinMm > 0) {
     if (weather.rain7dMm >= rule.rain7dMinMm) {
       score += 10;
       matchedConditions.push(`7-day rain ${weather.rain7dMm}mm >= ${rule.rain7dMinMm}mm`);
-    } else if (rule.rain7dMinMm > 0) {
+    } else {
       score -= 5;
       unmatchedConditions.push(`7-day rain ${weather.rain7dMm}mm below ${rule.rain7dMinMm}mm`);
     }

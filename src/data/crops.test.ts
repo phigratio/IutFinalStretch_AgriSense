@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { CROP_IDS, resolveCrop, resolveCropId, isCropId } from "./crops.js";
 
 describe("crop resolution", () => {
-  it("has exactly the 8 canonical crops", () => {
-    expect(CROP_IDS).toHaveLength(8);
-    expect(new Set(CROP_IDS).size).toBe(8);
+  it("has exactly the 9 canonical crops", () => {
+    expect(CROP_IDS).toHaveLength(9);
+    expect(new Set(CROP_IDS).size).toBe(9);
   });
 
   it("resolves English aliases", () => {

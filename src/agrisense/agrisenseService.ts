@@ -11,9 +11,10 @@ import { buildMultilingualQuery, localizePlanSummary, localizeSeasonPlan, normal
 import { defaultKnowledgeRetriever, type KnowledgeRetriever } from "./knowledgeRetriever.js";
 import { getDefaultMemoryOutcomeService, type MemoryOutcome, type MemoryOutcomeService } from "./memoryOutcomeService.js";
 import { buildSeasonPlan, rankCrops, selectCrop } from "./planningEngine.js";
+import { simulateScenario, type ScenarioBaseline } from "./scenarioEngine.js";
 import { getDefaultAgriSenseStore, type AgriSenseStore } from "./agrisenseStore.js";
 import { getWeatherForecast, mockWeatherForecast } from "./weatherTool.js";
-import { type AgriSenseMessageResult, type MemoryLookupResult, type WeatherForecast } from "./types.js";
+import { type AgriSenseMessageResult, type MemoryLookupResult, type ScenarioDeltas, type ScenarioSimulationResult, type WeatherForecast } from "./types.js";
 
 export interface WeatherProvider {
   get(locationText: string): Promise<WeatherForecast>;
@@ -456,12 +457,103 @@ export class AgriSenseService {
     return this.memoryOutcomes.list(input);
   }
 
+  async simulateScenario(input: {
+    sessionId?: string;
+    farmerId?: string;
+    farmId?: string;
+    planId?: string;
+    userId?: string;
+    tenantId?: string;
+    bdappsMobile?: string;
+    preferredLanguage?: IntakeRequest["preferredLanguage"];
+    selectedCrop?: string;
+    message?: string;
+    deltas?: ScenarioDeltas;
+    baseline?: AgriSenseMessageResult;
+  }): Promise<ScenarioSimulationResult> {
+    const baseline = input.baseline
+      ? baselineFromResult(input.baseline)
+      : await this.rebuildScenarioBaseline(input);
+    const result = simulateScenario({
+      message: input.message,
+      deltas: input.deltas,
+      baseline: {
+        ...baseline,
+        planId: input.planId ?? baseline.planId,
+      },
+      selectedCrop: input.selectedCrop,
+    });
+    for (const event of result.trace) {
+      if (result.sessionId) await this.store.saveTrace(result.sessionId, event);
+    }
+    return this.store.saveScenarioSimulation(result);
+  }
+
+  private async rebuildScenarioBaseline(input: {
+    sessionId?: string;
+    farmerId?: string;
+    farmId?: string;
+    planId?: string;
+    userId?: string;
+    tenantId?: string;
+    bdappsMobile?: string;
+    preferredLanguage?: IntakeRequest["preferredLanguage"];
+    selectedCrop?: string;
+    message?: string;
+  }): Promise<ScenarioBaseline> {
+    const plan = input.planId ? await this.store.getPlan(input.planId) : undefined;
+    const farmId = input.farmId ?? farmIdFromPlan(plan);
+    const baseline = await this.handleMessage({
+      message: input.message ?? "rebuild baseline for scenario simulation",
+      sessionId: input.sessionId,
+      userId: input.userId,
+      tenantId: input.tenantId,
+      farmerId: input.farmerId,
+      farmId,
+      bdappsMobile: input.bdappsMobile,
+      preferredLanguage: input.preferredLanguage,
+      selectedCrop: input.selectedCrop ?? cropFromPlan(plan),
+      useMemory: true,
+      workflowStage: "full",
+      triggerReason: "user_requested_replan",
+    });
+    return baselineFromResult({ ...baseline, seasonPlan: baseline.seasonPlan ? { ...baseline.seasonPlan, id: input.planId ?? baseline.seasonPlan.id } : baseline.seasonPlan });
+  }
+
   private async trace(sessionId: string, trace: IntakeTraceEvent[], event: IntakeTraceEvent): Promise<IntakeTraceEvent> {
     const nextEvent = { ...event, traceId: event.traceId ?? randomUUID() };
     trace.push(nextEvent);
     await this.store.saveTrace(sessionId, nextEvent);
     return nextEvent;
   }
+}
+
+function baselineFromResult(result: AgriSenseMessageResult): ScenarioBaseline {
+  if (!result.weather || !result.cropRankings?.length || !result.seasonPlan) {
+    throw new Error("Scenario simulation needs a complete baseline plan with weather, crop rankings, and financials");
+  }
+  return {
+    sessionId: result.sessionId,
+    farmId: result.farmId,
+    planId: result.seasonPlan.id,
+    farmProfile: result.farmProfile,
+    weather: result.weather,
+    cropRankings: result.cropRankings,
+    seasonPlan: result.seasonPlan,
+    retrievedEvidence: result.retrievedEvidence ?? result.seasonPlan.retrievedEvidence,
+  };
+}
+
+function farmIdFromPlan(plan: unknown): string | undefined {
+  if (!plan || typeof plan !== "object") return undefined;
+  const value = (plan as { farm_id?: unknown; farmId?: unknown }).farm_id ?? (plan as { farmId?: unknown }).farmId;
+  return typeof value === "string" ? value : undefined;
+}
+
+function cropFromPlan(plan: unknown): string | undefined {
+  if (!plan || typeof plan !== "object") return undefined;
+  const value = (plan as { crop?: unknown }).crop;
+  return typeof value === "string" ? value : undefined;
 }
 
 function filterIgnored(outcomes: MemoryOutcome[], ignoredOutcomeIds: string[] | undefined): MemoryOutcome[] {
