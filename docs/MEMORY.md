@@ -262,6 +262,23 @@
   SMS), and payment (CaaS checkout, blocked only on bdapps activation). Remaining: P4 inbound
   SMS keywords, P5 USSD menu (both need ngrok), P6 premium gating, P7 marketplace CaaS buy.
 
+- 24Jul ~23:30 — Claude session (with Labib) — **ALL BDApps feature phases complete
+  (P1-P7 + R1).** This session: `/bdapps/` Nginx proxy confirmed live (b5db839, phigratio);
+  2nd bdapps app provisioned (21213/agrilive, USSD *213*74757#, CaaS 5-100). Shipped:
+  **P4 inbound SMS keyword router** (65d4fe1 — START opt-in/STOP/PLAN/WEATHER/HELP, Flow D),
+  **P5 AgriSense USSD menu** (c946d3d — dial-in advice/weather/opt-in, Flow E), **P6 premium
+  gating** (026e54f — ALERTS_REQUIRE_PREMIUM gates alert SMS on subscription; dev
+  /api/dev/set-premium), **P7 marketplace CaaS Buy** (b0ef33f — native checkout on web
+  Marketplace + mobile Market tab: complete checkout → operator balance deduction → receipt,
+  the Tier-2 payment-gateway task; additive, marketplace features intact). Re-checked Tier-2
+  problem-statement wording with Labib: payment gateway now shown natively in the buy flow
+  AND the Payments console (raw CaaS request/response) AND the mobile Money tab + Trace.
+  All backend/web/mobile tsc + builds green; every phase live-verified in mock. **BDApps
+  integration is feature-complete across identity + reach + payment.** Only external blocker:
+  bdapps must ACTIVATE CaaS on the app (E1371) for a real on-stage charge — else demo CaaS
+  in MOCK_BDAPPS (declared). Node/prisma: keep `prisma generate && migrate deploy` + per-app
+  `npm install` after pulls (leaflet dep landed this session).
+
 ## 8. Session log (append-only: `HH:MM — <who> — <what changed>`)
 
 - 24Jul 11:00 — Claude session 1 (with A) — Read problem statement, bdapps cheatsheet/DGD/
