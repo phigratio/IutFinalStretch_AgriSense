@@ -108,7 +108,7 @@ const CROPS: CropBaseline[] = [
   },
 ];
 
-export function rankCrops(profile: IntakeProfile, weather: WeatherForecast, evidence: RetrievedEvidence[] = []): CropRecommendation[] {
+export function rankCrops(profile: IntakeProfile, weather: WeatherForecast, evidence: RetrievedEvidence[] = [], limit = 3): CropRecommendation[] {
   const area = profile.sizeAcres ?? 1;
   const budget = profile.budgetBdt ?? 0;
   const season = normalizePlanningSeason(profile.targetSeason);
@@ -152,7 +152,7 @@ export function rankCrops(profile: IntakeProfile, weather: WeatherForecast, evid
     };
   })
     .sort((a, b) => b.suitabilityScore - a.suitabilityScore)
-    .slice(0, 3);
+    .slice(0, limit);
 }
 
 export function selectCrop(
