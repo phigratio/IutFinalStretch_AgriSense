@@ -34,6 +34,9 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_CALLBACK_URL: https://${PUBLIC_HOST}/auth/google/callback
       FRONTEND_AUTH_SUCCESS_URL: ${FRONTEND_AUTH_SUCCESS_URL:-}
+      MEM0_API_URL: http://mem0-api:8000
+      MEM0_API_KEY: ${MEM0_API_KEY:?Set MEM0_API_KEY in .env}
+      RAG_EMBEDDING_DIMENSIONS: ${RAG_EMBEDDING_DIMENSIONS:-1536}
 
   grafana:
     restart: unless-stopped
@@ -55,6 +58,18 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+
+  mem0-api:
+    restart: unless-stopped
+    ports: !override []
+    environment:
+      AUTH_DISABLED: "false"
+      JWT_SECRET: ${MEM0_JWT_SECRET:?Set MEM0_JWT_SECRET in .env}
+      ADMIN_API_KEY: ${MEM0_API_KEY:?Set MEM0_API_KEY in .env}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env}
+
+  mem0-neo4j:
+    restart: unless-stopped
 
   loki:
     restart: unless-stopped
