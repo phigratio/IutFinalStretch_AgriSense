@@ -15,6 +15,9 @@ export interface SendMessageInput {
   farmerId?: string;
   farmId?: string;
   bdappsMobile?: string;
+  useMemory?: boolean;
+  acceptedOutcomeIds?: string[];
+  ignoredOutcomeIds?: string[];
   preferredLanguage?: Language;
   selectedCrop?: string;
   workflowStage?: WorkflowStage;

@@ -5,7 +5,7 @@
 import { HeuristicIntakeExtractor, OpenAiIntakeExtractor, type IntakeExtractor } from "./extractIntakeProfile.js";
 import { getDefaultConversationMemory, type ConversationMemory } from "./conversationMemory.js";
 import { getDefaultIntakeStore, type IntakeStore } from "./intakeStore.js";
-import { type IntakeRequest, type IntakeTraceEvent, type IntakeTurnResult } from "./intakeSchema.js";
+import { type IntakeProfile, type IntakeRequest, type IntakeTraceEvent, type IntakeTurnResult } from "./intakeSchema.js";
 import { detectInputLanguage, localizeCompleteReply, localizeFollowUpReply, normalizeLanguage } from "../language/localization.js";
 import { mergeProfilePatch, requiredFieldGaps } from "./requiredFieldGaps.js";
 
@@ -24,6 +24,7 @@ export class IntakeService {
     const trace: IntakeTraceEvent[] = [];
     let profile = await this.store.loadOrCreate({
       sessionId: request.sessionId,
+      userId: request.userId,
       farmerId: request.farmerId,
       farmId: request.farmId,
       bdappsMobile: request.bdappsMobile,
@@ -168,6 +169,34 @@ export class IntakeService {
       farmerId: profile.farmerId!,
       farmId: profile.farmId!,
       profile,
+      missingFields,
+      intakeComplete,
+      reply,
+      trace,
+      nextStep: intakeComplete
+        ? {
+            name: "weather_and_crop_planning",
+            plannedTools: ["geocode_location", "get_weather", "query_knowledge_base", "rank_crops"],
+          }
+        : undefined,
+    };
+  }
+
+  async applyProfilePatch(profile: IntakeProfile, patch: Partial<IntakeProfile>): Promise<IntakeTurnResult> {
+    const trace: IntakeTraceEvent[] = [];
+    const merged = mergeProfilePatch(profile, patch);
+    const missingFields = requiredFieldGaps(merged);
+    const intakeComplete = missingFields.length === 0;
+    const saved = await this.store.saveProfile(merged, missingFields, intakeComplete ? "intake_complete" : "intake");
+    const reply = intakeComplete
+      ? localizeCompleteReply(saved, saved.preferredLanguage ?? "en")
+      : localizeFollowUpReply(saved, missingFields, saved.preferredLanguage ?? "en");
+
+    return {
+      sessionId: saved.sessionId!,
+      farmerId: saved.farmerId!,
+      farmId: saved.farmId!,
+      profile: saved,
       missingFields,
       intakeComplete,
       reply,

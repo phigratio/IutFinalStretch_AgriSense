@@ -6,12 +6,14 @@ import { randomUUID } from "node:crypto";
 import { IntakeService } from "../agent/intakeService.js";
 import { getDefaultIntakeStore } from "../agent/intakeStore.js";
 import { type IntakeRequest, type IntakeTraceEvent, type IntakeTurnResult } from "../agent/intakeSchema.js";
+import { contextHydrator, type ContextBundle } from "../context/contextService.js";
 import { buildMultilingualQuery, localizePlanSummary, localizeSeasonPlan, normalizeLanguage } from "../language/localization.js";
 import { defaultKnowledgeRetriever, type KnowledgeRetriever } from "./knowledgeRetriever.js";
+import { getDefaultMemoryOutcomeService, type MemoryOutcome, type MemoryOutcomeService } from "./memoryOutcomeService.js";
 import { buildSeasonPlan, rankCrops, selectCrop } from "./planningEngine.js";
 import { getDefaultAgriSenseStore, type AgriSenseStore } from "./agrisenseStore.js";
 import { getWeatherForecast, mockWeatherForecast } from "./weatherTool.js";
-import { type AgriSenseMessageResult, type WeatherForecast } from "./types.js";
+import { type AgriSenseMessageResult, type MemoryLookupResult, type WeatherForecast } from "./types.js";
 
 export interface WeatherProvider {
   get(locationText: string): Promise<WeatherForecast>;
@@ -31,6 +33,7 @@ export class AgriSenseService {
     private readonly store: AgriSenseStore = getDefaultAgriSenseStore(),
     private readonly weatherProvider: WeatherProvider = new OpenMeteoWeatherProvider(),
     private readonly knowledgeRetriever: KnowledgeRetriever = defaultKnowledgeRetriever,
+    private readonly memoryOutcomes: MemoryOutcomeService = getDefaultMemoryOutcomeService(),
   ) {}
 
   async startSession(input: Omit<IntakeRequest, "message"> = {}): Promise<AgriSenseMessageResult> {
@@ -38,8 +41,89 @@ export class AgriSenseService {
   }
 
   async handleMessage(request: IntakeRequest): Promise<AgriSenseMessageResult> {
-    const intake = await this.intakeService.handleTurn(request);
+    let intake = await this.intakeService.handleTurn(request);
     const trace = [...intake.trace];
+    const memoryTrace: IntakeTraceEvent[] = [];
+    let rememberedOutcomes: MemoryOutcome[] = [];
+    const context = await contextHydrator.hydrate({
+      message: request.message,
+      userId: request.userId,
+      tenantId: request.tenantId,
+      farmerId: intake.farmerId,
+      farmId: intake.farmId,
+      sessionId: intake.sessionId,
+      bdappsMobile: intake.profile.bdappsMobile ?? request.bdappsMobile,
+      language: normalizeLanguage(request.preferredLanguage ?? intake.profile.preferredLanguage),
+      cropId: request.selectedCrop ?? intake.profile.currentCrop,
+      refresh: request.triggerReason === "profile_updated",
+      limit: 8,
+    });
+    trace.push(...context.trace);
+    memoryTrace.push(...context.trace);
+
+    if (request.useMemory !== false) {
+      const memoryStarted = Date.now();
+      const serviceMemory = await this.memoryOutcomes.list({
+        userId: request.userId,
+        farmerId: intake.farmerId,
+        farmId: intake.farmId,
+        bdappsMobile: intake.profile.bdappsMobile ?? request.bdappsMobile,
+        limit: 8,
+      });
+      const memoryResult = {
+        outcomes: uniqueById([...serviceMemory.outcomes, ...context.memory.outcomes]),
+        sessions: uniqueById([...serviceMemory.sessions, ...context.memory.sessions]),
+      };
+      rememberedOutcomes = filterIgnored(memoryResult.outcomes, request.ignoredOutcomeIds);
+      const searchTrace = await this.trace(intake.sessionId, trace, {
+        kind: "tool",
+        toolName: "memory.search",
+        parameters: {
+          userId: request.userId,
+          farmerId: intake.farmerId,
+          farmId: intake.farmId,
+          bdappsMobile: intake.profile.bdappsMobile ?? request.bdappsMobile,
+          useMemory: Boolean(request.useMemory ?? true),
+        },
+        rawResponse: {
+          outcomes: rememberedOutcomes.map((outcome) => ({
+            id: outcome.id,
+            kind: outcome.kind,
+            title: outcome.title,
+            score: outcome.score,
+          })),
+          sessions: memoryResult.sessions,
+        },
+        status: "success",
+        latencyMs: Date.now() - memoryStarted,
+      });
+      memoryTrace.push(searchTrace);
+
+      const rememberedProfile = this.memoryOutcomes.applyToProfile(
+        intake.profile,
+        rememberedOutcomes,
+        request.acceptedOutcomeIds,
+      );
+      if (profileChanged(intake.profile, rememberedProfile)) {
+        const profileBeforeMemory = intake.profile;
+        intake = await this.intakeService.applyProfilePatch(intake.profile, rememberedProfile);
+        const applyTrace = await this.trace(intake.sessionId, trace, {
+          kind: "tool",
+          toolName: "memory.apply",
+          parameters: {
+            acceptedOutcomeIds: request.acceptedOutcomeIds,
+            appliedFields: changedProfileFields(
+              profileBeforeMemory as Record<string, unknown>,
+              rememberedProfile as Record<string, unknown>,
+            ),
+          },
+          rawResponse: { profile: intake.profile, missingFields: intake.missingFields },
+          status: "success",
+          latencyMs: 0,
+        });
+        memoryTrace.push(applyTrace);
+      }
+    }
 
     if (!intake.intakeComplete || request.workflowStage === "intake") {
       return {
@@ -51,17 +135,22 @@ export class AgriSenseService {
         assistantMessage: intake.reply,
         missingFields: intake.missingFields,
         farmProfile: intake.profile,
+        rememberedOutcomes,
+        memoryTrace,
+        context,
         trace,
       };
     }
 
-    return this.runPlanningWorkflow(request, intake, trace);
+    const result = await this.runPlanningWorkflow(request, intake, trace, context);
+    return { ...result, rememberedOutcomes, memoryTrace, context };
   }
 
   async runPlanningWorkflow(
     request: IntakeRequest,
     intake: IntakeTurnResult,
     trace: IntakeTraceEvent[] = [...intake.trace],
+    context?: ContextBundle,
   ): Promise<AgriSenseMessageResult> {
     const language = normalizeLanguage(intake.profile.preferredLanguage) ?? "en";
     const workflowStage = request.workflowStage ?? "full";
@@ -125,6 +214,7 @@ export class AgriSenseService {
         missingFields: [],
         farmProfile: intake.profile,
         weather,
+        context,
         trace,
       };
     }
@@ -139,7 +229,7 @@ export class AgriSenseService {
       intake.profile.currentCrop,
       request.selectedCrop,
     ].filter(Boolean).join(" "));
-    const retrievedEvidence = await this.knowledgeRetriever.retrieve({
+    const retrieverEvidence = await this.knowledgeRetriever.retrieve({
       message: request.message,
       profile: intake.profile,
       weather,
@@ -147,6 +237,10 @@ export class AgriSenseService {
       userId: request.userId,
       tenantId: request.tenantId,
     });
+    const retrievedEvidence = uniqueEvidence([
+      ...mapContextKbHits(context),
+      ...retrieverEvidence,
+    ]);
     const ragTrace = await this.trace(intake.sessionId, trace, {
       kind: "tool",
       toolName: "rag.retrieve",
@@ -173,6 +267,7 @@ export class AgriSenseService {
         farmProfile: intake.profile,
         weather,
         retrievedEvidence,
+        context,
         trace,
       };
     }
@@ -206,6 +301,7 @@ export class AgriSenseService {
         weather,
         retrievedEvidence,
         cropRankings,
+        context,
         trace,
       };
     }
@@ -284,6 +380,46 @@ export class AgriSenseService {
     });
     sourceTraceIds.push(explanationTrace.traceId!);
 
+    const outcomeStarted = Date.now();
+    try {
+      const createdOutcomes = await this.memoryOutcomes.rememberPlan({
+        userId: request.userId,
+        farmerId: intake.farmerId,
+        farmId: intake.farmId,
+        sessionId: intake.sessionId,
+        profile: intake.profile,
+        plan: seasonPlan,
+      });
+      await this.trace(intake.sessionId, trace, {
+        kind: "tool",
+        toolName: "memory.outcome.add",
+        parameters: {
+          kinds: createdOutcomes.map((outcome) => outcome.kind),
+          planId: seasonPlan.id,
+        },
+        rawResponse: {
+          outcomes: createdOutcomes.map((outcome) => ({
+            id: outcome.id,
+            kind: outcome.kind,
+            title: outcome.title,
+            score: outcome.score,
+          })),
+        },
+        status: "success",
+        latencyMs: Date.now() - outcomeStarted,
+      });
+    } catch (error) {
+      await this.trace(intake.sessionId, trace, {
+        kind: "error",
+        toolName: "memory.outcome.add",
+        parameters: { planId: seasonPlan.id },
+        rawResponse: { persisted: false },
+        status: "error",
+        errorMessage: (error as Error).message,
+        latencyMs: Date.now() - outcomeStarted,
+      });
+    }
+
     return {
       sessionId: intake.sessionId,
       farmerId: intake.farmerId,
@@ -297,6 +433,7 @@ export class AgriSenseService {
       retrievedEvidence,
       cropRankings,
       seasonPlan,
+      context,
       trace,
     };
   }
@@ -309,12 +446,36 @@ export class AgriSenseService {
     return this.store.getPlan(planId);
   }
 
+  async getMemory(input: {
+    userId?: string;
+    farmerId?: string;
+    farmId?: string;
+    bdappsMobile?: string;
+    limit?: number;
+  }): Promise<MemoryLookupResult> {
+    return this.memoryOutcomes.list(input);
+  }
+
   private async trace(sessionId: string, trace: IntakeTraceEvent[], event: IntakeTraceEvent): Promise<IntakeTraceEvent> {
     const nextEvent = { ...event, traceId: event.traceId ?? randomUUID() };
     trace.push(nextEvent);
     await this.store.saveTrace(sessionId, nextEvent);
     return nextEvent;
   }
+}
+
+function filterIgnored(outcomes: MemoryOutcome[], ignoredOutcomeIds: string[] | undefined): MemoryOutcome[] {
+  if (!ignoredOutcomeIds?.length) return outcomes;
+  const ignored = new Set(ignoredOutcomeIds);
+  return outcomes.filter((outcome) => !ignored.has(outcome.id));
+}
+
+function profileChanged(before: object, after: object): boolean {
+  return JSON.stringify(before) !== JSON.stringify(after);
+}
+
+function changedProfileFields(before: Record<string, unknown>, after: Record<string, unknown>): string[] {
+  return Object.keys(after).filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
 }
 
 function nextStagesFor(stage: WorkflowStage): string[] {
@@ -329,6 +490,36 @@ function summarizeWeather(weather: WeatherForecast): Record<string, number> {
     maxTempTodayC: weather.daily[0]?.temperatureMaxC ?? 0,
     minTempTodayC: weather.daily[0]?.temperatureMinC ?? 0,
   };
+}
+
+function mapContextKbHits(context: ContextBundle | undefined) {
+  return (context?.kbHits ?? []).map((hit, index) => ({
+    id: hit.docKey ? `kb:${hit.docKey}` : `kb:${index}`,
+    source: "rag" as const,
+    title: hit.source ?? hit.docKey ?? "Knowledge base",
+    content: hit.text,
+    citation: hit.citation,
+    crop: typeof hit.docKey === "string" ? hit.docKey.split(":")[0] : undefined,
+    metadata: {
+      score: hit.score,
+      scope: hit.scope,
+      tenantId: hit.tenantId,
+      page: hit.page,
+    },
+  }));
+}
+
+function uniqueEvidence<T extends { id: string }>(items: T[]): T[] {
+  return uniqueById(items);
+}
+
+function uniqueById<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
 }
 
 function inferTriggerReason(request: IntakeRequest): NonNullable<IntakeRequest["triggerReason"]> {

@@ -25,7 +25,7 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession, type ChatBubble } from '@/state/session';
-import type { Language } from '@/api/types';
+import type { Language, MemoryOutcome } from '@/api/types';
 
 const FIELD_HINTS: Record<string, string> = {
   location: 'My farm is in ',
@@ -113,6 +113,56 @@ function ProfileStrip() {
   );
 }
 
+function MemoryStrip() {
+  const { rememberedOutcomes, useMemory, setUseMemory, ignoreOutcome, send } = useSession();
+  const theme = useTheme();
+  if (!useMemory) {
+    return (
+      <ThemedView
+        type="backgroundElement"
+        style={[styles.memoryStrip, { borderColor: theme.border }]}>
+        <Pressable onPress={() => setUseMemory(true)}>
+          <ThemedText type="small" themeColor="textSecondary">
+            Previous sessions off · tap to enable
+          </ThemedText>
+        </Pressable>
+      </ThemedView>
+    );
+  }
+  if (rememberedOutcomes.length === 0) return null;
+  const useOutcome = (outcome: MemoryOutcome) => {
+    void send(`Use remembered context: ${outcome.title}`, [outcome.id]);
+  };
+
+  return (
+    <ThemedView
+      type="backgroundElement"
+      style={[styles.memoryStrip, { borderColor: theme.border }]}>
+      <View style={styles.memoryHeader}>
+        <ThemedText type="smallBold">Remembered</ThemedText>
+        <Pressable onPress={() => setUseMemory(false)}>
+          <ThemedText type="small" themeColor="textSecondary">Off</ThemedText>
+        </Pressable>
+      </View>
+      <View style={styles.memoryChips}>
+        {rememberedOutcomes.slice(0, 3).map((outcome) => (
+          <View key={outcome.id} style={[styles.memoryChip, { borderColor: theme.border }]}>
+            <Pressable onPress={() => useOutcome(outcome)} style={styles.memoryChipText}>
+              <ThemedText type="smallBold">{outcome.title}</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
+                {outcome.summary}
+              </ThemedText>
+            </Pressable>
+            <Pressable onPress={() => ignoreOutcome(outcome.id)}>
+              <ThemedText type="small" themeColor="textSecondary">Ignore</ThemedText>
+            </Pressable>
+          </View>
+        ))}
+      </View>
+    </ThemedView>
+  );
+}
+
 function Bubble({ item, onHint }: { item: ChatBubble; onHint: (text: string) => void }) {
   const theme = useTheme();
   const isFarmer = item.role === 'farmer';
@@ -179,6 +229,7 @@ export default function ChatScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ChatHeader />
         <ProfileStrip />
+        <MemoryStrip />
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -275,6 +326,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
+  },
+  memoryStrip: {
+    marginHorizontal: Spacing.three,
+    marginTop: Spacing.two,
+    borderRadius: Spacing.three,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  memoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.one,
+  },
+  memoryChips: {
+    gap: Spacing.one,
+  },
+  memoryChip: {
+    borderWidth: 1,
+    borderRadius: Spacing.two,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  memoryChipText: {
+    flex: 1,
   },
   listContent: {
     padding: Spacing.three,

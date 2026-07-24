@@ -16,6 +16,9 @@ export function createMarketplaceRouter(service: MarketplaceService = marketplac
           longitude: req.body.longitude === undefined ? undefined : Number(req.body.longitude),
           crop: req.body.crop,
           userId: req.body.userId,
+          tenantId: req.body.tenantId,
+          farmerId: req.body.farmerId,
+          farmId: req.body.farmId,
           sessionId: req.body.sessionId,
         }),
       );

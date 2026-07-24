@@ -27,6 +27,7 @@ const mainNav: NavItem[] = [
   { name: "Crop Ranking", path: "/agrisense?stage=crop_ranking", icon: <BoxIcon /> },
   { name: "Season Plan", path: "/agrisense?stage=season_plan", icon: <CalendarIcon /> },
   { name: "Financial Math", path: "/agrisense?stage=financials", icon: <CreditCardIcon /> },
+  { name: "Finance Management", path: "/finance", icon: <CreditCardIcon /> },
   { name: "Marketplace Intel", path: "/marketplace", icon: <MarketplaceIcon /> },
   { name: "Agent Trace", path: "/agrisense?stage=trace", icon: <ListIcon /> },
   { name: "Agent Intake", path: "/agent-intake", icon: <ListIcon /> },

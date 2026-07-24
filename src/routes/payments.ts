@@ -14,7 +14,7 @@ export function createPaymentsRouter(deps?: CheckoutDeps): Router {
   const store = (): PaymentStore => deps?.payments ?? getDefaultPaymentStore();
 
   router.post("/checkout", async (req: Request, res: Response): Promise<void> => {
-    const { mobile, amountBdt, description, planId, sessionId, userId } = req.body ?? {};
+    const { mobile, amountBdt, description, planId, sessionId, userId, tenantId, farmerId, farmId } = req.body ?? {};
     if (typeof mobile !== "string" || mobile.trim() === "") {
       res.status(400).json({ error: "mobile is required" });
       return;
@@ -29,7 +29,7 @@ export function createPaymentsRouter(deps?: CheckoutDeps): Router {
       // renders them as flows, not errors. 400/500 = the request itself broke.
       res.json(
         await checkout(
-          { mobile, amountBdt: amount, description, planId, sessionId, userId },
+          { mobile, amountBdt: amount, description, planId, sessionId, userId, tenantId, farmerId, farmId },
           deps,
         ),
       );

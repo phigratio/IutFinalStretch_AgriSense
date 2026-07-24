@@ -22,6 +22,7 @@ model AppUser {
   farmers       FarmerProfile[]
   agentSessions AgentSession[]
   payments      BdappsPayment[]
+  memoryOutcomes AgentMemoryOutcome[]
 
   @@map("app_users")
 }
@@ -118,6 +119,7 @@ model FarmerProfile {
   updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
   farms          FarmProfile[]
   sessions       AgentSession[]
+  memoryOutcomes AgentMemoryOutcome[]
 
   @@index([userId])
   @@index([bdappsMobile])
@@ -152,6 +154,7 @@ model FarmProfile {
   weatherSnapshots  WeatherSnapshot[]
   plans             SeasonPlan[]
   orders            MarketplaceOrder[]
+  memoryOutcomes    AgentMemoryOutcome[]
 
   @@index([farmerId])
   @@index([locationText])
@@ -260,6 +263,7 @@ model AgentSession {
   toolCalls      AgentToolCall[]
   weather        WeatherSnapshot[]
   plans          SeasonPlan[]
+  memoryOutcomes AgentMemoryOutcome[]
 
   @@index([userId])
   @@index([farmerId])
@@ -335,6 +339,7 @@ model SeasonPlan {
   updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
   items             SeasonPlanItem[]
   payments          BdappsPayment[]
+  memoryOutcomes    AgentMemoryOutcome[]
 
   @@index([sessionId])
   @@index([farmId])
@@ -424,6 +429,61 @@ model BdappsPayment {
   @@index([mobile])
   @@index([status])
   @@map("bdapps_payments")
+}
+
+model AgentMemoryOutcome {
+  id             String         @id @default(uuid()) @db.Uuid
+  userId         String?        @map("user_id") @db.Uuid
+  user           AppUser?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  farmerId       String?        @map("farmer_id") @db.Uuid
+  farmer         FarmerProfile? @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  farmId         String?        @map("farm_id") @db.Uuid
+  farm           FarmProfile?   @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  sessionId      String?        @map("session_id") @db.Uuid
+  session        AgentSession?  @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  planId         String?        @map("plan_id") @db.Uuid
+  plan           SeasonPlan?    @relation(fields: [planId], references: [id], onDelete: SetNull)
+  kind           String
+  title          String
+  summary        String
+  valueJson      Json           @default("{}") @map("value_json")
+  score          Decimal        @default(0) @db.Decimal(8, 2)
+  sourceTraceIds String[]       @default([]) @map("source_trace_ids")
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([farmerId])
+  @@index([farmId])
+  @@index([sessionId])
+  @@index([planId])
+  @@index([kind])
+  @@index([score])
+  @@map("agent_memory_outcomes")
+}
+
+model FarmFinanceEntry {
+  id           String    @id @default(uuid()) @db.Uuid
+  farmId       String?   @map("farm_id") @db.Uuid
+  seasonPlanId String?   @map("season_plan_id") @db.Uuid
+  entryType    String    @map("entry_type")
+  category     String
+  label        String
+  amountBdt    Decimal   @map("amount_bdt") @db.Decimal(12, 2)
+  entryDate    DateTime  @map("entry_date") @db.Date
+  season       String?
+  crop         String?
+  source       String    @default("manual")
+  metadata     Json      @default("{}")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([farmId])
+  @@index([seasonPlanId])
+  @@index([entryDate])
+  @@index([season])
+  @@index([source])
+  @@map("farm_finance_entries")
 }
 
 // ---- Multi-tenant knowledge base (navid/kb) --------------------------------

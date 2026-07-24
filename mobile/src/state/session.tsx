@@ -13,6 +13,7 @@ import type {
   CropRecommendation,
   IntakeProfile,
   Language,
+  MemoryOutcome,
   RetrievedEvidence,
   SeasonPlanResult,
   TraceEvent,
@@ -38,14 +39,21 @@ interface SessionState {
   evidence?: RetrievedEvidence[];
   cropRankings?: CropRecommendation[];
   seasonPlan?: SeasonPlanResult;
+  rememberedOutcomes: MemoryOutcome[];
+  useMemory: boolean;
   missingFields: string[];
   result?: AgriSenseMessageResult;
   trace: TraceEvent[];
   bubbles: ChatBubble[];
   sending: boolean;
   setLanguage: (lang: Language) => void;
-  /** Send a farmer message (optionally scoped to a workflow stage). */
-  send: (text: string, stage?: WorkflowStage) => Promise<void>;
+  setUseMemory: (enabled: boolean) => void;
+  send: (
+    text: string,
+    stageOrAcceptedOutcomeIds?: WorkflowStage | string[],
+    acceptedOutcomeIds?: string[],
+  ) => Promise<void>;
+  ignoreOutcome: (id: string) => void;
   reset: () => void;
 }
 
@@ -64,6 +72,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [evidence, setEvidence] = useState<RetrievedEvidence[]>();
   const [cropRankings, setCropRankings] = useState<CropRecommendation[]>();
   const [seasonPlan, setSeasonPlan] = useState<SeasonPlanResult>();
+  const [rememberedOutcomes, setRememberedOutcomes] = useState<MemoryOutcome[]>([]);
+  const [ignoredOutcomeIds, setIgnoredOutcomeIds] = useState<string[]>([]);
+  const [useMemory, setUseMemory] = useState(true);
   const [missingFields, setMissingFields] = useState<string[]>([]);
   const [result, setResult] = useState<AgriSenseMessageResult>();
   const [trace, setTrace] = useState<TraceEvent[]>([]);
@@ -71,9 +82,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [sending, setSending] = useState(false);
 
   const send = useCallback(
-    async (text: string, stage?: WorkflowStage) => {
+    async (
+      text: string,
+      stageOrAcceptedOutcomeIds?: WorkflowStage | string[],
+      acceptedOutcomeIds?: string[],
+    ) => {
       const message = text.trim();
       if (message === '' || sending) return;
+
+      const workflowStage = typeof stageOrAcceptedOutcomeIds === 'string'
+        ? stageOrAcceptedOutcomeIds
+        : undefined;
+      const acceptedIds = Array.isArray(stageOrAcceptedOutcomeIds)
+        ? stageOrAcceptedOutcomeIds
+        : acceptedOutcomeIds;
+
       setSending(true);
       setBubbles((prev) => [...prev, { id: bubbleId(), role: 'farmer', text: message }]);
       try {
@@ -82,12 +105,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           sessionId,
           farmerId,
           farmId,
+          useMemory,
+          acceptedOutcomeIds: acceptedIds,
+          ignoredOutcomeIds,
           preferredLanguage: language,
-          workflowStage: stage,
+          workflowStage,
           triggerReason:
-            stage === 'weather'
+            workflowStage === 'weather'
               ? 'weather_refreshed'
-              : stage === 'full'
+              : workflowStage === 'full'
                 ? 'user_requested_replan'
                 : undefined,
         };
@@ -103,6 +129,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         else if (res.seasonPlan?.retrievedEvidence) setEvidence(res.seasonPlan.retrievedEvidence);
         if (res.cropRankings) setCropRankings(res.cropRankings);
         if (res.seasonPlan) setSeasonPlan(res.seasonPlan);
+        if (res.rememberedOutcomes) {
+          setRememberedOutcomes(res.rememberedOutcomes.filter((outcome) => !ignoredOutcomeIds.includes(outcome.id)));
+        }
         if (res.trace?.length) setTrace((prev) => [...prev, ...res.trace]);
         setBubbles((prev) => [
           ...prev,
@@ -123,8 +152,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setSending(false);
       }
     },
-    [sessionId, farmerId, farmId, language, sending],
+    [sessionId, farmerId, farmId, useMemory, ignoredOutcomeIds, language, sending],
   );
+
+  const ignoreOutcome = useCallback((id: string) => {
+    setIgnoredOutcomeIds((prev) => prev.includes(id) ? prev : [...prev, id]);
+    setRememberedOutcomes((prev) => prev.filter((outcome) => outcome.id !== id));
+  }, []);
 
   const reset = useCallback(() => {
     setSessionId(undefined);
@@ -135,6 +169,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setEvidence(undefined);
     setCropRankings(undefined);
     setSeasonPlan(undefined);
+    setRememberedOutcomes([]);
+    setIgnoredOutcomeIds([]);
     setMissingFields([]);
     setResult(undefined);
     setTrace([]);
@@ -152,13 +188,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       evidence,
       cropRankings,
       seasonPlan,
+      rememberedOutcomes,
+      useMemory,
       missingFields,
       result,
       trace,
       bubbles,
       sending,
       setLanguage,
+      setUseMemory,
       send,
+      ignoreOutcome,
       reset,
     }),
     [
@@ -171,12 +211,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       evidence,
       cropRankings,
       seasonPlan,
+      rememberedOutcomes,
+      useMemory,
       missingFields,
       result,
       trace,
       bubbles,
       sending,
       send,
+      ignoreOutcome,
       reset,
     ],
   );

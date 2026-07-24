@@ -40,6 +40,31 @@ export interface IntakeProfile {
   currentCrop?: string;
 }
 
+export type MemoryOutcomeKind =
+  | "farm_fact"
+  | "crop_decision"
+  | "financial_result"
+  | "risk_warning"
+  | "pending_task"
+  | "farmer_preference";
+
+export interface MemoryOutcome {
+  id: string;
+  userId?: string;
+  farmerId?: string;
+  farmId?: string;
+  sessionId?: string;
+  planId?: string;
+  kind: MemoryOutcomeKind;
+  title: string;
+  summary: string;
+  valueJson: Record<string, unknown>;
+  score: number;
+  sourceTraceIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface WeatherDaily {
   date: string;
   rainfallMm: number;
@@ -107,6 +132,16 @@ export interface SeasonPlanTask {
   endDate: string;
   growthStage?: string;
   organicAlternative?: string;
+  inputs?: Array<{
+    item: string;
+    quantity: number;
+    unit: string;
+    unitCostBdt?: number;
+    totalCostBdt?: number;
+  }>;
+  source?: string;
+  weatherNote?: string;
+  delayRecommended?: boolean;
   quantity?: number;
   unit?: string;
   unitCostBdt?: number;
@@ -127,6 +162,18 @@ export interface SeasonPlanFinancials {
   costBreakdown: CostBreakdownItem[];
 }
 
+export interface SchedulerSummary {
+  cropId?: string;
+  fertilityClass: string;
+  fertilitySource: string;
+  totalFertilizerCostBdt: number;
+  totalIrrigationCostBdt: number;
+  fertilizerTotals: Record<string, number>;
+  irrigationEvents: number;
+  rainDelayWarnings: number;
+  sources: string[];
+}
+
 export interface SeasonPlanResult {
   id?: string;
   crop: string;
@@ -135,6 +182,7 @@ export interface SeasonPlanResult {
   harvestEndDate: string;
   tasks: SeasonPlanTask[];
   financials: SeasonPlanFinancials;
+  schedulerSummary?: SchedulerSummary;
   reasoning: string;
   selectedCropReason: string;
   sourceTraceIds: string[];
@@ -166,6 +214,8 @@ export interface AgriSenseMessageResult {
   retrievedEvidence?: RetrievedEvidence[];
   cropRankings?: CropRecommendation[];
   seasonPlan?: SeasonPlanResult;
+  rememberedOutcomes?: MemoryOutcome[];
+  memoryTrace?: TraceEvent[];
   trace: TraceEvent[];
 }
 

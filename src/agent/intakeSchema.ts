@@ -77,6 +77,9 @@ export interface IntakeRequest {
   channel?: string;
   preferredLanguage?: "en" | "bn" | "banglish";
   selectedCrop?: string;
+  useMemory?: boolean;
+  acceptedOutcomeIds?: string[];
+  ignoredOutcomeIds?: string[];
   workflowStage?: "intake" | "weather" | "evidence" | "crop_ranking" | "season_plan" | "financials" | "full";
   triggerReason?:
     | "intake_completed"

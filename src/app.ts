@@ -11,6 +11,8 @@ import { paymentsRouter } from "./routes/payments.js";
 import { channelRouter } from "./routes/channel.js";
 import { temporalRouter } from "./routes/temporal.js";
 import { marketplaceRouter } from "./routes/marketplace.js";
+import { financeRouter } from "./routes/finance.js";
+import { contextRouter } from "./routes/context.js";
 // NOTE: parallel Tier 0 implementation (navid) — mounted under /api/tier0 to avoid
 // colliding with agrisenseRouter/agentIntakeRouter. Team to pick one before submission.
 import { agentRouter } from "./routes/agent.js";
@@ -56,8 +58,10 @@ export function createApp(): Application {
   app.use("/api/stats", statsRouter);
   app.use("/api/agent", agentIntakeRouter);
   app.use("/api/agrisense", agrisenseRouter);
+  app.use("/api/context", contextRouter);
   app.use("/api/temporal", temporalRouter);
   app.use("/api/marketplace", marketplaceRouter);
+  app.use("/api/finance", financeRouter);
   // bdapps CaaS checkout + receipt readback (payments/service.ts).
   app.use("/api/payments", paymentsRouter);
   // BDApps channel-activation status (can we reach this farmer via BDApps?).

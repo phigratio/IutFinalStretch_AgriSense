@@ -18,6 +18,7 @@ const tests = [
   ["agent intake complete turn", testAgentIntakeComplete],
   ["agrisense full plan workflow", testAgriSensePlan],
   ["agrisense trace and plan readback", testAgriSenseReadbacks],
+  ["finance summary and ledger", testFinanceManagement],
   ["temporal schedules API", testTemporalSchedules],
   ["temporal manual memory workflow", testTemporalManualWorkflow],
   ["payments route wiring", testPaymentsRoutes],
@@ -44,7 +45,7 @@ async function testFrontendHealth() {
 }
 
 async function testFrontendPages() {
-  for (const page of ["/agrisense", "/agent-intake", "/temporal", "/payments", "/bdapps"]) {
+  for (const page of ["/agrisense", "/agent-intake", "/finance", "/temporal", "/payments", "/bdapps"]) {
     const response = await fetch(`${baseUrl}${page}`);
     const text = await response.text();
     assert(response.ok, `${page} returned ${response.status}`);
@@ -111,6 +112,48 @@ async function testAgriSenseReadbacks() {
   const plan = await requestJson(`/api/agrisense/plans/${state.planId}`);
   assert(plan.id, "plan readback missing id");
   assert(plan.items?.length > 0, "plan items readback empty");
+}
+
+async function testFinanceManagement() {
+  assert(state.farmId, "farmId from previous test missing");
+  assert(state.planId, "planId from previous test missing");
+
+  const summary = await requestJson(`/api/finance/summary?farmId=${state.farmId}&seasonPlanId=${state.planId}&year=2026`);
+  assert(summary.monthly?.length === 12, "finance monthly projection missing");
+  assert(typeof summary.totals?.totalExpenseBdt === "number", "finance expenses missing");
+  assert(summary.entries?.some((entry) => entry.source === "season_plan"), "season plan entries missing from finance");
+  assert(summary.agentInsights?.length > 0, "finance agent insights missing");
+  assert(summary.trace?.some((event) => event.toolName === "finance.aggregate_monthly"), "finance trace missing");
+
+  const created = await requestJson("/api/finance/entries", {
+    method: "POST",
+    body: {
+      farmId: state.farmId,
+      seasonPlanId: state.planId,
+      entryType: "expense",
+      category: "labor",
+      label: "E2E extra labor",
+      amountBdt: 750,
+      entryDate: "2026-07-24",
+      season: "monsoon",
+      crop: summary.plan?.crop ?? "rice",
+    },
+  }, { expectedStatus: 201 });
+  assert(created.id, "created finance entry missing id");
+
+  const updated = await requestJson(`/api/finance/entries/${created.id}`, {
+    method: "PATCH",
+    body: { amountBdt: 900 },
+  });
+  assertEqual(updated.amountBdt, 900, "updated finance amount");
+
+  const advice = await requestJson("/api/finance/advice", {
+    method: "POST",
+    body: { farmId: state.farmId, seasonPlanId: state.planId, year: 2026 },
+  });
+  assert(advice.agentInsights?.length > 0, "finance advice missing insights");
+
+  await requestJson(`/api/finance/entries/${created.id}`, { method: "DELETE" }, { expectedStatus: 204 });
 }
 
 async function testTemporalSchedules() {

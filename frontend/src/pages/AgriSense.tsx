@@ -1,15 +1,21 @@
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import PageMeta from "../components/common/PageMeta.js";
 import {
+  getAgriSenseContext,
+  getAgriSenseMemory,
   sendAgriSenseMessage,
   type AgriSenseMessageResult,
+  type ContextBundle,
   type CropRecommendation,
   type IntakeProfile,
+  type MemoryOutcome,
+  type MemorySessionSummary,
   type SeasonPlanTask,
   type TraceEvent,
   type WorkflowStage,
 } from "../api/agrisense.js";
+import { useAuth } from "../context/AuthContext.js";
 import { ArrowUpIcon, BoxIcon, CalendarIcon, SearchIcon } from "../icons/index.js";
 
 interface ChatMessage {
@@ -18,7 +24,7 @@ interface ChatMessage {
 }
 
 type Language = "en" | "bn" | "banglish";
-type ViewStage = WorkflowStage | "trace";
+type ViewStage = WorkflowStage | "context" | "scheduler" | "trace";
 
 const starterMessages = [
   "I have 2 acres in Gazipur, what should I plant?",
@@ -46,10 +52,12 @@ const workflowStages: Array<{
   description: string;
 }> = [
   { id: "intake", label: "Intake", tool: "memory + gaps", description: "Recover profile from memory and ask only for missing fields." },
+  { id: "context", label: "Context", tool: "context.hydrate", description: "Fetch cached user memory, prior analyses, profile, and KB sources." },
   { id: "weather", label: "Weather", tool: "weather.fetch", description: "Refresh live weather for the farm location." },
   { id: "evidence", label: "Evidence", tool: "rag.retrieve", description: "Retrieve agronomic context for the profile and weather." },
   { id: "crop_ranking", label: "Crop Ranking", tool: "crop.rank", description: "Rank crops from profile, weather, budget, and evidence." },
   { id: "season_plan", label: "Season Plan", tool: "season.plan", description: "Generate dated farming actions for the selected crop." },
+  { id: "scheduler", label: "Fertigation", tool: "fertigation.schedule", description: "Inspect FRG fertilizer splits, irrigation checkpoints, organic options, and costs." },
   { id: "financials", label: "Financial Math", tool: "finance.calculate", description: "Inspect costs, profit, ROI, and break-even." },
   { id: "trace", label: "Agent Trace", tool: "trace.read", description: "Inspect every tool call, parameter, and raw response." },
   { id: "full", label: "Full Run", tool: "agent.plan", description: "Run the complete agent workflow end to end." },
@@ -58,6 +66,7 @@ const workflowStages: Array<{
 const stageLabels = Object.fromEntries(workflowStages.map((stage) => [stage.id, stage.label])) as Record<ViewStage, string>;
 
 export default function AgriSense() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [language, setLanguage] = useState<Language>("en");
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -72,6 +81,11 @@ export default function AgriSense() {
   const [farmId, setFarmId] = useState<string | undefined>();
   const [result, setResult] = useState<AgriSenseMessageResult | null>(null);
   const [trace, setTrace] = useState<TraceEvent[]>([]);
+  const [useMemory, setUseMemory] = useState(true);
+  const [rememberedOutcomes, setRememberedOutcomes] = useState<MemoryOutcome[]>([]);
+  const [memorySessions, setMemorySessions] = useState<MemorySessionSummary[]>([]);
+  const [contextBundle, setContextBundle] = useState<ContextBundle | null>(null);
+  const [ignoredOutcomeIds, setIgnoredOutcomeIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -80,7 +94,55 @@ export default function AgriSense() {
   const profile = result?.farmProfile;
   const activeStage = normalizeStage(searchParams.get("stage"));
 
-  async function submitMessage(messageText = input, workflowStage: WorkflowStage = activeStage === "trace" ? "full" : activeStage) {
+  useEffect(() => {
+    const raw = localStorage.getItem("agrisense.sessionContext");
+    if (!raw) return;
+    try {
+      const stored = JSON.parse(raw) as { sessionId?: string; farmerId?: string; farmId?: string; language?: Language };
+      setSessionId(stored.sessionId);
+      setFarmerId(stored.farmerId);
+      setFarmId(stored.farmId);
+      if (stored.language) setLanguage(stored.language);
+    } catch {
+      localStorage.removeItem("agrisense.sessionContext");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!sessionId && !farmerId && !farmId) return;
+    localStorage.setItem("agrisense.sessionContext", JSON.stringify({ sessionId, farmerId, farmId, language }));
+  }, [sessionId, farmerId, farmId, language]);
+
+  useEffect(() => {
+    if (!useMemory) return;
+    if (!user?.id && !farmerId && !farmId) return;
+    let cancelled = false;
+    Promise.all([
+      getAgriSenseMemory({ userId: user?.id, farmerId, farmId, limit: 8 }),
+      getAgriSenseContext({ userId: user?.id, farmerId, farmId, sessionId, language, limit: 8 }),
+    ])
+      .then(([memory, context]) => {
+        if (cancelled) return;
+        setRememberedOutcomes(memory.outcomes.filter((outcome) => !ignoredOutcomeIds.includes(outcome.id)));
+        setMemorySessions(memory.sessions);
+        setContextBundle(context);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRememberedOutcomes([]);
+          setMemorySessions([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, farmerId, farmId, sessionId, language, useMemory, ignoredOutcomeIds]);
+
+  async function submitMessage(
+    messageText = input,
+    workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" || activeStage === "scheduler" ? "full" : activeStage,
+    acceptedOutcomeIds?: string[],
+  ) {
     const text = messageText.trim();
     if (!text || loading) return;
 
@@ -95,7 +157,11 @@ export default function AgriSense() {
         sessionId,
         farmerId,
         farmId,
+        userId: user?.id,
         preferredLanguage: language,
+        useMemory,
+        acceptedOutcomeIds,
+        ignoredOutcomeIds,
         workflowStage,
         triggerReason: workflowStage === "weather" ? "weather_refreshed" : workflowStage === "full" ? "user_requested_replan" : undefined,
       });
@@ -104,6 +170,12 @@ export default function AgriSense() {
       setFarmerId(response.farmerId);
       setFarmId(response.farmId);
       setResult(response);
+      if (response.context) {
+        setContextBundle(response.context);
+      }
+      if (response.rememberedOutcomes) {
+        setRememberedOutcomes(response.rememberedOutcomes.filter((outcome) => !ignoredOutcomeIds.includes(outcome.id)));
+      }
       if (response.seasonPlan) {
         localStorage.setItem("agrisense.latestPlan", JSON.stringify(response));
       }
@@ -133,11 +205,25 @@ export default function AgriSense() {
 
   function runStage(stage: ViewStage) {
     selectStage(stage);
-    if (stage === "trace") return;
+    if (stage === "trace" || stage === "context" || stage === "scheduler") return;
     const message = stage === "intake"
       ? "continue intake"
       : `continue from ${stageLabels[stage]}`;
     void submitMessage(message, stage);
+  }
+
+  function ignoreOutcome(id: string) {
+    setIgnoredOutcomeIds((current) => current.includes(id) ? current : [...current, id]);
+    setRememberedOutcomes((current) => current.filter((outcome) => outcome.id !== id));
+  }
+
+  function useOutcome(outcome: MemoryOutcome) {
+    const workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" || activeStage === "scheduler" ? "full" : activeStage;
+    void submitMessage(
+      `Use remembered context: ${outcome.title}`,
+      workflowStage,
+      [outcome.id],
+    );
   }
 
   return (
@@ -198,6 +284,16 @@ export default function AgriSense() {
         </div>
       )}
 
+      <MemoryPanel
+        useMemory={useMemory}
+        outcomes={rememberedOutcomes}
+        sessions={memorySessions}
+        onToggle={setUseMemory}
+        onUse={useOutcome}
+        onIgnore={ignoreOutcome}
+        onViewTrace={() => selectStage("trace")}
+      />
+
       <div className="grid min-h-[720px] grid-cols-1 gap-4 xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.45fr)_minmax(320px,0.95fr)]">
         <section className="flex min-h-[560px] flex-col rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
           <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
@@ -255,6 +351,7 @@ export default function AgriSense() {
             missingFields={result?.missingFields ?? []}
             result={result}
             activePlan={activePlan}
+            context={contextBundle ?? result?.context}
           />
         </main>
 
@@ -279,6 +376,7 @@ function WorkflowStageSidebar({
 }) {
   const available = new Set<ViewStage>(["intake", "trace", "full"]);
   if (result?.farmProfile) available.add("weather");
+  if (result?.context) available.add("context");
   if (result?.weather) available.add("evidence");
   if (result?.retrievedEvidence?.length) available.add("crop_ranking");
   if (result?.cropRankings?.length) {
@@ -287,6 +385,7 @@ function WorkflowStageSidebar({
   }
   if (result?.seasonPlan) {
     available.add("season_plan");
+    available.add("scheduler");
     available.add("financials");
   }
 
@@ -341,24 +440,134 @@ function WorkflowStageSidebar({
   );
 }
 
+function MemoryPanel({
+  useMemory,
+  outcomes,
+  sessions,
+  onToggle,
+  onUse,
+  onIgnore,
+  onViewTrace,
+}: {
+  useMemory: boolean;
+  outcomes: MemoryOutcome[];
+  sessions: MemorySessionSummary[];
+  onToggle: (enabled: boolean) => void;
+  onUse: (outcome: MemoryOutcome) => void;
+  onIgnore: (id: string) => void;
+  onViewTrace: () => void;
+}) {
+  const visibleOutcomes = outcomes.slice(0, 5);
+
+  return (
+    <section className="mb-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Remembered From Previous Sessions</h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Ranked farm facts, prior decisions, financial results, risks, and pending tasks.
+          </p>
+        </div>
+        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-gray-700 dark:text-gray-200">
+          <input
+            type="checkbox"
+            checked={useMemory}
+            onChange={(event) => onToggle(event.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+          />
+          Use previous sessions
+        </label>
+      </div>
+
+      {!useMemory ? (
+        <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">Memory recall is off for this session.</p>
+      ) : visibleOutcomes.length === 0 ? (
+        <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">No previous outcomes found yet.</p>
+      ) : (
+        <div className="mt-4 grid gap-3 xl:grid-cols-5">
+          {visibleOutcomes.map((outcome) => (
+            <div key={outcome.id} className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-gray-900 dark:text-white">{outcome.title}</p>
+                  <p className="mt-1 text-[11px] capitalize text-gray-500 dark:text-gray-400">
+                    {outcome.kind.replace("_", " ")} · {Math.round(outcome.score)}
+                  </p>
+                </div>
+              </div>
+              <p className="mt-2 line-clamp-3 text-xs leading-5 text-gray-500 dark:text-gray-400">{outcome.summary}</p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => onUse(outcome)}
+                  className="rounded-lg bg-brand-500 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-brand-600"
+                >
+                  Use
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onIgnore(outcome.id)}
+                  className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-200 dark:hover:bg-white/[0.06]"
+                >
+                  Ignore
+                </button>
+                <button
+                  type="button"
+                  onClick={onViewTrace}
+                  className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-200 dark:hover:bg-white/[0.06]"
+                >
+                  Source
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {useMemory && sessions.length > 0 && (
+        <div className="mt-4 border-t border-gray-200 pt-3 dark:border-gray-800">
+          <p className="text-xs font-semibold text-gray-900 dark:text-white">Session History</p>
+          <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            {sessions.slice(0, 4).map((session) => (
+              <div key={session.id} className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-white/[0.04]">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-gray-900 dark:text-white">{shortId(session.id)}</p>
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400">{session.status}</span>
+                </div>
+                <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
+                  {session.selectedCrop ?? session.channel} · {formatDate(session.updatedAt.slice(0, 10))}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function StageContent({
   activeStage,
   profile,
   missingFields,
   result,
   activePlan,
+  context,
 }: {
   activeStage: ViewStage;
   profile?: IntakeProfile;
   missingFields: string[];
   result: AgriSenseMessageResult | null;
   activePlan?: AgriSenseMessageResult["seasonPlan"];
+  context?: ContextBundle | null;
 }) {
   if (activeStage === "intake") return <ProfilePanel profile={profile} missingFields={missingFields} />;
+  if (activeStage === "context") return <ContextPanel context={context ?? result?.context ?? null} />;
   if (activeStage === "weather") return <WeatherPanel result={result} />;
   if (activeStage === "evidence") return <EvidencePanel result={result} />;
   if (activeStage === "crop_ranking") return <CropRankings rankings={result?.cropRankings ?? []} />;
   if (activeStage === "season_plan") return activePlan ? <SeasonPlanPanel plan={activePlan} /> : <EmptyStage title="Season Plan" text="Run crop ranking first, then continue into season planning." />;
+  if (activeStage === "scheduler") return activePlan ? <FertigationPanel plan={activePlan} /> : <EmptyStage title="Fertigation" text="Run the season plan first to inspect fertilizer and irrigation scheduling." />;
   if (activeStage === "financials") return activePlan ? <FinancialPanel plan={activePlan} /> : <EmptyStage title="Financial Math" text="Run the season plan first to calculate costs, ROI, profit, and break-even." />;
   if (activeStage === "trace") return <EmptyStage title="Agent Trace" text="The trace inspector is open on the right side of this workspace." />;
 
@@ -371,10 +580,132 @@ function StageContent({
       {activePlan && (
         <>
           <SeasonPlanPanel plan={activePlan} />
+          <FertigationPanel plan={activePlan} />
           <FinancialPanel plan={activePlan} />
         </>
       )}
     </>
+  );
+}
+
+function ContextPanel({ context }: { context: ContextBundle | null }) {
+  if (!context) {
+    return <EmptyStage title="Context" text="Context hydration appears after a session, user, farm, or memory lookup is available." />;
+  }
+
+  const profile = context.profileSnapshot ?? context.profile;
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Fetched Context</h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Cache, profile, prior analyses, mem0 recall, and tenant/hub KB used before agent work.
+          </p>
+        </div>
+        <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold uppercase text-brand-500">
+          {context.cache.status}
+        </span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Metric label="Memory user" value={shortId(context.identity.memoryUserId)} />
+        <Metric label="TTL" value={`${Math.round(context.cache.ttlMs / 1000)}s`} />
+        <Metric label="Outcomes" value={context.memory.outcomes.length} />
+        <Metric label="KB hits" value={context.kbHits.length} />
+      </div>
+
+      {profile && (
+        <div className="mt-4 rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+          <p className="text-xs font-semibold text-gray-900 dark:text-white">Profile Snapshot</p>
+          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
+            <Metric label="Location" value={profile.locationText ?? "n/a"} />
+            <Metric label="Soil" value={profile.soilType ?? "n/a"} />
+            <Metric label="Water" value={profile.waterAvailability ?? "n/a"} />
+            <Metric label="Size" value={profile.sizeAcres ? `${profile.sizeAcres} acres` : "n/a"} />
+            <Metric label="Budget" value={profile.budgetBdt ? formatMoney(profile.budgetBdt) : "n/a"} />
+            <Metric label="Season" value={profile.targetSeason ?? "n/a"} />
+          </div>
+        </div>
+      )}
+
+      {context.priorAnalyses.length > 0 && (
+        <div className="mt-4">
+          <p className="text-xs font-semibold text-gray-900 dark:text-white">Prior Analyses</p>
+          <div className="mt-2 grid gap-2 md:grid-cols-2">
+            {context.priorAnalyses.slice(0, 4).map((item) => (
+              <div key={item.id} className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-xs font-semibold text-gray-900 dark:text-white">{item.title}</p>
+                  <span className="text-[11px] capitalize text-gray-500 dark:text-gray-400">{item.kind.replace("_", " ")}</span>
+                </div>
+                <p className="mt-2 line-clamp-3 text-xs leading-5 text-gray-500 dark:text-gray-400">{item.summary}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <ContextList
+          title="mem0 Recall"
+          empty="No mem0 memories returned for this context."
+          items={context.memory.mem0.map((item) => ({
+            id: item.id,
+            title: item.title,
+            body: item.content,
+            meta: item.score ? `score ${item.score.toFixed(2)}` : "mem0",
+          }))}
+        />
+        <ContextList
+          title="Knowledge Base"
+          empty="No tenant/hub KB hits returned yet."
+          items={context.kbHits.map((hit, index) => ({
+            id: hit.docKey ?? `kb-${index}`,
+            title: hit.source ?? hit.docKey ?? "KB source",
+            body: hit.text,
+            meta: hit.citation,
+          }))}
+        />
+      </div>
+
+      {context.warnings.length > 0 && (
+        <div className="mt-4 rounded-lg border border-warning-500/30 bg-warning-50 p-3 text-xs text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
+          {context.warnings.join(" ")}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ContextList({
+  title,
+  empty,
+  items,
+}: {
+  title: string;
+  empty: string;
+  items: Array<{ id: string; title: string; body: string; meta: string }>;
+}) {
+  return (
+    <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+      <p className="text-xs font-semibold text-gray-900 dark:text-white">{title}</p>
+      {items.length === 0 ? (
+        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{empty}</p>
+      ) : (
+        <div className="mt-2 space-y-2">
+          {items.slice(0, 4).map((item) => (
+            <div key={item.id} className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-white/[0.04]">
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate text-xs font-medium text-gray-900 dark:text-white">{item.title}</p>
+                <span className="truncate text-[11px] text-gray-400">{item.meta}</span>
+              </div>
+              <p className="mt-1 line-clamp-3 text-[11px] leading-4 text-gray-500 dark:text-gray-400">{item.body}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -603,6 +934,100 @@ function SeasonPlanPanel({ plan }: { plan: NonNullable<AgriSenseMessageResult["s
   );
 }
 
+function FertigationPanel({ plan }: { plan: NonNullable<AgriSenseMessageResult["seasonPlan"]> }) {
+  const tasks = plan.tasks.filter((task) => task.phase === "fertilizer" || task.phase === "irrigation");
+  const summary = plan.schedulerSummary;
+  const totals = summary?.fertilizerTotals ?? {};
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Fertilizer & Irrigation</h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            FRG dose scaling, growth-stage timing, crop-water checkpoints, organic alternatives, and forecast warnings.
+          </p>
+        </div>
+        <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-500">
+          {summary?.cropId ?? plan.crop}
+        </span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Metric label="Fertilizer cost" value={formatMoney(summary?.totalFertilizerCostBdt ?? sumTaskCosts(tasks, "fertilizer"))} />
+        <Metric label="Irrigation cost" value={formatMoney(summary?.totalIrrigationCostBdt ?? sumTaskCosts(tasks, "irrigation"))} />
+        <Metric label="Irrigation events" value={summary?.irrigationEvents ?? tasks.filter((task) => task.phase === "irrigation").length} />
+        <Metric label="Rain warnings" value={summary?.rainDelayWarnings ?? tasks.filter((task) => task.delayRecommended).length} />
+        <Metric label="Fertility" value={`${summary?.fertilityClass ?? "medium"} (${summary?.fertilitySource ?? "default"})`} />
+        <Metric label="Urea" value={formatInputTotal(totals, "Urea")} />
+        <Metric label="TSP" value={formatInputTotal(totals, "TSP")} />
+        <Metric label="MoP" value={formatInputTotal(totals, "MoP")} />
+      </div>
+
+      {tasks.length === 0 ? (
+        <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">No fertilizer or irrigation tasks are available for this plan.</p>
+      ) : (
+        <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
+          <div className="hidden grid-cols-[112px_120px_minmax(180px,1fr)_minmax(180px,1fr)_110px] gap-3 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500 dark:border-gray-800 dark:bg-white/[0.04] dark:text-gray-400 lg:grid">
+            <div>Window</div>
+            <div>Stage</div>
+            <div>Action</div>
+            <div>Inputs & Alternatives</div>
+            <div className="text-right">Cost</div>
+          </div>
+          <div className="divide-y divide-gray-200 dark:divide-gray-800">
+            {tasks.map((task) => (
+              <div key={`${task.phase}-${task.startDate}-${task.title}`} className={`grid gap-3 px-3 py-3 text-sm lg:grid-cols-[112px_120px_minmax(180px,1fr)_minmax(180px,1fr)_110px] ${task.delayRecommended ? "bg-warning-50/70 dark:bg-warning-500/10" : ""}`}>
+                <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {formatDate(task.startDate)} - {formatDate(task.endDate)}
+                </div>
+                <div>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${task.phase === "fertilizer" ? "bg-success-50 text-success-700 dark:bg-success-500/15 dark:text-success-400" : "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300"}`}>
+                    {task.growthStage ?? task.phase}
+                  </span>
+                  <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{task.source ?? "scheduler"}</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900 dark:text-white">{task.title}</p>
+                  <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{task.description}</p>
+                  {task.weatherNote && (
+                    <p className="mt-2 rounded-lg border border-warning-500/30 bg-warning-50 px-2 py-1 text-xs font-medium text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
+                      {task.weatherNote}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {(task.inputs ?? []).map((input) => (
+                    <div key={`${task.title}-${input.item}`} className="flex items-start justify-between gap-2 rounded-lg bg-gray-50 px-2 py-1.5 text-xs dark:bg-white/[0.04]">
+                      <span className="font-medium text-gray-800 dark:text-gray-100">{input.item}</span>
+                      <span className="text-right text-gray-600 dark:text-gray-300">
+                        {input.quantity} {input.unit}
+                        {input.totalCostBdt ? ` · ${formatMoney(input.totalCostBdt)}` : ""}
+                      </span>
+                    </div>
+                  ))}
+                  {task.organicAlternative && (
+                    <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">{task.organicAlternative}</p>
+                  )}
+                </div>
+                <div className="text-right text-xs font-semibold text-gray-900 dark:text-white">
+                  {task.totalCostBdt ? formatMoney(task.totalCostBdt) : "No direct cost"}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {summary?.sources.length ? (
+        <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+          Sources: {summary.sources.join(" · ")}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function FinancialPanel({ plan }: { plan: NonNullable<AgriSenseMessageResult["seasonPlan"]> }) {
   const financials = plan.financials;
   const invariantOk =
@@ -667,6 +1092,14 @@ function TaskRow({ task }: { task: SeasonPlanTask }) {
       <div>
         <p className="text-sm font-semibold text-gray-900 dark:text-white">{task.title}</p>
         <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{task.description}</p>
+        {task.inputs && task.inputs.length > 0 && (
+          <p className="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-300">
+            {task.inputs.map((input) => `${input.item}: ${input.quantity} ${input.unit}`).join(" · ")}
+          </p>
+        )}
+        {task.weatherNote && (
+          <p className="mt-1 text-xs font-medium leading-5 text-warning-700 dark:text-warning-400">{task.weatherNote}</p>
+        )}
         <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{task.reasoning}</p>
       </div>
       <div className="text-right text-xs text-gray-600 dark:text-gray-300">
@@ -722,6 +1155,15 @@ function Metric({ label, value }: { label: string; value: string | number }) {
 
 function formatMoney(value: number): string {
   return `৳${new Intl.NumberFormat("en-BD", { maximumFractionDigits: 0 }).format(value)}`;
+}
+
+function sumTaskCosts(tasks: SeasonPlanTask[], phase: string): number {
+  return tasks.filter((task) => task.phase === phase).reduce((sum, task) => sum + (task.totalCostBdt ?? 0), 0);
+}
+
+function formatInputTotal(totals: Record<string, number>, label: string): string {
+  const match = Object.entries(totals).find(([key]) => key.toLowerCase().includes(label.toLowerCase()));
+  return match ? `${match[1]} kg` : "0 kg";
 }
 
 function formatDate(value: string): string {

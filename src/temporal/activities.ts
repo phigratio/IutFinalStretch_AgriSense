@@ -31,6 +31,18 @@ interface DueTaskRow {
   end_date: Date | null;
 }
 
+interface ImpactedPlanTaskRow {
+  task_id: string;
+  item_type: string;
+  title: string;
+  description: string;
+  start_date: Date | null;
+  end_date: Date | null;
+  quantity: unknown;
+  unit: string | null;
+  reasoning: string | null;
+}
+
 export async function weatherAlertSweepActivity(input: WeatherAlertInput = {}): Promise<SweepResult> {
   return withPrisma("weather_alert_sweep", async (prisma) => {
     const rows = await listActiveFarms(prisma, input.maxFarms ?? 50);
@@ -54,19 +66,43 @@ export async function weatherAlertSweepActivity(input: WeatherAlertInput = {}): 
           continue;
         }
 
+        const impactedTask = row.plan_id
+          ? await findWeatherSensitivePlanTask(prisma, row.plan_id, heavyRainDay.date)
+          : null;
+        const daysUntilRain = daysBetween(new Date(), new Date(`${heavyRainDay.date}T00:00:00Z`));
+        const delayDays = Math.max(daysUntilRain, 1);
+        const adjustedStartDate = impactedTask?.start_date
+          ? addDaysString(toDateString(impactedTask.start_date), delayDays)
+          : addDaysString(heavyRainDay.date, 1);
+        const adjustedEndDate = impactedTask?.end_date
+          ? addDaysString(toDateString(impactedTask.end_date), delayDays)
+          : addDaysString(adjustedStartDate, 1);
+        const taskLabel = impactedTask ? lowerFirst(impactedTask.title) : "nitrogen or fertilizer application";
+
         created += await insertAlert(prisma, {
           farmId: row.farm_id,
           sessionId: row.session_id,
           planId: row.plan_id,
           alertType: "heavy_rain",
           severity: heavyRainDay.rainfallMm >= threshold * 1.5 ? "warning" : "info",
-          title: "Heavy rain risk",
-          message: `${heavyRainDay.rainfallMm}mm rain is forecast on ${heavyRainDay.date}.`,
-          recommendation: "Delay fertilizer or sowing tasks until after the heavy-rain window.",
+          title: impactedTask ? "Delay nitrogen application" : "Heavy rain risk",
+          message: `${heavyRainDay.rainfallMm}mm rain is forecast on ${heavyRainDay.date}${daysUntilRain > 0 ? `, ${daysUntilRain} day${daysUntilRain === 1 ? "" : "s"} from now` : ""}.`,
+          recommendation: `Delay ${taskLabel} by ${delayDays} day${delayDays === 1 ? "" : "s"} to cut runoff and leaching loss. Move the window to ${adjustedStartDate}${adjustedEndDate !== adjustedStartDate ? `-${adjustedEndDate}` : ""}.`,
           ruleId: "weather.heavy_rain.lookahead",
           triggerDate: heavyRainDay.date,
-          rawEvidence: { forecastDay: heavyRainDay, location: forecast.locationText },
-          fingerprint: `weather:${row.farm_id}:${heavyRainDay.date}:${threshold}`,
+          rawEvidence: {
+            forecastDay: heavyRainDay,
+            location: forecast.locationText,
+            activePlanId: row.plan_id,
+            impactedTask,
+            adjustment: {
+              delayDays,
+              adjustedStartDate,
+              adjustedEndDate,
+              rationale: "Heavy rainfall soon after nitrogen application increases runoff and leaching risk; postpone until the heavy-rain window passes.",
+            },
+          },
+          fingerprint: `weather:${row.farm_id}:${row.plan_id ?? "no-plan"}:${impactedTask?.task_id ?? "fertilizer"}:${heavyRainDay.date}:${threshold}`,
         });
       } catch (error) {
         errors.push(`${row.farm_id}: ${(error as Error).message}`);
@@ -330,6 +366,60 @@ async function insertAlert(
   `;
 }
 
+async function findWeatherSensitivePlanTask(
+  prisma: PrismaClient,
+  planId: string,
+  rainDate: string,
+): Promise<ImpactedPlanTaskRow | null> {
+  const rows = await prisma.$queryRaw<ImpactedPlanTaskRow[]>`
+    SELECT
+      "id" AS "task_id",
+      "item_type",
+      "title",
+      "description",
+      "start_date",
+      "end_date",
+      "quantity",
+      "unit",
+      "reasoning"
+    FROM "season_plan_items"
+    WHERE "plan_id" = ${planId}::uuid
+      AND (
+        lower("item_type") LIKE '%fert%'
+        OR lower("title") LIKE '%fert%'
+        OR lower("description") LIKE '%fert%'
+        OR lower("title") LIKE '%nitrogen%'
+        OR lower("description") LIKE '%nitrogen%'
+        OR lower("title") LIKE '%urea%'
+        OR lower("description") LIKE '%urea%'
+      )
+      AND (
+        "start_date" IS NULL
+        OR "start_date" <= ${rainDate}::date
+        OR "start_date" BETWEEN CURRENT_DATE AND ${rainDate}::date + INTERVAL '2 days'
+      )
+    ORDER BY "start_date" NULLS LAST, "created_at" DESC
+    LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
 function toDateString(value: Date): string {
   return value.toISOString().slice(0, 10);
+}
+
+function addDaysString(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function daysBetween(start: Date, end: Date): number {
+  const startDate = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate());
+  const endDate = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+  return Math.max(Math.round((endDate - startDate) / 86_400_000), 0);
+}
+
+function lowerFirst(value: string): string {
+  return value.length === 0 ? value : `${value[0]!.toLowerCase()}${value.slice(1)}`;
 }
