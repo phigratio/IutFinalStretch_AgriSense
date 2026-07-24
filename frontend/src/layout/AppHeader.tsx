@@ -15,8 +15,10 @@ export default function AppHeader() {
           <button
             aria-label="Toggle sidebar"
             onClick={() => {
-              toggleSidebar();
-              toggleMobileSidebar();
+              // Collapse/expand the desktop rail on large screens; open/close
+              // the drawer on small screens.
+              if (window.innerWidth >= 1024) toggleSidebar();
+              else toggleMobileSidebar();
             }}
             className="flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.05]"
           >
