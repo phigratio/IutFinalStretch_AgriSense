@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 import { useSidebar } from "../context/SidebarContext.js";
+import { useAuth } from "../context/AuthContext.js";
 import {
   CalendarIcon,
   BoxIcon,
@@ -45,9 +46,25 @@ const otherNav: NavItem[] = [
   { name: "Season Calendar", path: "/calendar", icon: <CalendarIcon /> },
 ];
 
+// Farmer (user) — minimal, farmer-facing links.
+const userNav: NavItem[] = [
+  { name: "আমার ড্যাশবোর্ড", path: "/user/dashboard", icon: <GridIcon /> },
+  { name: "আমার তথ্য", path: "/onboarding?edit=1", icon: <UserIcon /> },
+];
+
+// Tenant — the tenant workbench.
+const tenantNav: NavItem[] = [
+  { name: "টেন্যান্ট ড্যাশবোর্ড", path: "/tenant/dashboard", icon: <GridIcon /> },
+];
+
 export default function AppSidebar() {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
+  const { user } = useAuth();
   const location = useLocation();
+
+  const role = user?.role ?? "user";
+  const primaryNav = role === "admin" ? mainNav : role === "tenant" ? tenantNav : userNav;
+  const showOthers = role === "admin";
 
   const showText = isExpanded || isHovered || isMobileOpen;
   const currentPath = `${location.pathname}${location.search}`;
@@ -112,18 +129,20 @@ export default function AppSidebar() {
           >
             {showText ? "Menu" : <HorizontalDotsIcon width={16} height={16} />}
           </h3>
-          {renderItems(mainNav)}
+          {renderItems(primaryNav)}
         </div>
-        <div>
-          <h3
-            className={`mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400 ${
-              showText ? "px-3" : "flex justify-center"
-            }`}
-          >
-            {showText ? "Others" : <HorizontalDotsIcon width={16} height={16} />}
-          </h3>
-          {renderItems(otherNav)}
-        </div>
+        {showOthers && (
+          <div>
+            <h3
+              className={`mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400 ${
+                showText ? "px-3" : "flex justify-center"
+              }`}
+            >
+              {showText ? "Others" : <HorizontalDotsIcon width={16} height={16} />}
+            </h3>
+            {renderItems(otherNav)}
+          </div>
+        )}
       </nav>
     </aside>
   );
