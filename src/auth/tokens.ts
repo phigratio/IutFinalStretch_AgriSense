@@ -4,6 +4,7 @@ import { config } from "../config.js";
 export interface AuthTokenPayload {
   sub: string;
   email: string;
+  role: "user" | "tenant" | "admin";
   exp: number;
 }
 
@@ -15,11 +16,16 @@ function sign(unsignedToken: string): string {
   return createHmac("sha256", config.authTokenSecret).update(unsignedToken).digest("base64url");
 }
 
-export function createAuthToken(input: { userId: string; email: string }): string {
+export function createAuthToken(input: {
+  userId: string;
+  email: string;
+  role: "user" | "tenant" | "admin";
+}): string {
   const header = encode({ alg: "HS256", typ: "JWT" });
   const payload = encode({
     sub: input.userId,
     email: input.email,
+    role: input.role,
     exp: Math.floor(Date.now() / 1000) + config.authTokenTtlSeconds,
   } satisfies AuthTokenPayload);
   const unsignedToken = `${header}.${payload}`;

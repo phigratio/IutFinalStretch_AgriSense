@@ -20,3 +20,17 @@ export const authenticate: RequestHandler = (req, _res, next) => {
   (req as typeof req & AuthenticatedRequest).auth = payload;
   next();
 };
+
+/** Guard a route by role. Must run after `authenticate`. */
+export function requireRole(...roles: ("user" | "tenant" | "admin")[]): RequestHandler {
+  return (req, _res, next) => {
+    const auth = (req as typeof req & AuthenticatedRequest).auth;
+    if (!auth) {
+      throw new HttpError(401, "Authentication required");
+    }
+    if (!roles.includes(auth.role)) {
+      throw new HttpError(403, "You do not have permission to perform this action");
+    }
+    next();
+  };
+}

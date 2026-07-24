@@ -7,12 +7,15 @@ import {
   type AppUser as PrismaAppUser,
 } from "../generated/prisma/client.js";
 
+export type UserRole = "user" | "tenant" | "admin";
+
 export interface AuthUser {
   id: string;
   email: string;
   name: string;
   passwordHash?: string;
   emailVerified: boolean;
+  role: UserRole;
   createdAt: string;
   updatedAt: string;
 }
@@ -41,6 +44,8 @@ export interface AuthStore {
   listUsers(): Promise<AuthUser[]>;
   /** Admin panel: remove a user. Resolves false when the id is unknown. */
   deleteUser(id: string): Promise<boolean>;
+  /** Admin: change a user's role. Resolves undefined when the id is unknown. */
+  setUserRole(id: string, role: UserRole): Promise<AuthUser | undefined>;
   reset?(): Promise<void>;
   close?(): Promise<void>;
 }
@@ -80,11 +85,20 @@ export class InMemoryAuthStore implements AuthStore {
       name: input.name.trim(),
       passwordHash: input.passwordHash,
       emailVerified: false,
+      role: "user",
       createdAt: timestamp,
       updatedAt: timestamp,
     };
     this.users.set(user.id, user);
     return user;
+  }
+
+  async setUserRole(id: string, role: UserRole): Promise<AuthUser | undefined> {
+    const user = this.users.get(id);
+    if (!user) return undefined;
+    const updated = { ...user, role, updatedAt: now() };
+    this.users.set(id, updated);
+    return updated;
   }
 
   async upsertOAuthUser(input: UpsertOAuthUserInput): Promise<AuthUser> {
@@ -109,6 +123,7 @@ export class InMemoryAuthStore implements AuthStore {
       email: normalizeEmail(input.email),
       name: input.name.trim(),
       emailVerified: input.emailVerified,
+      role: "user",
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -257,6 +272,18 @@ export class PostgresAuthStore implements AuthStore {
     }
   }
 
+  async setUserRole(id: string, role: UserRole): Promise<AuthUser | undefined> {
+    try {
+      const user = await this.prisma.appUser.update({ where: { id }, data: { role } });
+      return mapUser(user);
+    } catch (error) {
+      if (isNotFound(error)) {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
   async close(): Promise<void> {
     await this.prisma.$disconnect();
   }
@@ -269,6 +296,7 @@ function mapUser(row: PrismaAppUser): AuthUser {
     name: row.name,
     passwordHash: row.passwordHash ?? undefined,
     emailVerified: row.emailVerified,
+    role: (row.role as UserRole) ?? "user",
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
