@@ -64,21 +64,22 @@ export class InMemoryTraceWriter implements TraceWriter {
 }
 
 /**
- * Run `fn`, recording one trace event whether it succeeds or throws. On error the failed call is
- * still written (status="error") and the error is re-thrown — callers decide how to degrade, but
- * the failure is always visible in the trace (spec §2 failure policy, §6).
+ * Run `fn`, recording one trace event whether it succeeds or throws, and return both the result
+ * and the event (the event carries the `stepId` used for number provenance). On error the failed
+ * call is still written (status="error") and the error re-thrown — the failure is always visible
+ * in the trace (spec §2 failure policy, §6).
  */
-export async function withTrace<T>(
+export async function runTraced<T>(
   writer: TraceWriter,
   meta: TraceMeta,
   fn: () => T | Promise<T>,
-): Promise<T> {
+): Promise<{ result: T; event: TraceEvent }> {
   const stepId = writer.nextStepId(meta.toolName);
   const startedAt = new Date();
   try {
     const result = await fn();
     const finishedAt = new Date();
-    await writer.write({
+    const event: TraceEvent = {
       stepId,
       sessionId: meta.sessionId,
       toolName: meta.toolName,
@@ -89,8 +90,9 @@ export async function withTrace<T>(
       startedAt,
       finishedAt,
       durationMs: finishedAt.getTime() - startedAt.getTime(),
-    });
-    return result;
+    };
+    await writer.write(event);
+    return { result, event };
   } catch (err) {
     const finishedAt = new Date();
     await writer.write({
@@ -107,4 +109,13 @@ export async function withTrace<T>(
     });
     throw err;
   }
+}
+
+/** Convenience wrapper returning just the result. */
+export async function withTrace<T>(
+  writer: TraceWriter,
+  meta: TraceMeta,
+  fn: () => T | Promise<T>,
+): Promise<T> {
+  return (await runTraced(writer, meta, fn)).result;
 }
