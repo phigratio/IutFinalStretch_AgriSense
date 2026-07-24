@@ -153,6 +153,43 @@
   (Bogra, Rajshahi 24.85/89.37; Banglish intake parsed; full plan returned). Mujahid please
   review c40228e. Chat now works end-to-end against Postgres + OpenAI.
 
+- 24Jul ~16:10 — Claude session (with Labib) — **First real bdapps sandbox tests against
+  APP_139258** (test number 01805758966, real Robi SIM). Password was in provisioning-email
+  SPAM, not the portal UI. Findings (raw curl diagnostics, not through our app code):
+  - `subscription/otp/request` + `/verify` → **S1000**, works cleanly with the raw
+    `tel:8801805758966` address. Real SMS OTP delivered and verified.
+  - `sms/send`, `subscription/send`, `subscription/getStatus` with the **raw** `tel:88018...`
+    address → **E1951** "Format of the address is invalid Or User Already UnRegistered"
+    (undocumented in our DGD/cheatsheet). Retrying the SAME calls with the **masked
+    `subscriberId` returned by `otp/verify`** → `sms/send` **succeeds (S1000)**,
+    `getStatus` **succeeds (S1000, subscriptionStatus: "INITIAL CHARGING PENDING")**.
+    **Root cause: for this app's config (Subscriber Confirmation Required=YES), bdapps
+    requires the masked subscriberId from OTP verify for all subsequent calls — a raw
+    farmer-entered phone number is rejected.** Our client (`toTelAddress`) already
+    passes masked ids through unchanged, so no code bug — but every caller (payments
+    checkout, agent's future send_sms tool) is currently passed the raw phone number.
+  - `caas/direct/debit` with masked id → progressed to **E1371** "App do not accept
+    payments from given Payment Instrument" (no longer a format error).
+  - `caas/balance/query` and `caas/list/pi` → **raw HTTP 404 from bdapps' own web
+    server** (F5 load-balancer error page), with EITHER raw or masked subscriberId. This
+    is not a code/format issue — those two routes appear undeployed/unrouted for this
+    app on bdapps' infra.
+  - Subscriber remains stuck at `INITIAL CHARGING PENDING` (never flips to REGISTERED)
+    despite repeated `subscription/send action:1` (→ E1351 "already registered" once
+    masked id used). Likely needs a real operator-side confirmation prompt to the
+    subscriber, which may depend on our (placeholder) subscription notification URL,
+    or may just need time/mentor help in sandbox.
+  - **ESCALATE TO BDAPPS MENTORS (exact ask):** "(1) `/caas/balance/query` and
+    `/caas/list/pi` return raw 404 Not Found for APP_139258 — are these routes active
+    for our app? (2) subscriber tel:8801805758966 is stuck at `INITIAL CHARGING PENDING`
+    after OTP verify + subscribe — how do we get to REGISTERED so `direct/debit` accepts
+    Mobile Account (currently E1371)?"
+  - **Action item (not yet implemented, needs a team decision):** if masked-id-first
+    turns out to be required for this app config generally (not just a sandbox quirk),
+    the checkout flow needs an OTP-verify step before first charging a new farmer number,
+    and payments/service.ts + agent tools should store/reuse the masked subscriberId per
+    farmer instead of the raw phone. Flagging as a design decision, not silently changed.
+
 ## 8. Session log (append-only: `HH:MM — <who> — <what changed>`)
 
 - 24Jul 11:00 — Claude session 1 (with A) — Read problem statement, bdapps cheatsheet/DGD/
