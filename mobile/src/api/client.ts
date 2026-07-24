@@ -3,6 +3,7 @@
  * timeout, and readable errors. Consumed by src/api/agrisense.ts + payments.ts.
  */
 import { apiBaseUrl } from "./config";
+import { getToken } from "./tokenStore";
 
 const TIMEOUT_MS = 60_000; // agent turns call the LLM + tools; give them room
 
@@ -25,9 +26,13 @@ export async function apiFetch<T>(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
+    const headers: Record<string, string> = {};
+    if (init?.body !== undefined) headers["Content-Type"] = "application/json";
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetch(url, {
       method: init?.method ?? "GET",
-      headers: init?.body !== undefined ? { "Content-Type": "application/json" } : undefined,
+      headers,
       body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
       signal: controller.signal,
     });
