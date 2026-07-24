@@ -15,7 +15,9 @@ import type {
   IncomingUssd,
   IncomingSubscriptionNotification,
 } from "../bdapps/index.js";
-import { activateChannel } from "../bdapps/channel.js";
+import { activateChannel, getDefaultChannelStore } from "../bdapps/channel.js";
+import { handleInboundSms } from "../bdapps/inboundSms.js";
+import { getDefaultInboundData } from "../bdapps/inboundData.js";
 
 export const bdappsListenerRouter = Router();
 
@@ -26,22 +28,23 @@ function looksLikeRawNumber(subscriberId: string): boolean {
   return /^tel:880\d{10}$/.test(subscriberId.replace(/\s+/g, ""));
 }
 
-/** A user texted your short code + keyword. */
+/**
+ * A farmer texted your shortcode+keyword. Route the keyword (START/STOP/PLAN/
+ * WEATHER/HELP) and reply by SMS — lets no-app farmers use AgriSense (Flow D).
+ * START also opts them into the SMS channel (captures their masked address).
+ */
 bdappsListenerRouter.post("/sms", async (req, res) => {
   const incoming = req.body as IncomingSms;
   console.log("[SMS IN]", JSON.stringify(incoming));
 
-  const text = (incoming.message ?? "").trim().toUpperCase();
   try {
-    if (text === "STOP" || text === "UNSUB") {
-      await bdapps.unsubscribe(incoming.sourceAddress);
-      await bdapps.sendSms(incoming.sourceAddress, "You have been unsubscribed. Bye!");
-    } else {
-      // Simple echo bot — replace with your logic.
-      await bdapps.sendSms(incoming.sourceAddress, `You said: ${incoming.message}`);
-    }
+    const { reply } = await handleInboundSms(incoming, {
+      channel: getDefaultChannelStore(),
+      data: getDefaultInboundData(),
+    });
+    await bdapps.sendSms(incoming.sourceAddress, reply);
   } catch (err) {
-    console.error("[SMS] auto-reply failed:", err);
+    console.error("[SMS] inbound handling failed:", err);
   }
 
   res.json(ack); // acknowledge receipt regardless
