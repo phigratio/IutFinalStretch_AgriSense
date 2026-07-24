@@ -143,6 +143,22 @@
 - bdapps TAP doc (dev.bdapps.com/API_Documentation/bdapps_tap_api.html) — confirm CaaS flow
   matches DGD v1.1.3 shapes (C, during P3-C2).
 
+- 24Jul ~17:30 — Claude session (with Labib) — **Mobile app brought to feature parity with
+  the web frontend** (teammates had built out `frontend/` into a rich AgriSense workspace:
+  AgentIntake/AgriSense/Bdapps/Marketplace/Payments/Temporal pages). Synced mobile to the
+  evolved backend contract and replicated web features (commits 88657f1→d781d0e):
+  (1) API layer + session state mirror `frontend/src/api/*` — richer weather (humidity/ET0/
+  soil-moisture), `retrievedEvidence` RAG, itemized `costBreakdown` financials, workflow
+  stage / preferredLanguage / triggerReason on send; (2) Chat: language toggle (en/banglish/
+  bn) + starter-prompt chips; (3) Plan: full web stage panels (weather, RAG evidence w/
+  citations, crop factor breakdown, itemized costs, financial-invariant check); (4) new
+  **Market** tab (supplier compare + price intel + sell/store/wait + mem0 + trace) and
+  **Bdapps** console tab (SMS/OTP/balance/charge test routes). 7 tabs now. tsc + expo web
+  export green. NOTE for team: `mobile/src/api/types.ts` mirrors `frontend/src/api` — change
+  both in one commit. Mobile still runs via Expo **web** (localhost:8081) since Expo Go SDK 57
+  build is stuck in App/Play Store review (SDK 54 clients can't load it) — verified in Expo's
+  changelog, outside our control.
+
 ## 8. Session log (append-only: `HH:MM — <who> — <what changed>`)
 
 - 24Jul 11:00 — Claude session 1 (with A) — Read problem statement, bdapps cheatsheet/DGD/
