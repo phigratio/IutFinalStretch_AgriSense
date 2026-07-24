@@ -9,6 +9,7 @@ export interface KbDocumentRecord {
   title: string;
   source: string;
   sourceUrl?: string;
+  imageUrl?: string;
   page?: string;
   cropId?: string;
   mem0Ids: string[];
@@ -53,14 +54,14 @@ export class PrismaKbDocumentStore implements KbDocumentStore {
     const mem0Ids = [...new Set([...(existing?.mem0Ids ?? []), ...d.mem0Ids])];
     await this.prisma.kbDocument.upsert({
       where: { tenantId_docKey: { tenantId: d.tenantId, docKey: d.docKey } },
-      update: { ...d, sourceUrl: d.sourceUrl ?? null, page: d.page ?? null, cropId: d.cropId ?? null, retrievedAt: d.retrievedAt ? new Date(d.retrievedAt) : null, mem0Ids },
-      create: { ...d, sourceUrl: d.sourceUrl ?? null, page: d.page ?? null, cropId: d.cropId ?? null, retrievedAt: d.retrievedAt ? new Date(d.retrievedAt) : null, mem0Ids },
+      update: { ...d, sourceUrl: d.sourceUrl ?? null, imageUrl: d.imageUrl ?? null, page: d.page ?? null, cropId: d.cropId ?? null, retrievedAt: d.retrievedAt ? new Date(d.retrievedAt) : null, mem0Ids },
+      create: { ...d, sourceUrl: d.sourceUrl ?? null, imageUrl: d.imageUrl ?? null, page: d.page ?? null, cropId: d.cropId ?? null, retrievedAt: d.retrievedAt ? new Date(d.retrievedAt) : null, mem0Ids },
     });
   }
 
   async list(tenantId: string): Promise<KbDocumentRecord[]> {
     const rows = await this.prisma.kbDocument.findMany({ where: { tenantId }, orderBy: { createdAt: "desc" } });
-    return rows.map((d) => ({ ...d, scope: d.scope as "hub" | "tenant", verificationStatus: d.verificationStatus as KbDocumentRecord["verificationStatus"], sourceUrl: d.sourceUrl ?? undefined, page: d.page ?? undefined, cropId: d.cropId ?? undefined, retrievedAt: d.retrievedAt?.toISOString() }));
+    return rows.map((d) => ({ ...d, scope: d.scope as "hub" | "tenant", verificationStatus: d.verificationStatus as KbDocumentRecord["verificationStatus"], sourceUrl: d.sourceUrl ?? undefined, imageUrl: d.imageUrl ?? undefined, page: d.page ?? undefined, cropId: d.cropId ?? undefined, retrievedAt: d.retrievedAt?.toISOString() }));
   }
 }
 

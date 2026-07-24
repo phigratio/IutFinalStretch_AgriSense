@@ -23,7 +23,11 @@ export interface KbHit {
   docKey?: string;
   scope?: "hub" | "tenant";
   tenantId?: string;
+  title?: string;
   source?: string;
+  sourceUrl?: string;
+  imageUrl?: string;
+  docType?: string;
   page?: string;
   citation: string;
   verificationStatus: "verified" | "cross_checked" | "unverified";
@@ -109,6 +113,16 @@ export function postTenantDocument(tenantId: string, userId: string, body: Recor
   return apiFetch(`/api/tenants/${encodeURIComponent(tenantId)}/kb/docs`, {
     method: "POST", body, headers: tenantHeaders(userId),
   });
+}
+
+/** Upload an illustration image to Cloudinary; returns the hosted URL to attach to a doc. */
+export function uploadTenantKbImage(tenantId: string, userId: string, file: File) {
+  const form = new FormData();
+  form.set("file", file);
+  return apiFetch<{ imageUrl: string; publicId: string; width?: number; height?: number }>(
+    `/api/tenants/${encodeURIComponent(tenantId)}/kb/image`,
+    { method: "POST", body: form, headers: tenantHeaders(userId) },
+  );
 }
 
 export function listTenantDocuments(tenantId: string, userId: string) {

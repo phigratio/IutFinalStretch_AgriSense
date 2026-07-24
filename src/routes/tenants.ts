@@ -13,8 +13,15 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { ingestionDb } from "../kb/ingestionJobs.js";
 import { chunkText } from "../kb/ingest/chunkDoc.js";
+import { uploadImageToCloudinary, cloudinaryConfigured, CloudinaryNotConfiguredError } from "../kb/cloudinary.js";
 
 export const tenantsRouter = Router();
+/** In-memory upload for images we forward straight to Cloudinary (no disk copy). */
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => cb(null, [".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(path.extname(file.originalname).toLowerCase())),
+});
 const user = (req: { header(name: string): string | undefined }) => req.header("x-user-id");
 const uploadDir = process.env.KB_UPLOAD_DIR ?? path.resolve("uploads/kb");
 mkdirSync(uploadDir, { recursive: true });
@@ -174,11 +181,31 @@ tenantsRouter.get("/:tid/kb/docs", async (req, res, next) => {
 tenantsRouter.post("/:tid/kb/docs", async (req, res, next) => {
   try { const userId = user(req); if (!userId) { res.status(401).json({ error: "x-user-id header required" }); return; }
     const { tenantStore } = getKbRuntime(); await assertTenantWriteAccess(tenantStore, userId, req.params.tid);
-    const { text, docKey, docType = "advisory", cropId, source, sourceUrl, page } = req.body ?? {};
+    const { text, docKey, docType = "advisory", cropId, source, sourceUrl, imageUrl, page } = req.body ?? {};
     if (!text || !docKey || !source) { res.status(400).json({ error: "text, docKey and source are required" }); return; }
-    const meta: KbChunkMeta = { scope: "tenant", tenantId: req.params.tid, docKey, docType, cropId, source, sourceUrl, page, dataOrigin: "manual", verificationStatus: "unverified", retrievedAt: new Date().toISOString() };
+    const meta: KbChunkMeta = { scope: "tenant", tenantId: req.params.tid, docKey, docType, cropId, source, sourceUrl, imageUrl, page, dataOrigin: "manual", verificationStatus: "unverified", retrievedAt: new Date().toISOString() };
     await addChunk(text, meta); res.status(201).json({ ok: true, docKey });
   } catch (err) { if (err instanceof TenantAccessError) res.status(403).json({ error: err.message }); else next(err); }
+});
+
+/** Upload a KB illustration image to Cloudinary; returns { imageUrl } to attach to a doc. */
+tenantsRouter.post("/:tid/kb/image", async (req, res, next) => {
+  try {
+    const userId = user(req);
+    if (!userId) { res.status(401).json({ error: "x-user-id header required" }); return; }
+    await assertTenantWriteAccess(getKbRuntime().tenantStore, userId, String(req.params.tid));
+    if (!cloudinaryConfigured()) { res.status(501).json({ error: "Image upload is not configured (Cloudinary keys missing)" }); return; }
+    next();
+  } catch (err) { if (err instanceof TenantAccessError) res.status(403).json({ error: err.message }); else next(err); }
+}, imageUpload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) { res.status(400).json({ error: "An image file is required (png, jpg, webp, gif)" }); return; }
+    const uploaded = await uploadImageToCloudinary(req.file.buffer, req.file.originalname, req.file.mimetype);
+    res.status(201).json(uploaded);
+  } catch (err) {
+    if (err instanceof CloudinaryNotConfiguredError) { res.status(501).json({ error: err.message }); return; }
+    next(err);
+  }
 });
 
 tenantsRouter.post("/:tid/kb/uploads", async (req, res, next) => {

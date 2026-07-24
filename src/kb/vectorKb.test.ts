@@ -105,4 +105,17 @@ describe("searchKB two-search merge (§5.2)", () => {
     expect(hits).toHaveLength(1);
     expect(hits[0].text).toBe("hub only");
   });
+
+  it("surfaces imageUrl and sourceUrl (link + pic) on hits", async () => {
+    const client = fakeMem0([
+      chunk(
+        { docKey: "pic", sourceUrl: "https://barc.gov.bd/frg", imageUrl: "https://res.cloudinary.com/x/pic.jpg" },
+        "apply urea",
+        0.9,
+      ),
+    ], []);
+    const [hit] = await searchKB("urea", {}, client);
+    expect(hit.imageUrl).toBe("https://res.cloudinary.com/x/pic.jpg");
+    expect(hit.sourceUrl).toBe("https://barc.gov.bd/frg");
+  });
 });

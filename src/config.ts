@@ -20,6 +20,10 @@ export const config = {
   // Fixed global identity for the shared agronomy knowledge base in mem0.
   mem0KbUserId: process.env.MEM0_KB_USER_ID ?? "agrisense-kb",
   mem0KbAgentId: process.env.MEM0_KB_AGENT_ID ?? "agrisense-kb",
+  // Cloudinary — used to host KB illustration images surfaced with retrieval hits.
+  cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME,
+  cloudinaryApiKey: process.env.CLOUDINARY_API_KEY,
+  cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET,
 };
 
 export function assertProductionConfig(): void {

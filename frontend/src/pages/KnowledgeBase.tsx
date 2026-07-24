@@ -13,6 +13,10 @@ import {
   type KbIngestionJob,
 } from "../api/kb.js";
 
+function isImageUrl(url: string | undefined): boolean {
+  return Boolean(url?.match(/\.(png|jpe?g|webp|gif|svg)(\?|$)/i));
+}
+
 const input = "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white";
 const label = "mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300";
 const help = "mt-1 text-xs text-gray-500 dark:text-gray-400";
@@ -172,12 +176,19 @@ export default function KnowledgeBase() {
       <div className="mt-6 space-y-3">
         <p className={muted}>Resolved tenant: {resolvedTenantId}</p>
         {hits.map((hit) => <article className="rounded-xl border border-gray-200 p-4 dark:border-gray-800" key={`${hit.citation}:${hit.text.slice(0, 32)}`}>
-          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
             <span className="font-medium text-brand-600 dark:text-brand-300">{hit.citation}</span>
             <span>score {hit.score.toFixed(3)}</span>
             <span>{hit.verificationStatus}</span>
             {hit.docKey && <span>{hit.docKey}</span>}
           </div>
+          {hit.title ? <div className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-100">{hit.title}</div> : null}
+          {hit.sourceUrl ? <div className="mb-3 text-sm text-brand-600 dark:text-brand-300"><a href={hit.sourceUrl} target="_blank" rel="noreferrer" className="underline">Source link</a></div> : null}
+          {(hit.imageUrl || isImageUrl(hit.sourceUrl)) ? (
+            <div className="mb-3 overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950">
+              <img src={hit.imageUrl ?? hit.sourceUrl} alt={hit.title ? `Image for ${hit.title}` : "KB image"} className="h-48 w-full object-contain" />
+            </div>
+          ) : null}
           <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-100">{hit.text}</p>
         </article>)}
         {!hits.length && <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center dark:border-gray-700">
@@ -214,18 +225,40 @@ export default function KnowledgeBase() {
         <div className="lg:col-span-2"><button className={button} type="submit" disabled={uploading}>{uploading ? "Uploading…" : "Upload and ingest in background"}</button></div>
       </form>
 
+      {jobs.some((job) => job.status === "failed") ? (
+        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-700 dark:bg-red-950/30 dark:text-red-200">
+          <p className="font-semibold">Some uploads failed to ingest.</p>
+          <ul className="mt-2 space-y-2 text-sm">
+            {jobs.filter((job) => job.status === "failed").map((job) => (
+              <li key={job.id}>
+                <span className="font-medium">{job.title}</span>: {job.errorMessage ?? "Unknown failure"}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <div className="mt-7 overflow-x-auto">
         <table className="min-w-full text-left text-sm">
           <thead className="border-b border-gray-200 text-xs uppercase text-gray-500 dark:border-gray-800 dark:text-gray-400"><tr>
             <th className="py-2 pr-4">File</th><th className="py-2 pr-4">Status</th><th className="py-2 pr-4">Progress</th><th className="py-2">Result</th>
           </tr></thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-            {jobs.map((job) => <tr key={job.id}>
-              <td className="py-3 pr-4"><div className="font-medium text-gray-800 dark:text-white">{job.title}</div><div className="text-xs text-gray-500">{job.originalName}</div></td>
-              <td className="py-3 pr-4"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs dark:bg-white/[0.06]">{job.status} · {job.stage}</span></td>
-              <td className="py-3 pr-4 text-gray-600 dark:text-gray-300">{job.processedChunks}/{job.chunkCount || "?"} chunks</td>
-              <td className="py-3 text-gray-600 dark:text-gray-300">{job.errorMessage ? <div><span className="text-error-500">{job.errorMessage}</span><button className="ml-3 text-sm font-medium text-brand-500" type="button" onClick={() => void retryJob(job)}>Retry</button></div> : job.status === "completed" ? `${job.extractedChars.toLocaleString()} characters` : "—"}</td>
-            </tr>)}
+            {jobs.map((job) => (
+              <tr key={job.id} className={job.status === "failed" ? "bg-red-50 dark:bg-red-950/30" : undefined}>
+                <td className="py-3 pr-4"><div className="font-medium text-gray-800 dark:text-white">{job.title}</div><div className="text-xs text-gray-500">{job.originalName}</div></td>
+                <td className="py-3 pr-4"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs dark:bg-white/[0.06]">{job.status} · {job.stage}</span></td>
+                <td className="py-3 pr-4 text-gray-600 dark:text-gray-300">{job.processedChunks}/{job.chunkCount || "?"} chunks</td>
+                <td className={job.status === "failed" ? "py-3 text-sm text-red-700 dark:text-red-200" : "py-3 text-gray-600 dark:text-gray-300"}>
+                  {job.errorMessage ? (
+                    <div className="space-y-2">
+                      <div className="font-medium">Error:</div>
+                      <div className="break-words">{job.errorMessage}</div>
+                      <button className="text-sm font-medium text-brand-500 hover:underline" type="button" onClick={() => void retryJob(job)}>Retry</button>
+                    </div>
+                  ) : job.status === "completed" ? `${job.extractedChars.toLocaleString()} characters` : "—"}
+                </td>
+              </tr>
+            ))}
             {!jobs.length && <tr><td className={`${muted} py-5`} colSpan={4}>No upload jobs yet.</td></tr>}
           </tbody>
         </table>
