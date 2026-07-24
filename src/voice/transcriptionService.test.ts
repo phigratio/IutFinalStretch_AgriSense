@@ -10,7 +10,7 @@ const audio: UploadedAudio = {
 };
 
 describe("VoiceTranscriptionService", () => {
-  it("calls OpenAI transcription with Bengali language hint and persists trace", async () => {
+  it("lets OpenAI auto-detect Bangla/Banglish speech and persists trace", async () => {
     const fetchMock = vi.fn(async () =>
       new Response(JSON.stringify({ text: "আমার গাজীপুরে দুই একর জমি আছে" }), {
         status: 200,
@@ -38,9 +38,25 @@ describe("VoiceTranscriptionService", () => {
     expect(init.headers).toMatchObject({ Authorization: "Bearer sk-test" });
     const form = init.body as FormData;
     expect(form.get("model")).toBe("whisper-1");
-    expect(form.get("language")).toBe("bn");
+    expect(form.get("language")).toBeNull();
     expect(form.get("prompt")).toEqual(expect.stringContaining("Bangladesh farmer"));
     expect(form.get("file")).toBeInstanceOf(Blob);
+  });
+
+  it("passes English language hint when explicitly requested", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ text: "I have two acres in Gazipur" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const service = new VoiceTranscriptionService("sk-test", "whisper-1", fetchMock as typeof fetch, new InMemoryAgriSenseStore());
+
+    await service.transcribe({ audio, language: "en" });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const form = init.body as FormData;
+    expect(form.get("language")).toBe("en");
   });
 
   it("rejects unsupported audio before calling OpenAI", () => {

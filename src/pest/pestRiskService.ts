@@ -268,10 +268,11 @@ export class PostgresPestRiskStore implements PestRiskStore {
   }): Promise<boolean> {
     const inserted = await this.prisma.$executeRaw`
       INSERT INTO "proactive_alerts" (
-        "farm_id", "session_id", "plan_id", "alert_type", "severity", "title",
+        "id", "farm_id", "session_id", "plan_id", "alert_type", "severity", "title",
         "message", "recommendation", "rule_id", "trigger_date", "raw_evidence", "fingerprint"
       )
       VALUES (
+        gen_random_uuid(),
         ${input.context.farmId ?? null}::uuid,
         ${input.context.sessionId ?? null}::uuid,
         ${input.context.planId ?? null}::uuid,
