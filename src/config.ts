@@ -25,6 +25,10 @@ export const config = {
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME,
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY,
   cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET,
+  // BDApps premium gating (P6): when true, proactive-alert SMS only goes to
+  // subscribed (premium) farmers — subscription unlocks the alert channel.
+  // Default false so free farmers with an active channel still get alerts.
+  alertsRequirePremium: process.env.ALERTS_REQUIRE_PREMIUM === "true",
 };
 
 export function assertProductionConfig(): void {
