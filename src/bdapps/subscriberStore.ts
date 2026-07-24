@@ -20,6 +20,32 @@ const maskedByRaw = new Map<string, string>();
 /** OTP referenceNo -> normalized raw address, set at request, read at verify. */
 const rawByReference = new Map<string, string>();
 
+/**
+ * Seed already-verified subscribers from env so a number that is already
+ * REGISTERED (bdapps then refuses a fresh OTP with E1351) still resolves to its
+ * masked id. The masked id is stable per (number, app); it was obtained via a
+ * real OTP verify earlier. Format: `01805758966=tel:MDUz...,018...=tel:...`.
+ * New farmers still populate the store live through the OTP verify flow.
+ */
+function seedFromEnv(): void {
+  const raw = process.env.BDAPPS_KNOWN_SUBSCRIBERS;
+  if (!raw) return;
+  for (const pair of raw.split(",")) {
+    const idx = pair.indexOf("=");
+    if (idx <= 0) continue;
+    const mobile = pair.slice(0, idx).trim();
+    const masked = pair.slice(idx + 1).trim();
+    if (mobile && masked.startsWith("tel:")) {
+      try {
+        maskedByRaw.set(toTelAddress(mobile), masked);
+      } catch {
+        /* skip malformed entry */
+      }
+    }
+  }
+}
+seedFromEnv();
+
 /** Remember which number an OTP referenceNo belongs to (call at otp/request). */
 export function rememberOtpReference(referenceNo: string, rawMobile: string): void {
   try {

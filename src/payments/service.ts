@@ -133,47 +133,44 @@ export async function checkout(
     };
   };
 
-  // 1. Payment instruments — confirm Mobile Account exists for this subscriber.
+  // 1. Payment instruments (optional pre-check). Some sandbox apps have this
+  //    route disabled (raw 404) while direct debit is live — so a failure here
+  //    is logged and skipped, not fatal. The debit in step 3 is the decision.
   let t = Date.now();
-  let piRes;
   try {
-    piRes = await deps.bdapps.listPaymentInstruments(tel);
+    const piRes = await deps.bdapps.listPaymentInstruments(tel);
+    mock ||= isMockResponse(piRes);
+    await logStep(deps, input.sessionId, "bdapps_list_payment_instruments", { mobile: tel }, piRes, t);
   } catch (err) {
-    await logStep(deps, input.sessionId, "bdapps_list_payment_instruments", { mobile: tel }, undefined, t, (err as Error).message);
-    return fail("E_NETWORK", (err as Error).message, "failed", { error: (err as Error).message });
-  }
-  mock ||= isMockResponse(piRes);
-  await logStep(deps, input.sessionId, "bdapps_list_payment_instruments", { mobile: tel }, piRes, t);
-  if (!isSuccess(piRes)) {
-    return fail(piRes.statusCode, piRes.statusDetail ?? "Cannot list payment instruments", "failed", piRes);
+    await logStep(deps, input.sessionId, "bdapps_list_payment_instruments", { mobile: tel }, { skipped: true }, t, (err as Error).message);
   }
 
-  // 2. Balance check — friendly insufficient-balance path before debiting.
+  // 2. Balance pre-check (optional). When available it powers the friendly
+  //    insufficient-balance branch; when the route is disabled we skip it and
+  //    let the debit itself return E1326/E1308 if funds are short.
   t = Date.now();
-  let balanceRes;
+  let balanceBeforeBdt: number | undefined;
   try {
-    balanceRes = await deps.bdapps.queryBalance(tel);
+    const balanceRes = await deps.bdapps.queryBalance(tel);
+    mock ||= isMockResponse(balanceRes);
+    await logStep(deps, input.sessionId, "bdapps_query_balance", { mobile: tel }, balanceRes, t);
+    if (isSuccess(balanceRes)) {
+      balanceBeforeBdt = Number(balanceRes.chargeableBalance ?? "0");
+      if (balanceBeforeBdt < input.amountBdt) {
+        return fail(
+          "E1326",
+          `Insufficient balance: have ${balanceBeforeBdt.toFixed(2)}, need ${input.amountBdt.toFixed(2)}`,
+          "insufficient",
+          balanceRes,
+          balanceBeforeBdt,
+        );
+      }
+    }
   } catch (err) {
-    await logStep(deps, input.sessionId, "bdapps_query_balance", { mobile: tel }, undefined, t, (err as Error).message);
-    return fail("E_NETWORK", (err as Error).message, "failed", { error: (err as Error).message });
-  }
-  mock ||= isMockResponse(balanceRes);
-  await logStep(deps, input.sessionId, "bdapps_query_balance", { mobile: tel }, balanceRes, t);
-  if (!isSuccess(balanceRes)) {
-    return fail(balanceRes.statusCode, balanceRes.statusDetail ?? "Balance query failed", "failed", balanceRes);
-  }
-  const balanceBeforeBdt = Number(balanceRes.chargeableBalance ?? "0");
-  if (balanceBeforeBdt < input.amountBdt) {
-    return fail(
-      "E1326",
-      `Insufficient balance: have ${balanceBeforeBdt.toFixed(2)}, need ${input.amountBdt.toFixed(2)}`,
-      "insufficient",
-      balanceRes,
-      balanceBeforeBdt,
-    );
+    await logStep(deps, input.sessionId, "bdapps_query_balance", { mobile: tel }, { skipped: true }, t, (err as Error).message);
   }
 
-  // 3. The actual charge.
+  // 3. The actual charge — the real decision point.
   t = Date.now();
   let debitRes;
   try {
