@@ -157,8 +157,8 @@ export function validateAudio(audio: UploadedAudio | undefined): asserts audio i
   }
 }
 
-function languageForOpenAI(language: SupportedLanguage | undefined): "bn" | "en" | undefined {
-  if (language === "bn" || language === "banglish") return "bn";
+function languageForOpenAI(language: SupportedLanguage | undefined): "en" | undefined {
+  if (language === "bn" || language === "banglish") return undefined;
   if (language === "en") return "en";
   return undefined;
 }
