@@ -8,6 +8,7 @@
 import { mem0Client } from "../rag/mem0Client.js";
 import { config } from "../config.js";
 import { HUB } from "./tenancy.js";
+import { getKbDocumentStore, type KbDocumentStore } from "./documentStore.js";
 
 export interface Mem0Like {
   add(input: {
@@ -29,6 +30,7 @@ export interface KbChunkMeta {
   scope: "hub" | "tenant";
   tenantId?: string;
   docKey: string;
+  title?: string;
   docType: string; // fertilizer | pest | disease | practice | advisory | variety
   cropId?: string;
   season?: string;
@@ -36,6 +38,8 @@ export interface KbChunkMeta {
   sourceUrl?: string;
   page?: string;
   dataOrigin: string; // real | manual | mock
+  verificationStatus: "verified" | "cross_checked" | "unverified";
+  retrievedAt?: string;
 }
 
 export interface KbHit {
@@ -47,6 +51,7 @@ export interface KbHit {
   source?: string;
   page?: string;
   citation: string;
+  verificationStatus: KbChunkMeta["verificationStatus"];
 }
 
 const TENANT_BOOST = 0.1;
@@ -63,13 +68,43 @@ export async function addChunk(
   text: string,
   meta: KbChunkMeta,
   client: Mem0Like = mem0Client,
+  documents: KbDocumentStore = getKbDocumentStore(),
 ): Promise<unknown> {
   const userId = meta.scope === "hub" ? hubUserId() : tenantUserId(meta.tenantId ?? "");
-  return client.add({
+  if (meta.scope === "tenant" && !meta.tenantId) throw new Error("tenant chunks require tenantId");
+  const result = await client.add({
     messages: [{ role: "user", content: text }],
     userId,
     agentId: config.mem0KbAgentId,
     metadata: { ...meta },
+  });
+  const ids = extractMem0Ids(result);
+  await documents.upsert({
+    tenantId: meta.scope === "hub" ? HUB : meta.tenantId!,
+    scope: meta.scope,
+    docKey: meta.docKey,
+    title: meta.title ?? meta.docKey,
+    source: meta.source,
+    sourceUrl: meta.sourceUrl,
+    page: meta.page,
+    cropId: meta.cropId,
+    mem0Ids: ids,
+    dataOrigin: meta.dataOrigin,
+    verificationStatus: meta.verificationStatus,
+    retrievedAt: meta.retrievedAt,
+  });
+  return result;
+}
+
+function extractMem0Ids(result: unknown): string[] {
+  const root = result as Record<string, unknown> | undefined;
+  const candidates = Array.isArray(result) ? result :
+    Array.isArray(root?.results) ? root.results :
+    Array.isArray(root?.memories) ? root.memories : [result];
+  return candidates.flatMap((item) => {
+    const row = item as Record<string, unknown> | undefined;
+    const id = row?.id ?? row?.memory_id;
+    return typeof id === "string" ? [id] : [];
   });
 }
 
@@ -96,6 +131,8 @@ export interface SearchKbOptions {
   tenantId?: string;
   cropId?: string;
   limit?: number;
+  /** Admin/debug search may include newly ingested unverified documents; farmer-facing search must leave this false. */
+  includeUnverified?: boolean;
 }
 
 /**
@@ -132,6 +169,7 @@ export async function searchKB(
     ...hub.filter((h) => !h.metadata.docKey || !tenantDocKeys.has(h.metadata.docKey)),
   ]
     .filter((h) => h.metadata.dataOrigin !== "mock")
+    .filter((h) => opts.includeUnverified || h.metadata.verificationStatus === "verified" || h.metadata.verificationStatus === "cross_checked")
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
 
@@ -144,5 +182,6 @@ export async function searchKB(
     source: h.metadata.source,
     page: h.metadata.page,
     citation: citationOf(h.metadata),
+    verificationStatus: h.metadata.verificationStatus,
   }));
 }

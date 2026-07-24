@@ -31,6 +31,8 @@ export interface CreateTenantInput {
 export interface TenantStore {
   createTenant(input: CreateTenantInput): Promise<TenantRecord>;
   getTenantBySlug(slug: string): Promise<TenantRecord | undefined>;
+  updateTenant(slug: string, input: Partial<Pick<CreateTenantInput, "name" | "kind">>): Promise<TenantRecord | undefined>;
+  deleteTenant(slug: string): Promise<boolean>;
   addJurisdiction(tenantId: string, district: string, upazila?: string): Promise<void>;
   /** District → tenant id (slug), or HUB when no tenant claims it. Upazila match wins over district. */
   resolveTenantIdForDistrict(district: string, upazila?: string): Promise<string>;
@@ -63,6 +65,19 @@ export async function assertTenantWriteAccess(
   }
 }
 
+/** Read/write namespace guard used by tenant-scoped service routes. */
+export async function assertTenantAccess(
+  store: TenantStore,
+  userId: string,
+  tenantId: string,
+  requiredRole?: TenantRole,
+): Promise<void> {
+  const role = await store.getMemberRole(tenantId, userId);
+  if (!role || (requiredRole && role !== requiredRole)) {
+    throw new TenantAccessError(`User ${userId} cannot access tenant ${tenantId}`);
+  }
+}
+
 const norm = (s: string): string => s.trim().toLowerCase();
 
 /** In-memory tenant store for tests and no-DB dev. */
@@ -86,6 +101,22 @@ export class InMemoryTenantStore implements TenantStore {
 
   async getTenantBySlug(slug: string): Promise<TenantRecord | undefined> {
     return this.tenants.get(slug);
+  }
+
+  async updateTenant(slug: string, input: Partial<Pick<CreateTenantInput, "name" | "kind">>): Promise<TenantRecord | undefined> {
+    const current = this.tenants.get(slug);
+    if (!current) return undefined;
+    const updated = { ...current, ...input };
+    this.tenants.set(slug, updated);
+    return updated;
+  }
+
+  async deleteTenant(slug: string): Promise<boolean> {
+    if (slug === HUB) throw new Error("The hub tenant cannot be deleted");
+    const deleted = this.tenants.delete(slug);
+    this.jurisdictions = this.jurisdictions.filter((j) => j.tenantId !== slug);
+    for (const key of this.members.keys()) if (key.startsWith(`${slug}:`)) this.members.delete(key);
+    return deleted;
   }
 
   async addJurisdiction(tenantId: string, district: string, upazila?: string): Promise<void> {

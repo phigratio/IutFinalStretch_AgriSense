@@ -28,14 +28,16 @@ interface RequestOptions {
   body?: unknown;
   /** Set false for the login/signup calls, which must not send a stale token. */
   auth?: boolean;
+  headers?: Record<string, string>;
 }
 
 export async function apiFetch<T>(
   path: string,
-  { method = "GET", body, auth = true }: RequestOptions = {},
+  { method = "GET", body, auth = true, headers: extraHeaders = {} }: RequestOptions = {},
 ): Promise<T> {
-  const headers: Record<string, string> = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const headers: Record<string, string> = { ...extraHeaders };
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+  if (body !== undefined && !isFormData) headers["Content-Type"] = "application/json";
 
   const token = auth ? getToken() : null;
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -43,7 +45,7 @@ export async function apiFetch<T>(
   const res = await fetch(path, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : isFormData ? body as FormData : JSON.stringify(body),
   });
 
   if (res.status === 401) {

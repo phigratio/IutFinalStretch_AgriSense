@@ -14,6 +14,8 @@ import { marketplaceRouter } from "./routes/marketplace.js";
 // colliding with agrisenseRouter/agentIntakeRouter. Team to pick one before submission.
 import { agentRouter } from "./routes/agent.js";
 import { kbRouter } from "./routes/kb.js";
+import { tenantsRouter } from "./routes/tenants.js";
+import { hubRouter } from "./routes/hub.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { notFoundHandler } from "./middleware/notFound.js";
 import { observabilityMiddleware } from "./middleware/observability.js";
@@ -60,6 +62,8 @@ export function createApp(): Application {
   app.use("/api/tier0", agentRouter);
   // Multi-tenant knowledge base (navid/kb): prices resolve tenant-over-hub with provenance.
   app.use("/api/kb", kbRouter);
+  app.use("/api/tenants", tenantsRouter);
+  app.use("/api/hub", hubRouter);
 
   // BDApps webhooks — register these URLs in provisioning (BDApps -> you).
   app.use("/bdapps", bdappsListenerRouter);

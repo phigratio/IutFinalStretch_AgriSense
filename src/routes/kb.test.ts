@@ -5,6 +5,7 @@ import { setKbRuntime } from "../kb/runtime.js";
 import { InMemoryPriceStore } from "../kb/priceStore.js";
 import { InMemoryTenantStore, HUB } from "../kb/tenancy.js";
 import type { IngestedPrice } from "../kb/ingest/wfpPrices.js";
+import { InMemoryTableOverrideStore } from "../kb/tableStore.js";
 
 const app = createApp();
 let priceStore: InMemoryPriceStore;
@@ -25,14 +26,47 @@ beforeEach(async () => {
   setKbRuntime({
     priceStore,
     tenantStore,
+    tableStore: new InMemoryTableOverrideStore(),
     ingestHubPrices: async () => fakeHubPrices,
   });
   // A tenant covering Kushtia + members.
   const t = await tenantStore.createTenant({ slug: "dist-kushtia", name: "Kushtia Office" });
   await tenantStore.addJurisdiction("dist-kushtia", "Kushtia");
   await tenantStore.addMember("dist-kushtia", "u-tenant", "tenant_admin");
+  await tenantStore.createTenant({ slug: "dist-dhaka", name: "Dhaka Office" });
+  await tenantStore.addJurisdiction("dist-dhaka", "Dhaka");
+  await tenantStore.addMember("dist-dhaka", "tenant-b", "tenant_admin");
   await tenantStore.addMember(HUB, "u-hub", "hub_admin");
   void t;
+});
+
+describe("canonical tenant routes and isolation", () => {
+  it("allows a member to read its tenant and blocks another user", async () => {
+    expect((await request(app).get("/api/tenants/dist-kushtia").set("x-user-id", "u-tenant")).status).toBe(200);
+    expect((await request(app).get("/api/tenants/dist-kushtia").set("x-user-id", "tenant-b")).status).toBe(403);
+  });
+
+  it("writes a table override only for its own tenant and resolves it", async () => {
+    const denied = await request(app).put("/api/tenants/dist-kushtia/tables/fertilizer")
+      .set("x-user-id", "tenant-b").send({ cropId: "rice_t_aman", payload: { urea: 999 } });
+    expect(denied.status).toBe(403);
+
+    const written = await request(app).put("/api/tenants/dist-kushtia/tables/fertilizer")
+      .set("x-user-id", "u-tenant").send({ cropId: "rice_t_aman", district: "Kushtia", payload: { urea: 220 } });
+    expect(written.status).toBe(201);
+    const read = await request(app).get("/api/kb/tables/fertilizer?cropId=rice_t_aman&district=Kushtia");
+    expect(read.body.payload).toEqual({ urea: 220 });
+    expect(read.body.provenance.basis).toBe("tenant");
+  });
+
+  it("supports the canonical tenant price endpoint", async () => {
+    const res = await request(app).post("/api/tenants/dist-kushtia/prices")
+      .set("x-user-id", "u-tenant").send({ cropId: "potato", price: 30, unit: "kg" });
+    expect(res.status).toBe(201);
+    const outside = await request(app).post("/api/tenants/dist-kushtia/prices")
+      .set("x-user-id", "u-tenant").send({ cropId: "potato", district: "Dhaka", price: 30, unit: "kg" });
+    expect(outside.status).toBe(403);
+  });
 });
 
 describe("POST /api/kb/hub/prices/refresh", () => {

@@ -131,6 +131,7 @@ agentRouter.post("/agent/message", async (req, res, next) => {
           farmLon: profile.lon ?? undefined,
         }),
       queryKb: (query, cropId) => runtime.queryKb(query, cropId, { district: profile.district }),
+      knowledgeQuery: message,
       chosenCropId: state.currentCrop,
     });
     session.result = result;

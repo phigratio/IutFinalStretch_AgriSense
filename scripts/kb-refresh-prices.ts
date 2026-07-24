@@ -19,6 +19,8 @@ async function main(): Promise<void> {
   const byCrop: Record<string, number> = {};
   for (const p of prices) byCrop[p.cropId] = (byCrop[p.cropId] ?? 0) + 1;
   console.log(`Imported ${prices.length} hub price observations.`);
+  const dates = prices.map((p) => p.observedAt).sort();
+  console.log(`Trace: retrievedAt=${new Date().toISOString()} rows=${prices.length} dateRange=${dates[0] ?? "n/a"}..${dates.at(-1) ?? "n/a"}`);
   console.table(byCrop);
   if (prices[0]) {
     const p = prices[0];

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { searchKB, type Mem0Like, type KbChunkMeta } from "./vectorKb.js";
+import { addChunk, searchKB, type Mem0Like, type KbChunkMeta } from "./vectorKb.js";
+import { InMemoryKbDocumentStore } from "./documentStore.js";
 
 const chunk = (m: Partial<KbChunkMeta>, text: string, score: number) => ({
   memory: text,
@@ -11,8 +12,21 @@ const chunk = (m: Partial<KbChunkMeta>, text: string, score: number) => ({
     source: "FRG-2018",
     page: "42",
     dataOrigin: "manual",
+    verificationStatus: "verified",
     ...m,
   } as KbChunkMeta,
+});
+
+describe("addChunk registry", () => {
+  it("registers returned mem0 ids for audit", async () => {
+    const documents = new InMemoryKbDocumentStore();
+    const client: Mem0Like = { add: async () => ({ results: [{ id: "mem-1" }] }), search: async () => [] };
+    await addChunk("advice", {
+      scope: "tenant", tenantId: "t1", docKey: "local:advice", docType: "advisory",
+      source: "District office", dataOrigin: "manual", verificationStatus: "verified",
+    }, client, documents);
+    expect(await documents.list("t1")).toMatchObject([{ docKey: "local:advice", mem0Ids: ["mem-1"] }]);
+  });
 });
 
 /** Fake mem0 that returns hub vs tenant results based on the scope filter. */
@@ -68,6 +82,15 @@ describe("searchKB two-search merge (§5.2)", () => {
     );
     const hits = await searchKB("q", {}, client);
     expect(hits.map((h) => h.text)).toEqual(["real"]);
+  });
+
+  it("excludes source-linked but unverified chunks unless admin search asks for them", async () => {
+    const client = fakeMem0([
+      chunk({ docKey: "verified", verificationStatus: "verified" }, "verified", 0.8),
+      chunk({ docKey: "unverified", verificationStatus: "unverified" }, "unverified", 0.99),
+    ], []);
+    expect((await searchKB("q", {}, client)).map((hit) => hit.text)).toEqual(["verified"]);
+    expect((await searchKB("q", { includeUnverified: true }, client)).map((hit) => hit.text)).toEqual(["unverified", "verified"]);
   });
 
   it("degrades to hub when the tenant search throws", async () => {
