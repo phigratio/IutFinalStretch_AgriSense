@@ -300,6 +300,9 @@ export interface AgriSenseMessageResult {
   assistantMessage: string;
   missingFields: string[];
   farmProfile: IntakeProfile;
+  /** True for a KB-grounded Q&A turn (or a refusal): a chat answer that must NOT
+   *  overwrite the on-screen plan/ranking. See agrisense/kbQa.ts. */
+  answerOnly?: boolean;
   weather?: WeatherForecast;
   retrievedEvidence?: RetrievedEvidence[];
   cropRankings?: CropRecommendation[];

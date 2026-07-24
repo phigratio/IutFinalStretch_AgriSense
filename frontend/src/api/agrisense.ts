@@ -381,6 +381,8 @@ export interface AgriSenseMessageResult {
   assistantMessage: string;
   missingFields: string[];
   farmProfile: IntakeProfile;
+  /** KB-grounded Q&A turn (or refusal): a chat answer that must not overwrite the plan. */
+  answerOnly?: boolean;
   weather?: WeatherForecast;
   retrievedEvidence?: RetrievedEvidence[];
   cropRankings?: CropRecommendation[];

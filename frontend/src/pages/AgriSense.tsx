@@ -386,7 +386,8 @@ export default function AgriSense() {
       setSessionId(response.sessionId);
       setFarmerId(response.farmerId);
       setFarmId(response.farmId);
-      setResult(response);
+      // A KB Q&A turn is a chat answer only — keep the current plan/ranking on screen.
+      if (!response.answerOnly) setResult(response);
       setSelectedWorkspaceFarmId(response.farmId);
       if (response.context) {
         setContextBundle(response.context);

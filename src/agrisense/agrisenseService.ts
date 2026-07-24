@@ -11,6 +11,7 @@ import { buildMultilingualQuery, localizePlanSummary, localizeSeasonPlan, normal
 import { defaultKnowledgeRetriever, type KnowledgeRetriever } from "./knowledgeRetriever.js";
 import { getDefaultMemoryOutcomeService, type MemoryOutcome, type MemoryOutcomeService } from "./memoryOutcomeService.js";
 import { buildSeasonPlan, rankCrops, selectCrop } from "./planningEngine.js";
+import { answerFromKb, isKbQuestion } from "./kbQa.js";
 import { simulateScenario, type ScenarioBaseline } from "./scenarioEngine.js";
 import { getDefaultAgriSenseStore, type AgriSenseStore } from "./agrisenseStore.js";
 import { getWeatherForecastForLocation, mockWeatherForecast } from "./weatherTool.js";
@@ -136,6 +137,44 @@ export class AgriSenseService {
         assistantMessage: intake.reply,
         missingFields: intake.missingFields,
         farmProfile: intake.profile,
+        rememberedOutcomes,
+        memoryTrace,
+        context,
+        trace,
+      };
+    }
+
+    // Q&A guardrail: a factual question (not a crop/scenario request) is answered
+    // strictly from the KB — or refused when the KB lacks it — never with the
+    // plan-stage template. Runs before the planning workflow. See kbQa.ts.
+    if (isKbQuestion(request.message)) {
+      const language = normalizeLanguage(request.preferredLanguage ?? intake.profile.preferredLanguage) ?? "en";
+      const qaStarted = Date.now();
+      const qa = await answerFromKb({ question: request.message, tenantId: request.tenantId, language });
+      await this.trace(intake.sessionId, trace, {
+        kind: "tool",
+        toolName: "kb.qa",
+        parameters: { question: request.message, tenantId: request.tenantId, minScore: 0.3 },
+        rawResponse: {
+          answered: qa.answered,
+          hitCount: qa.hits.length,
+          topScore: qa.hits[0]?.score ?? 0,
+          citations: qa.hits.map((h) => h.citation),
+        },
+        status: "success",
+        latencyMs: Date.now() - qaStarted,
+      });
+      return {
+        sessionId: intake.sessionId,
+        farmerId: intake.farmerId,
+        farmId: intake.farmId,
+        workflowStage: request.workflowStage,
+        nextAvailableStages: nextStagesFor("intake"),
+        assistantMessage: qa.message,
+        answerOnly: true,
+        missingFields: [],
+        farmProfile: intake.profile,
+        retrievedEvidence: qa.evidence,
         rememberedOutcomes,
         memoryTrace,
         context,
