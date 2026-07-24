@@ -9,6 +9,14 @@ export interface VoiceTranscriptionResult {
   trace: TraceEvent[];
 }
 
+/** Bengali (default) speech-to-text via Speechmatics — used by the voice onboarding. */
+export function transcribeSpeechmatics(audio: Blob, language = "bn"): Promise<{ transcript: string; language: string; provider: string }> {
+  const form = new FormData();
+  form.set("audio", audio, "recording.webm");
+  form.set("language", language);
+  return apiFetch("/api/voice/speechmatics/transcribe", { method: "POST", body: form });
+}
+
 export function transcribeVoice(input: {
   audio: Blob;
   filename?: string;

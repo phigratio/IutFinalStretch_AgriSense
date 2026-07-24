@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { runAgentIntake } from "../../api/agent.js";
+import { transcribeSpeechmatics } from "../../api/voice.js";
 import { saveOwnProfile, type OnboardingProfile } from "../../api/onboarding.js";
 import type { IntakeProfile } from "../../api/agrisense.js";
 
@@ -26,7 +27,7 @@ function normalizeSoil(s?: string): string | undefined {
 export default function SelfOnboardChat() {
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Msg[]>([
-    { role: "bot", text: "আপনার খামারের কথা বলুন — কোথায়, কত জমি, কী মাটি, সেচ আছে কি না, বাজেট কত, আর কোন মৌসুমে চাষ করতে চান?" },
+    { role: "bot", text: "আপনার খামারের কথা বলুন — কোথায়, কত জমি, কী মাটি, সেচ আছে কি না, বাজেট কত, আর কোন মৌসুমে চাষ করতে চান? লিখতে পারেন, অথবা 🎤 চেপে বাংলায় বলতে পারেন।" },
   ]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -36,6 +37,44 @@ export default function SelfOnboardChat() {
   const profile = useRef<IntakeProfile | null>(null);
   const awaitingPhone = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
+
+  // --- Voice (Speechmatics, Bengali) ---
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+
+  async function toggleMic() {
+    if (recording) { recorderRef.current?.stop(); return; }
+    setError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
+      rec.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setRecording(false);
+        const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
+        if (blob.size < 800) return; // too short / silent
+        setTranscribing(true);
+        try {
+          const { transcript } = await transcribeSpeechmatics(blob, "bn");
+          if (transcript.trim()) setInput((cur) => (cur ? `${cur} ${transcript.trim()}` : transcript.trim()));
+          else setError("কিছু শোনা যায়নি। আবার বলুন।");
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "ভয়েস রূপান্তর করা যায়নি।");
+        } finally {
+          setTranscribing(false);
+        }
+      };
+      recorderRef.current = rec;
+      rec.start();
+      setRecording(true);
+    } catch {
+      setError("মাইক্রোফোন চালু করা যায়নি। অনুমতি দিন।");
+    }
+  }
 
   function push(m: Msg) {
     setMessages((cur) => [...cur, m]);
@@ -132,15 +171,29 @@ export default function SelfOnboardChat() {
 
       {error ? <p className="mb-2 text-sm text-error-600 dark:text-error-400">{error}</p> : null}
 
-      <form onSubmit={onSubmit} className="flex gap-2">
+      <form onSubmit={onSubmit} className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void toggleMic()}
+          disabled={busy || transcribing}
+          title="বাংলায় বলুন"
+          aria-label="ভয়েসে বলুন"
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-lg transition ${
+            recording
+              ? "animate-pulse border-error-400 bg-error-50 text-error-600 dark:border-error-500/40 dark:bg-error-500/10"
+              : "border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/[0.05]"
+          } disabled:opacity-50`}
+        >
+          {transcribing ? "…" : recording ? "⏹️" : "🎤"}
+        </button>
         <input
           className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={awaitingPhone.current ? "017XXXXXXXX" : "এখানে লিখুন…"}
+          placeholder={transcribing ? "শোনা হচ্ছে…" : recording ? "রেকর্ড হচ্ছে… শেষে ⏹️ চাপুন" : awaitingPhone.current ? "017XXXXXXXX" : "লিখুন বা 🎤 চেপে বলুন"}
           disabled={busy}
         />
-        <button type="submit" disabled={busy || !input.trim()} className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50">
+        <button type="submit" disabled={busy || !input.trim()} className="shrink-0 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50">
           পাঠান
         </button>
       </form>

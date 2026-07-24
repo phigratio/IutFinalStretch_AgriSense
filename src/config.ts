@@ -29,6 +29,9 @@ export const config = {
   // subscribed (premium) farmers — subscription unlocks the alert channel.
   // Default false so free farmers with an active channel still get alerts.
   alertsRequirePremium: process.env.ALERTS_REQUIRE_PREMIUM === "true",
+  // Speechmatics — Bengali speech-to-text for voice onboarding (batch API).
+  speechmaticApiKey: process.env.SPEECHMATIC_API_KEY,
+  speechmaticUrl: process.env.SPEECHMATIC_URL ?? "https://asr.api.speechmatics.com/v2",
 };
 
 export function assertProductionConfig(): void {
