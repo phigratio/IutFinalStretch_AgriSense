@@ -4,14 +4,53 @@
  */
 import { type WeatherForecast } from "./types.js";
 
+interface GeocodeResult {
+  name: string;
+  admin1?: string;
+  country?: string;
+  country_code?: string;
+  latitude: number;
+  longitude: number;
+}
+
 interface GeocodeResponse {
-  results?: {
-    name: string;
-    admin1?: string;
-    country?: string;
-    latitude: number;
-    longitude: number;
-  }[];
+  results?: GeocodeResult[];
+}
+
+/**
+ * Our farmers are in Bangladesh, so geocoding must prefer BD matches:
+ * a bare `count=1` lookup famously resolves "Bogura" to a village in Russia.
+ * Renamed districts also need their old names, which Open-Meteo still indexes.
+ */
+const BD_NAME_ALIASES: Record<string, string> = {
+  bogura: "Bogra",
+  chattogram: "Chittagong",
+  cumilla: "Comilla",
+  barishal: "Barisal",
+  jashore: "Jessore",
+};
+
+async function geocodeBangladeshFirst(locationText: string): Promise<GeocodeResult> {
+  const cleaned = locationText.trim();
+  const attempts = [cleaned];
+  const alias = BD_NAME_ALIASES[cleaned.toLowerCase()];
+  if (alias) attempts.push(alias);
+
+  let firstAnyMatch: GeocodeResult | undefined;
+  for (const name of attempts) {
+    const geocodeUrl = new URL("https://geocoding-api.open-meteo.com/v1/search");
+    geocodeUrl.searchParams.set("name", name);
+    geocodeUrl.searchParams.set("count", "10");
+    geocodeUrl.searchParams.set("language", "en");
+    geocodeUrl.searchParams.set("format", "json");
+    const geocode = await fetchJson<GeocodeResponse>(geocodeUrl);
+    const results = geocode.results ?? [];
+    firstAnyMatch ??= results[0];
+    const bdMatch = results.find((r) => r.country_code === "BD");
+    if (bdMatch) return bdMatch;
+  }
+  if (firstAnyMatch) return firstAnyMatch; // non-BD fallback: better than failing
+  throw new Error(`No geocoding result found for ${locationText}`);
 }
 
 interface ForecastResponse {
@@ -24,17 +63,7 @@ interface ForecastResponse {
 }
 
 export async function getWeatherForecast(locationText: string): Promise<WeatherForecast> {
-  const geocodeUrl = new URL("https://geocoding-api.open-meteo.com/v1/search");
-  geocodeUrl.searchParams.set("name", locationText);
-  geocodeUrl.searchParams.set("count", "1");
-  geocodeUrl.searchParams.set("language", "en");
-  geocodeUrl.searchParams.set("format", "json");
-
-  const geocode = await fetchJson<GeocodeResponse>(geocodeUrl);
-  const result = geocode.results?.[0];
-  if (!result) {
-    throw new Error(`No geocoding result found for ${locationText}`);
-  }
+  const result = await geocodeBangladeshFirst(locationText);
 
   const forecastUrl = new URL("https://api.open-meteo.com/v1/forecast");
   forecastUrl.searchParams.set("latitude", String(result.latitude));
@@ -60,7 +89,7 @@ export async function getWeatherForecast(locationText: string): Promise<WeatherF
       temperatureMinC: Number(daily.temperature_2m_min[index] ?? 0),
       temperatureMaxC: Number(daily.temperature_2m_max[index] ?? 0),
     })),
-    raw: { geocode, forecast },
+    raw: { geocode: result, forecast },
   };
 }
 
