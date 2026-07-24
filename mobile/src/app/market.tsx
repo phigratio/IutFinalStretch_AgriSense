@@ -9,6 +9,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View }
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getMarketplaceIntelligence } from '@/api/marketplace';
+import { checkout } from '@/api/payments';
 import { TraceChip } from '@/components/trace-chips';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -42,8 +43,47 @@ function Metric({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function SupplierCard({ offer, rank, best }: { offer: SupplierOffer; rank: number; best: boolean }) {
+/** Sandbox CaaS caps a debit at ৳100, so a large order pays a booking deposit. */
+const DEPOSIT_CAP = 100;
+
+function SupplierCard({ offer, rank, best, mobile, sessionId }: {
+  offer: SupplierOffer;
+  rank: number;
+  best: boolean;
+  mobile?: string;
+  sessionId?: string;
+}) {
   const theme = useTheme();
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string>();
+  const [error, setError] = useState<string>();
+
+  const deposit = Math.min(Math.round(offer.totalPriceBdt), DEPOSIT_CAP);
+
+  const buy = async () => {
+    setError(undefined);
+    setResult(undefined);
+    if (!mobile) {
+      setError('Sign in (Account tab) to pay by BDApps.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await checkout({
+        mobile,
+        amountBdt: deposit,
+        description: `Booking: ${offer.requestedQuantity} ${offer.unit} ${offer.itemName} — ${offer.supplierName}`,
+        sessionId,
+      });
+      if (res.ok) setResult(`✅ Paid ${tk(res.amountBdt)}${res.mock ? ' (MOCK)' : ''} · trx ${res.internalTrxId ?? res.externalTrxId}`);
+      else setError(`${res.statusCode}: ${res.statusDetail ?? 'payment failed'}`);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <View style={[styles.supplier, { borderColor: best ? theme.success : theme.border, backgroundColor: best ? theme.successSoft : 'transparent' }]}>
       <View style={styles.cardHeader}>
@@ -64,6 +104,11 @@ function SupplierCard({ offer, rank, best }: { offer: SupplierOffer; rank: numbe
         <Metric label="Rating" value={`${offer.rating.toFixed(1)}/5`} />
       </View>
       <ThemedText type="small" themeColor="textSecondary">{offer.rankReason}</ThemedText>
+      <Pressable onPress={() => void buy()} disabled={busy} style={[styles.buyBtn, { backgroundColor: theme.brand }, busy && styles.busy]}>
+        {busy ? <ActivityIndicator color="#fff" /> : <ThemedText type="smallBold" style={styles.buyLabel}>Buy · pay {tk(deposit)} deposit (bKash/Robi)</ThemedText>}
+      </Pressable>
+      {result && <ThemedText type="small" themeColor="success">{result}</ThemedText>}
+      {error && <ThemedText type="small" themeColor="error">⚠️ {error}</ThemedText>}
     </View>
   );
 }
@@ -104,7 +149,7 @@ function PricePanel({ result }: { result: MarketplaceIntelligenceResult }) {
 
 export default function MarketScreen() {
   const theme = useTheme();
-  const { sessionId } = useSession();
+  const { sessionId, profile } = useSession();
   const [itemName, setItemName] = useState('Urea fertilizer');
   const [quantity, setQuantity] = useState('120');
   const [unit, setUnit] = useState('kg');
@@ -196,7 +241,7 @@ export default function MarketScreen() {
               </View>
               <View style={styles.stack}>
                 {result.supplierOffers.map((offer, i) => (
-                  <SupplierCard key={offer.supplierId} offer={offer} rank={i + 1} best={offer.supplierId === best?.supplierId} />
+                  <SupplierCard key={offer.supplierId} offer={offer} rank={i + 1} best={offer.supplierId === best?.supplierId} mobile={profile?.bdappsMobile} sessionId={sessionId} />
                 ))}
               </View>
             </ThemedView>
@@ -259,6 +304,8 @@ const styles = StyleSheet.create({
   runBtn: { alignSelf: 'flex-start', borderRadius: Spacing.two + Spacing.half, paddingHorizontal: Spacing.three + Spacing.one, paddingVertical: Spacing.two + Spacing.half },
   busy: { opacity: 0.7 },
   runLabel: { color: '#ffffff' },
+  buyBtn: { alignSelf: 'flex-start', borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, marginTop: Spacing.one },
+  buyLabel: { color: '#ffffff' },
   stack: { gap: Spacing.two },
   metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   metric: { borderWidth: 1, borderRadius: Spacing.two, paddingHorizontal: Spacing.two + Spacing.half, paddingVertical: Spacing.one + 2, minWidth: 90, gap: 2 },
