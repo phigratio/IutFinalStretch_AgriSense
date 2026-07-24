@@ -153,9 +153,14 @@ export class ContextHydrator {
     }
 
     const query = buildContextQuery(input, profile, memoryResult);
-    const mem0 = await this.searchMem0(enrichedIdentity.memoryUserId, query, input.language, limit, trace, warnings);
+    const canReusePrivateMemory = enrichedIdentity.memoryUserId !== "anonymous" || Boolean(profile);
+    const mem0 = canReusePrivateMemory
+      ? await this.searchMem0(enrichedIdentity.memoryUserId, query, input.language, limit, trace, warnings)
+      : [];
     const tenantId = input.tenantId ?? districtTenant(profile);
-    const kbHits = await this.searchKnowledge(query, tenantId, input.cropId ?? cropFromProfile(profile), limit, trace, warnings);
+    const kbHits = tenantId || input.cropId || profile
+      ? await this.searchKnowledge(query, tenantId, input.cropId ?? cropFromProfile(profile), limit, trace, warnings)
+      : [];
     const priorAnalyses = memoryResult.outcomes.map((outcome) => ({
       id: outcome.id,
       kind: outcome.kind,

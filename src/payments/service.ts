@@ -104,9 +104,6 @@ export async function checkout(
     bdappsMobile: tel,
     limit: 5,
   });
-  for (const contextEvent of hydratedContext.trace) {
-    await logStep(deps, input.sessionId, contextEvent.toolName, contextEvent.parameters, contextEvent.rawResponse, Date.now(), contextEvent.errorMessage);
-  }
   const payment = await deps.payments.createPayment({
     mobile: tel,
     amountBdt: input.amountBdt,

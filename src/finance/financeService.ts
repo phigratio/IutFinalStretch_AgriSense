@@ -95,17 +95,19 @@ export class FinanceService {
   async getSummary(query: FinanceSummaryQuery = {}): Promise<FinanceSummary> {
     const year = query.year ?? new Date().getFullYear();
     const trace: IntakeTraceEvent[] = [];
-    const hydratedContext = await contextHydrator.hydrate({
-      message: "finance summary and advisory context",
-      userId: query.userId,
-      tenantId: query.tenantId,
-      farmerId: query.farmerId,
-      farmId: query.farmId,
-      sessionId: query.sessionId,
-      cropId: query.season,
-      limit: 8,
-    });
-    trace.push(...hydratedContext.trace);
+    const hydratedContext = hasContextIdentity(query)
+      ? await contextHydrator.hydrate({
+          message: "finance summary and advisory context",
+          userId: query.userId,
+          tenantId: query.tenantId,
+          farmerId: query.farmerId,
+          farmId: query.farmId,
+          sessionId: query.sessionId,
+          cropId: query.season,
+          limit: 8,
+        })
+      : undefined;
+    if (hydratedContext) trace.push(...hydratedContext.trace);
     const context = await this.store.loadProjectionContext({ ...query, year });
     trace.push(traceEvent("finance.load_sources", { ...query }, {
       hasPlan: Boolean(context.plan),
@@ -230,6 +232,10 @@ export class FinanceService {
     if (!id) throw new Error("Entry id is required");
     return this.store.deleteManualEntry(id);
   }
+}
+
+function hasContextIdentity(query: FinanceSummaryQuery): boolean {
+  return Boolean(query.userId || query.tenantId || query.farmerId || query.farmId || query.sessionId || query.seasonPlanId);
 }
 
 export class InMemoryFinanceStore implements FinanceDataStore {
