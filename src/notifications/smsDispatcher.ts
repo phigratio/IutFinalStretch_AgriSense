@@ -92,6 +92,8 @@ export async function deliverPendingAlerts(
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: config.databaseUrl }) });
 
   try {
+    // P6: when premium gating is on, only subscribed farmers get alert SMS.
+    const requirePremium = config.alertsRequirePremium;
     const rows = await prisma.$queryRaw<PendingAlertRow[]>`
       SELECT
         a."id",
@@ -107,6 +109,7 @@ export async function deliverPendingAlerts(
       JOIN "farmer_profiles"  fp ON fp."id" = f."farmer_id"
       WHERE a."delivery_status" = 'pending'
         AND fp."bdapps_mobile" IS NOT NULL
+        AND (${requirePremium}::boolean = false OR fp."premium" = true)
       ORDER BY a."created_at" ASC
       LIMIT ${opts.limit ?? 20}
     `;

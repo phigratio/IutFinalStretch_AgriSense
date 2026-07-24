@@ -231,6 +231,54 @@
   bdapps-verify with the same phone don't fork into 2 AppUsers. Backend for P1/P2/P3 done;
   next = web frontend (verify-phone button) then mobile sign-in, per build order.
 
+- 24Jul ~21:45 — Claude session (with Labib) — **R1 + web phase shipped.** R1 (aea518e):
+  pest/disease alerts now deliver by SMS (hooked deliverPendingAlerts into pest alert
+  creation; dispatcher is alert-type-agnostic so weather+plan+pest+scenario all covered) —
+  live-verified a blast-risk SMS. **Web-backend (225ec31):** added authenticated
+  `POST /auth/bdapps/verify-phone` + `BdappsAuthService.activatePhoneForUser` — a logged-in
+  web user (email/Google) verifies their phone to enable BDApps; channel activates on THEIR
+  existing AppUser (no new user/token) — sidesteps the duplicate-user problem (R3). Live-
+  verified: email signup → verify-phone → channelActive, no new token. **Web-UI (a3930f3):**
+  `frontend/src/api/channel.ts` + a Bengali "এসএমএস সতর্কতা" (SMS alerts) card on
+  UserDashboard — farmer verifies the onboarding phone → OTP → channel active; frontend tsc +
+  vite build green. bdapps login route flow: `/auth/bdapps/otp/request` (shared) →
+  `/auth/bdapps/otp/verify` (mobile SIGN-IN, new user+token) OR `/auth/bdapps/verify-phone`
+  (web, authenticated, activates channel on current user). Next: mobile sign-in UI (reuses
+  these endpoints). NOTE: keep running `prisma generate && migrate deploy` after pulls —
+  teammates keep evolving the schema (imageUrl, tenant phone, voice route, etc).
+
+- 24Jul ~22:15 — Claude session (with Labib) — **Mobile BDApps phone sign-in shipped
+  (f60b92f)** — completes the backend→web→mobile build order. Mobile had NO auth; phone-OTP
+  now signs the farmer in on the SHARED backend identity (`/auth/bdapps/otp/*`), giving
+  mobile the login + Tier-1 persistent identity it lacked. Added: cross-platform token store
+  (`mobile/src/api/tokenStore.ts` — localStorage web / in-memory native, no new dep),
+  `apiFetch` now attaches the bearer token, `mobile/src/api/auth.ts`, `mobile/src/state/
+  auth.tsx` AuthProvider (bootstraps from stored token via /auth/me → returning farmer stays
+  in), and an **Account tab** (phone→OTP→verified, shows farmer + SMS-channel status + sign
+  out). 8 mobile tabs now; tsc + expo web export green. NOTE: phigratio upgraded the weather
+  sweep to emit a proper "Delay nitrogen application by N days → move window to <dates>"
+  alert (impacted-task aware) — flows straight into the P2 SMS dispatcher. BDApps integration
+  now spans identity (web verify + mobile sign-in), reach (weather/plan/pest alerts → real
+  SMS), and payment (CaaS checkout, blocked only on bdapps activation). Remaining: P4 inbound
+  SMS keywords, P5 USSD menu (both need ngrok), P6 premium gating, P7 marketplace CaaS buy.
+
+- 24Jul ~23:30 — Claude session (with Labib) — **ALL BDApps feature phases complete
+  (P1-P7 + R1).** This session: `/bdapps/` Nginx proxy confirmed live (b5db839, phigratio);
+  2nd bdapps app provisioned (21213/agrilive, USSD *213*74757#, CaaS 5-100). Shipped:
+  **P4 inbound SMS keyword router** (65d4fe1 — START opt-in/STOP/PLAN/WEATHER/HELP, Flow D),
+  **P5 AgriSense USSD menu** (c946d3d — dial-in advice/weather/opt-in, Flow E), **P6 premium
+  gating** (026e54f — ALERTS_REQUIRE_PREMIUM gates alert SMS on subscription; dev
+  /api/dev/set-premium), **P7 marketplace CaaS Buy** (b0ef33f — native checkout on web
+  Marketplace + mobile Market tab: complete checkout → operator balance deduction → receipt,
+  the Tier-2 payment-gateway task; additive, marketplace features intact). Re-checked Tier-2
+  problem-statement wording with Labib: payment gateway now shown natively in the buy flow
+  AND the Payments console (raw CaaS request/response) AND the mobile Money tab + Trace.
+  All backend/web/mobile tsc + builds green; every phase live-verified in mock. **BDApps
+  integration is feature-complete across identity + reach + payment.** Only external blocker:
+  bdapps must ACTIVATE CaaS on the app (E1371) for a real on-stage charge — else demo CaaS
+  in MOCK_BDAPPS (declared). Node/prisma: keep `prisma generate && migrate deploy` + per-app
+  `npm install` after pulls (leaflet dep landed this session).
+
 ## 8. Session log (append-only: `HH:MM — <who> — <what changed>`)
 
 - 24Jul 11:00 — Claude session 1 (with A) — Read problem statement, bdapps cheatsheet/DGD/

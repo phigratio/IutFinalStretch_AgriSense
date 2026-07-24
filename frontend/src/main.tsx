@@ -25,7 +25,6 @@ import NotFound from "./pages/NotFound.js";
 import KnowledgeBase from "./pages/KnowledgeBase.js";
 import Onboarding from "./pages/Onboarding.js";
 import DashboardLanding from "./components/common/DashboardLanding.js";
-import PortalLayout from "./layout/PortalLayout.js";
 import UserDashboard from "./pages/UserDashboard.js";
 import TenantDashboard from "./pages/TenantDashboard.js";
 import TenantRequests from "./pages/TenantRequests.js";
@@ -50,13 +49,14 @@ createRoot(rootEl).render(
                 <Route index path="/" element={<DashboardLanding />} />
                 {/* Standalone (no admin chrome) — the farmer's onboarding landing. */}
                 <Route path="/onboarding" element={<Onboarding />} />
+                {/* Farmer + tenant now share the admin shell (sidebar + header). */}
                 <Route element={<RoleRoute allow={["user"]} redirectTo="/" />}>
-                  <Route element={<PortalLayout />}>
+                  <Route element={<AppLayout />}>
                     <Route path="/user/dashboard" element={<UserDashboard />} />
                   </Route>
                 </Route>
                 <Route element={<RoleRoute allow={["tenant"]} redirectTo="/" />}>
-                  <Route element={<PortalLayout />}>
+                  <Route element={<AppLayout />}>
                     <Route path="/tenant/dashboard" element={<TenantDashboard />} />
                   </Route>
                 </Route>

@@ -12,6 +12,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { config } from "../config.js";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { deliverPendingAlerts } from "../notifications/smsDispatcher.js";
+import { getDefaultChannelStore } from "../bdapps/channel.js";
 
 function prisma(): PrismaClient {
   return new PrismaClient({ adapter: new PrismaPg({ connectionString: config.databaseUrl! }) });
@@ -72,6 +73,21 @@ devRouter.post("/deliver-alerts", async (req: Request, res: Response): Promise<v
   try {
     const result = await deliverPendingAlerts({ limit: Number(req.body?.limit) || 20 });
     res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: (error as Error).message });
+  }
+});
+
+/** Toggle a farmer's premium flag (demo the P6 gating without a real subscribe). */
+devRouter.post("/set-premium", async (req: Request, res: Response): Promise<void> => {
+  const mobile = String(req.body?.mobile ?? "").trim();
+  if (mobile === "") {
+    res.status(400).json({ error: "mobile is required" });
+    return;
+  }
+  try {
+    await getDefaultChannelStore().setPremium(mobile, req.body?.premium !== false);
+    res.json(await getDefaultChannelStore().getByMobile(mobile));
   } catch (error) {
     res.status(400).json({ error: (error as Error).message });
   }
