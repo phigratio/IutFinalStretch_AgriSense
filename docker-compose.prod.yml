@@ -1,0 +1,73 @@
+services:
+  proxy:
+    build:
+      context: .
+      dockerfile: deploy/caddy/Dockerfile
+    container_name: iut-ict-fest-proxy
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_started
+      grafana:
+        condition: service_started
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?Set PUBLIC_HOST in .env}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - observability
+
+  app:
+    restart: unless-stopped
+    ports: !override []
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?Set AUTH_TOKEN_SECRET in .env}
+      AUTH_TOKEN_TTL_SECONDS: ${AUTH_TOKEN_TTL_SECONDS:-3600}
+      COOKIE_SECURE: "true"
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALLBACK_URL: https://${PUBLIC_HOST}/auth/google/callback
+      FRONTEND_AUTH_SUCCESS_URL: ${FRONTEND_AUTH_SUCCESS_URL:-}
+
+  grafana:
+    restart: unless-stopped
+    ports: !override []
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_SERVER_ROOT_URL: https://${PUBLIC_HOST}/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+
+  prometheus:
+    restart: unless-stopped
+    ports: !override []
+
+  postgres:
+    restart: unless-stopped
+    ports: !override []
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+
+  loki:
+    restart: unless-stopped
+    ports: !override []
+
+  tempo:
+    restart: unless-stopped
+    ports: !override []
+
+  otel-collector:
+    restart: unless-stopped
+    ports: !override []
+
+volumes:
+  caddy-data:
+  caddy-config:
