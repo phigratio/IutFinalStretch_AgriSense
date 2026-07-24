@@ -262,3 +262,25 @@ html, body { overflow-x: clip; }
 @media (prefers-reduced-motion: reduce) {
   .portal-button, .portal-request-row, .portal-choice-group button { transition-duration: 150ms; }
 }
+
+/* BDApps SMS-channel verify-phone card (UserDashboard) */
+.portal-otp {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-portal-sm, 0.5rem);
+  max-width: 20rem;
+  margin-top: var(--space-portal-sm, 0.5rem);
+}
+.portal-otp input {
+  min-height: 2.75rem;
+  border: var(--rule-portal, 1px) solid var(--border-portal, #d0d5dd);
+  border-radius: var(--radius-portal-control, 0.5rem);
+  padding-inline: var(--space-portal-md, 0.75rem);
+  font-size: 1rem;
+  font-family: var(--font-portal-display, inherit);
+}
+.portal-hint {
+  margin-top: var(--space-portal-sm, 0.5rem);
+  font-size: 0.9rem;
+  color: var(--text-portal-muted, #667085);
+}
