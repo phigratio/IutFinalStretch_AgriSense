@@ -8,6 +8,7 @@
 import { mem0Client } from "../rag/mem0Client.js";
 import { config } from "../config.js";
 import { HUB } from "./tenancy.js";
+import { getKbDocumentStore, type KbDocumentStore } from "./documentStore.js";
 
 export interface Mem0Like {
   add(input: {
@@ -63,13 +64,41 @@ export async function addChunk(
   text: string,
   meta: KbChunkMeta,
   client: Mem0Like = mem0Client,
+  documents: KbDocumentStore = getKbDocumentStore(),
 ): Promise<unknown> {
   const userId = meta.scope === "hub" ? hubUserId() : tenantUserId(meta.tenantId ?? "");
-  return client.add({
+  if (meta.scope === "tenant" && !meta.tenantId) throw new Error("tenant chunks require tenantId");
+  const result = await client.add({
     messages: [{ role: "user", content: text }],
     userId,
     agentId: config.mem0KbAgentId,
     metadata: { ...meta },
+  });
+  const ids = extractMem0Ids(result);
+  await documents.upsert({
+    tenantId: meta.scope === "hub" ? HUB : meta.tenantId!,
+    scope: meta.scope,
+    docKey: meta.docKey,
+    title: meta.docKey,
+    source: meta.source,
+    sourceUrl: meta.sourceUrl,
+    page: meta.page,
+    cropId: meta.cropId,
+    mem0Ids: ids,
+    dataOrigin: meta.dataOrigin,
+  });
+  return result;
+}
+
+function extractMem0Ids(result: unknown): string[] {
+  const root = result as Record<string, unknown> | undefined;
+  const candidates = Array.isArray(result) ? result :
+    Array.isArray(root?.results) ? root.results :
+    Array.isArray(root?.memories) ? root.memories : [result];
+  return candidates.flatMap((item) => {
+    const row = item as Record<string, unknown> | undefined;
+    const id = row?.id ?? row?.memory_id;
+    return typeof id === "string" ? [id] : [];
   });
 }
 

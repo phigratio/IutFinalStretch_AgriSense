@@ -28,13 +28,14 @@ interface RequestOptions {
   body?: unknown;
   /** Set false for the login/signup calls, which must not send a stale token. */
   auth?: boolean;
+  headers?: Record<string, string>;
 }
 
 export async function apiFetch<T>(
   path: string,
-  { method = "GET", body, auth = true }: RequestOptions = {},
+  { method = "GET", body, auth = true, headers: extraHeaders = {} }: RequestOptions = {},
 ): Promise<T> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...extraHeaders };
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
   const token = auth ? getToken() : null;

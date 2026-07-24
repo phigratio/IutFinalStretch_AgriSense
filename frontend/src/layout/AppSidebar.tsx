@@ -19,6 +19,7 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { name: "Dashboard", path: "/", icon: <GridIcon /> },
   { name: "AgriSense", path: "/agrisense", icon: <BoxIcon /> },
+  { name: "Knowledge Base", path: "/knowledge-base", icon: <BoxIcon /> },
   { name: "Users", path: "/users", icon: <UserGroupIcon /> },
   { name: "Profile", path: "/profile", icon: <UserIcon /> },
 ];

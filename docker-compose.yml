@@ -208,7 +208,9 @@ services:
     ports:
       - "${OTEL_GRPC_PORT:-4317}:4317"
       - "${OTEL_HTTP_PORT:-4318}:4318"
-      - "${OTEL_PROM_EXPORTER_PORT:-8889}:8889"
+      # Host port must differ from mem0-api's default 8889. Prometheus uses the
+      # container-internal otel-collector:8889 address, so only the host side changes.
+      - "${OTEL_PROM_EXPORTER_PORT:-8890}:8889"
     networks:
       - observability
 

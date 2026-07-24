@@ -20,7 +20,9 @@ export interface PriceObservationLike {
   priceType: string;
   observedAt: string; // YYYY-MM-DD
   source: string;
+  sourceUrl?: string;
   dataOrigin: string; // real | manual | mock
+  verification?: string;
   commodityLabel?: string;
 }
 
@@ -41,6 +43,31 @@ export interface PriceProvenance {
 export interface ResolvedPrice {
   pricePerKg: number;
   provenance: PriceProvenance;
+}
+
+export interface PriceSignal {
+  signal: "sell_now" | "store" | "wait";
+  changePct: number;
+  observations: number;
+  from: string;
+  to: string;
+}
+
+/** Simple declared Tier-2 trend signal; callers must present it as historical, not a forecast. */
+export function resolvePriceSignalFrom(observations: PriceObservationLike[], cropId: string): PriceSignal | null {
+  const rows = observations
+    .filter((o) => o.cropId === cropId && o.dataOrigin !== "mock")
+    .sort((a, b) => a.observedAt.localeCompare(b.observedAt));
+  if (rows.length < 2) return null;
+  const first = rows[0];
+  const last = rows.at(-1)!;
+  const start = normalizePricePerKg(first.price, first.unit as PriceUnit);
+  const end = normalizePricePerKg(last.price, last.unit as PriceUnit);
+  const changePct = Math.round(((end - start) / start) * 1000) / 10;
+  return {
+    signal: changePct >= 5 ? "wait" : changePct <= -5 ? "sell_now" : "store",
+    changePct, observations: rows.length, from: first.observedAt, to: last.observedAt,
+  };
 }
 
 export interface ResolveOptions {

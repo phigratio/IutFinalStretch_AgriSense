@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { searchKB, type Mem0Like, type KbChunkMeta } from "./vectorKb.js";
+import { addChunk, searchKB, type Mem0Like, type KbChunkMeta } from "./vectorKb.js";
+import { InMemoryKbDocumentStore } from "./documentStore.js";
 
 const chunk = (m: Partial<KbChunkMeta>, text: string, score: number) => ({
   memory: text,
@@ -13,6 +14,18 @@ const chunk = (m: Partial<KbChunkMeta>, text: string, score: number) => ({
     dataOrigin: "manual",
     ...m,
   } as KbChunkMeta,
+});
+
+describe("addChunk registry", () => {
+  it("registers returned mem0 ids for audit", async () => {
+    const documents = new InMemoryKbDocumentStore();
+    const client: Mem0Like = { add: async () => ({ results: [{ id: "mem-1" }] }), search: async () => [] };
+    await addChunk("advice", {
+      scope: "tenant", tenantId: "t1", docKey: "local:advice", docType: "advisory",
+      source: "District office", dataOrigin: "manual",
+    }, client, documents);
+    expect(await documents.list("t1")).toMatchObject([{ docKey: "local:advice", mem0Ids: ["mem-1"] }]);
+  });
 });
 
 /** Fake mem0 that returns hub vs tenant results based on the scope filter. */

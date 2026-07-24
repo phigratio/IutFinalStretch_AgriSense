@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolvePriceFrom, type PriceObservationLike } from "./priceStore.js";
+import { resolvePriceFrom, resolvePriceSignalFrom, type PriceObservationLike } from "./priceStore.js";
 
 const obs = (o: Partial<PriceObservationLike>): PriceObservationLike => ({
   tenantId: "hub",
@@ -11,6 +11,18 @@ const obs = (o: Partial<PriceObservationLike>): PriceObservationLike => ({
   source: "WFP/HDX",
   dataOrigin: "real",
   ...o,
+});
+
+describe("Tier-2 price trend signal", () => {
+  it("labels rising, falling and flat histories without using mock rows", () => {
+    const history = [
+      obs({ price: 40, observedAt: "2026-01-01" }),
+      obs({ price: 44, observedAt: "2026-02-01" }),
+      obs({ price: 500, observedAt: "2026-03-01", dataOrigin: "mock" }),
+    ];
+    expect(resolvePriceSignalFrom(history, "rice_t_aman")).toMatchObject({ signal: "wait", changePct: 10, observations: 2 });
+    expect(resolvePriceSignalFrom(history.map((r) => ({ ...r, price: r.dataOrigin === "mock" ? r.price : 84 - r.price })), "rice_t_aman")?.signal).toBe("sell_now");
+  });
 });
 
 describe("resolvePriceFrom precedence (§4.4)", () => {

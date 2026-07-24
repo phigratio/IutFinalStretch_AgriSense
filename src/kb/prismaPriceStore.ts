@@ -23,8 +23,7 @@ export class PrismaPriceStore implements PriceStore {
 
   async addObservations(obs: PriceObservationLike[]): Promise<void> {
     if (obs.length === 0) return;
-    await this.prisma.priceObservation.createMany({
-      data: obs.map((o) => ({
+    const data = obs.map((o) => ({
         tenantId: o.tenantId,
         cropId: o.cropId,
         commodityLabel: o.commodityLabel ?? null,
@@ -37,9 +36,29 @@ export class PrismaPriceStore implements PriceStore {
         priceType: o.priceType,
         observedAt: new Date(o.observedAt),
         source: o.source,
+        sourceUrl: o.sourceUrl ?? null,
         dataOrigin: o.dataOrigin,
-      })),
-    });
+        verification: o.verification ?? "unverified",
+      }));
+
+    // WFP refreshes and tenant retries must be idempotent. PostgreSQL treats NULLs as
+    // distinct in compound unique indexes, so use an explicit delete+create transaction
+    // over the natural observation key instead of relying on skipDuplicates.
+    await this.prisma.$transaction([
+      this.prisma.priceObservation.deleteMany({
+        where: {
+          OR: obs.map((o) => ({
+            tenantId: o.tenantId,
+            cropId: o.cropId,
+            market: o.market ?? null,
+            observedAt: new Date(o.observedAt),
+            priceType: o.priceType,
+            source: o.source,
+          })),
+        },
+      }),
+      this.prisma.priceObservation.createMany({ data }),
+    ]);
   }
 
   async listByCrop(cropId: string): Promise<PriceObservationLike[]> {
@@ -56,7 +75,9 @@ export class PrismaPriceStore implements PriceStore {
       priceType: r.priceType,
       observedAt: r.observedAt.toISOString().slice(0, 10),
       source: r.source,
+      sourceUrl: r.sourceUrl ?? undefined,
       dataOrigin: r.dataOrigin,
+      verification: r.verification,
       commodityLabel: r.commodityLabel ?? undefined,
     }));
   }

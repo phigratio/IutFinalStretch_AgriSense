@@ -34,6 +34,19 @@ export class PrismaTenantStore implements TenantStore {
     return t ? { id: t.id, slug: t.slug, name: t.name, kind: t.kind } : undefined;
   }
 
+  async updateTenant(slug: string, input: Partial<Pick<CreateTenantInput, "name" | "kind">>): Promise<TenantRecord | undefined> {
+    const existing = await this.prisma.tenant.findUnique({ where: { slug } });
+    if (!existing) return undefined;
+    const t = await this.prisma.tenant.update({ where: { slug }, data: input });
+    return { id: t.id, slug: t.slug, name: t.name, kind: t.kind };
+  }
+
+  async deleteTenant(slug: string): Promise<boolean> {
+    if (slug === HUB) throw new Error("The hub tenant cannot be deleted");
+    const result = await this.prisma.tenant.deleteMany({ where: { slug } });
+    return result.count > 0;
+  }
+
   private async idForSlug(slug: string): Promise<string | undefined> {
     const t = await this.prisma.tenant.findUnique({ where: { slug }, select: { id: true } });
     return t?.id;
