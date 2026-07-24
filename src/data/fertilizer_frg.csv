@@ -1,0 +1,13 @@
+cropId,fertilityClass,urea_kg_ha,tsp_kg_ha,mop_kg_ha,gypsum_kg_ha,zinc_kg_ha,ureaBasalFraction,ureaSplitDaysAfterEstablish,source_name,source_url,source_doc,page,retrieved_date,data_origin,verification_status
+rice_t_aman,low,210,80,80,70,10,0.33,15;35;55,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
+rice_t_aman,medium,180,70,70,60,8,0.33,15;35;55,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
+rice_t_aman,high,150,55,55,50,6,0.33,15;35;55,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
+rice_boro,low,300,110,130,120,12,0.33,15;35;55,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
+rice_boro,medium,260,100,120,110,12,0.33,15;35;55,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
+rice_boro,high,220,85,100,95,10,0.33,15;35;55,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
+wheat,medium,200,90,50,110,5,0.5,21,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
+maize,medium,300,160,110,60,12,0.25,20;40,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
+potato,medium,300,160,250,120,10,0.6,30,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
+mustard,medium,175,85,55,120,6,0.5,25,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
+lentil,medium,45,85,35,40,4,1.0,,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified
+onion,medium,250,150,130,30,6,0.34,25;45,FRG-2018,https://barc.gov.bd,Fertilizer Recommendation Guide 2018,TODO,2026-07-24,manual,unverified

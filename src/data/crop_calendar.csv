@@ -1,0 +1,9 @@
+cropId,season,windowStartMonth,windowStartDay,windowEndMonth,windowEndDay,durationDays,anchorStage,source_name,source_url,source_doc,page,retrieved_date,data_origin,verification_status
+rice_t_aman,kharif2_aman,7,15,8,15,140,transplanting,BARC,https://barc.gov.bd,BARC Crop Calendar,TODO,2026-07-24,manual,unverified
+rice_boro,boro,12,15,1,31,155,transplanting,BARC,https://barc.gov.bd,BARC Crop Calendar,TODO,2026-07-24,manual,unverified
+wheat,rabi,11,1,11,30,110,sowing,BARC,https://barc.gov.bd,BARC Crop Calendar,TODO,2026-07-24,manual,unverified
+maize,rabi,11,1,12,15,145,sowing,BARC,https://barc.gov.bd,BARC Crop Calendar,TODO,2026-07-24,manual,unverified
+potato,rabi,11,1,11,30,90,planting,BARC,https://barc.gov.bd,BARC Crop Calendar,TODO,2026-07-24,manual,unverified
+mustard,rabi,10,15,11,15,85,sowing,BARC,https://barc.gov.bd,BARC Crop Calendar,TODO,2026-07-24,manual,unverified
+lentil,rabi,10,20,11,20,110,sowing,BARC,https://barc.gov.bd,BARC Crop Calendar,TODO,2026-07-24,manual,unverified
+onion,rabi,11,1,12,15,120,transplanting,BARC,https://barc.gov.bd,BARC Crop Calendar,TODO,2026-07-24,manual,unverified

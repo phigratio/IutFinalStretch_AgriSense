@@ -1,0 +1,11 @@
+district,defaultFertilityClass,source_name,source_url,source_doc,page,retrieved_date,data_origin,verification_status
+Kushtia,medium,SRDI,http://srdi.gov.bd,SRDI Upazila Nutrient Status,TODO,2026-07-24,manual,unverified
+Bogura,medium,SRDI,http://srdi.gov.bd,SRDI Upazila Nutrient Status,TODO,2026-07-24,manual,unverified
+Dhaka,medium,SRDI,http://srdi.gov.bd,SRDI Upazila Nutrient Status,TODO,2026-07-24,manual,unverified
+Rangpur,medium,SRDI,http://srdi.gov.bd,SRDI Upazila Nutrient Status,TODO,2026-07-24,manual,unverified
+Rajshahi,medium,SRDI,http://srdi.gov.bd,SRDI Upazila Nutrient Status,TODO,2026-07-24,manual,unverified
+Dinajpur,high,SRDI,http://srdi.gov.bd,SRDI Upazila Nutrient Status,TODO,2026-07-24,manual,unverified
+Cumilla,medium,SRDI,http://srdi.gov.bd,SRDI Upazila Nutrient Status,TODO,2026-07-24,manual,unverified
+Jashore,medium,SRDI,http://srdi.gov.bd,SRDI Upazila Nutrient Status,TODO,2026-07-24,manual,unverified
+Mymensingh,medium,SRDI,http://srdi.gov.bd,SRDI Upazila Nutrient Status,TODO,2026-07-24,manual,unverified
+Barishal,low,SRDI,http://srdi.gov.bd,SRDI Upazila Nutrient Status,TODO,2026-07-24,manual,unverified

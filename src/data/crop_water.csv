@@ -1,0 +1,9 @@
+cropId,totalWaterMm,criticalStages,source_name,source_url,source_doc,page,retrieved_date,data_origin,verification_status
+rice_t_aman,1000,tillering|panicle_initiation|flowering,FAO,https://www.fao.org/land-water/databases-and-software/crop-information,FAO Crop Water Information,TODO,2026-07-24,manual,unverified
+rice_boro,1800,tillering|panicle_initiation|flowering|grain_filling,FAO,https://www.fao.org/land-water/databases-and-software/crop-information,FAO Crop Water Information,TODO,2026-07-24,manual,unverified
+wheat,350,crown_root|booting|grain_filling,FAO,https://www.fao.org/land-water/databases-and-software/crop-information,FAO Crop Water Information,TODO,2026-07-24,manual,unverified
+maize,500,knee_high|tasseling|grain_filling,FAO,https://www.fao.org/land-water/databases-and-software/crop-information,FAO Crop Water Information,TODO,2026-07-24,manual,unverified
+potato,500,stolonization|tuber_bulking,FAO,https://www.fao.org/land-water/databases-and-software/crop-information,FAO Crop Water Information,TODO,2026-07-24,manual,unverified
+mustard,250,rosette|flowering|siliqua_filling,FAO,https://www.fao.org/land-water/databases-and-software/crop-information,FAO Crop Water Information,TODO,2026-07-24,manual,unverified
+lentil,220,branching|flowering|pod_filling,FAO,https://www.fao.org/land-water/databases-and-software/crop-information,FAO Crop Water Information,TODO,2026-07-24,manual,unverified
+onion,450,bulb_initiation|bulb_development,FAO,https://www.fao.org/land-water/databases-and-software/crop-information,FAO Crop Water Information,TODO,2026-07-24,manual,unverified

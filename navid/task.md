@@ -8,9 +8,10 @@
 
 ## Phase A — Foundations (unblocks everything)
 
-- [ ] **A1. Schema patch** — Prisma migration `add_soil_fertility_split`: add `district`,
-  `upazila`, `soilTexture`, `fertilityClass`, `fertilitySource` to `FarmProfile`
-  (plan.md §2). If DB not reachable, use `FarmProfile.metadata` interim and note it. `[Must]`
+- [ ] **A1. Schema patch** — Prisma migration `add_agent_tier0_fields`: add `areaHa`, `district`,
+  `upazila`, `soilTexture`, `fertilityClass`, `fertilitySource` to `FarmProfile`; add
+  `metadata` + `selectedCrop` to `AgentSession`; add `breakEvenPriceBdtPerKg` to `SeasonPlan`;
+  add `snapshotType` to `WeatherSnapshot` (plan.md §2). Do this first. `[Must]`
 - [ ] **A2. Trace decorator** — `src/tools/trace.ts` `withTrace()` → writes one `AgentToolCall`
   row per tool call (name, params, rawResponse, status, timings). `[Must]`
 - [ ] **A3. Data files** — `src/data/*.csv` (crops, crop_calendar, crop_water, fertilizer_frg,
@@ -24,11 +25,15 @@
 ## Phase B — Intake & normalization (T0-1)
 
 - [ ] **B1. Normalizers** — `src/agent/normalize.ts`: area→ha (acre/decimal/bigha-confirm/kani-ask),
-  soil words (bn+en), season-from-**system-date**, `normalizePricePerKg`. `[Must]`
+  soil words (bn+en), season-from-**system-date**. Put `normalizePricePerKg` with the data/finance
+  code (`src/engines/financials.ts` or loader), not conversational normalization. `[Must]`
 - [ ] **B2. LLM extractor + prompts** — `src/agent/prompts.ts` extractor schema (Bangla-aware),
-  `src/llm/provider.ts` OpenAI function-calling adapter (default `gpt-4o`, `OPENAI_API_KEY`). `[Must]`
+  `src/llm/provider.ts` OpenAI function-calling adapter (default `gpt-4o`, `OPENAI_API_KEY`). Add
+  `openaiApiKey`/`openaiChatModel` to `src/config.ts` and app compose env; use raw `fetch` or add
+  the `openai` npm package deliberately. `[Must]`
 - [ ] **B3. Gap loop** — `src/agent/intake.ts`: `requiredFieldGaps`, ask only missing (≤3/turn),
-  never re-ask, write `AgentSession.missingFields`, one-line summary read-back on completion. `[Must]`
+  never re-ask, write draft fields to `AgentSession.metadata.intakeState`, write
+  `AgentSession.missingFields`, and only create/update `FarmProfile` on completion. `[Must]`
 - [ ] **B4. Texture/fertility split** — SRDI district default → `fertilityClass` with
   `fertilitySource`, stated as an overridable assumption (spec §1.3). `[Must]`
 
@@ -41,6 +46,9 @@
 - [ ] **C4. `getSoilProfile`** — SRDI district fertility default lookup. `[Must]`
 - [ ] **C5. Failure + cache policy** — retry once, never invent, failed call visible in trace;
   cache last-good per location (`WeatherSnapshot` + in-memory). `[Must]`
+- [ ] **C6. KB wrapper identity** — `src/tools/kb.ts` uses `mem0Client.search` with the fixed global
+  KB identity (`MEM0_KB_USER_ID` / `agentId="agrisense-kb"`); do not use `src/rag/mem0Store.ts` for
+  Tier 0 retrieval. `[Must]`
 
 ## Phase D — Deterministic engines (T0-3 / T0-5)
 
@@ -48,7 +56,8 @@
   seasonFit/waterFit/soilFit/weatherFit/profitPotential/budgetFit; reasons + sources; `<3` fits →
   honest nearest-alternatives (spec §3). `[Must]`
 - [ ] **D2. `computeFinancials`** — `src/engines/financials.ts` pure fn: itemized costs, yield,
-  revenue, net, ROI, break-even price & yield (spec §5). `[Must]`
+  revenue, net, ROI, break-even price & yield; persist both break-even fields on `SeasonPlan`
+  (spec §5). `[Must]`
 
 ## Phase E — Plan generator (T0-4)
 
