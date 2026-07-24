@@ -2,9 +2,11 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import PageMeta from "../components/common/PageMeta.js";
 import {
+  getAgriSenseContext,
   getAgriSenseMemory,
   sendAgriSenseMessage,
   type AgriSenseMessageResult,
+  type ContextBundle,
   type CropRecommendation,
   type IntakeProfile,
   type MemoryOutcome,
@@ -22,7 +24,7 @@ interface ChatMessage {
 }
 
 type Language = "en" | "bn" | "banglish";
-type ViewStage = WorkflowStage | "trace";
+type ViewStage = WorkflowStage | "context" | "trace";
 
 const starterMessages = [
   "I have 2 acres in Gazipur, what should I plant?",
@@ -50,6 +52,7 @@ const workflowStages: Array<{
   description: string;
 }> = [
   { id: "intake", label: "Intake", tool: "memory + gaps", description: "Recover profile from memory and ask only for missing fields." },
+  { id: "context", label: "Context", tool: "context.hydrate", description: "Fetch cached user memory, prior analyses, profile, and KB sources." },
   { id: "weather", label: "Weather", tool: "weather.fetch", description: "Refresh live weather for the farm location." },
   { id: "evidence", label: "Evidence", tool: "rag.retrieve", description: "Retrieve agronomic context for the profile and weather." },
   { id: "crop_ranking", label: "Crop Ranking", tool: "crop.rank", description: "Rank crops from profile, weather, budget, and evidence." },
@@ -80,6 +83,7 @@ export default function AgriSense() {
   const [useMemory, setUseMemory] = useState(true);
   const [rememberedOutcomes, setRememberedOutcomes] = useState<MemoryOutcome[]>([]);
   const [memorySessions, setMemorySessions] = useState<MemorySessionSummary[]>([]);
+  const [contextBundle, setContextBundle] = useState<ContextBundle | null>(null);
   const [ignoredOutcomeIds, setIgnoredOutcomeIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,11 +97,15 @@ export default function AgriSense() {
     if (!useMemory) return;
     if (!user?.id && !farmerId && !farmId) return;
     let cancelled = false;
-    getAgriSenseMemory({ userId: user?.id, farmerId, farmId, limit: 8 })
-      .then((memory) => {
+    Promise.all([
+      getAgriSenseMemory({ userId: user?.id, farmerId, farmId, limit: 8 }),
+      getAgriSenseContext({ userId: user?.id, farmerId, farmId, sessionId, language, limit: 8 }),
+    ])
+      .then(([memory, context]) => {
         if (cancelled) return;
         setRememberedOutcomes(memory.outcomes.filter((outcome) => !ignoredOutcomeIds.includes(outcome.id)));
         setMemorySessions(memory.sessions);
+        setContextBundle(context);
       })
       .catch(() => {
         if (!cancelled) {
@@ -108,11 +116,11 @@ export default function AgriSense() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, farmerId, farmId, useMemory, ignoredOutcomeIds]);
+  }, [user?.id, farmerId, farmId, sessionId, language, useMemory, ignoredOutcomeIds]);
 
   async function submitMessage(
     messageText = input,
-    workflowStage: WorkflowStage = activeStage === "trace" ? "full" : activeStage,
+    workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" ? "full" : activeStage,
     acceptedOutcomeIds?: string[],
   ) {
     const text = messageText.trim();
@@ -142,6 +150,9 @@ export default function AgriSense() {
       setFarmerId(response.farmerId);
       setFarmId(response.farmId);
       setResult(response);
+      if (response.context) {
+        setContextBundle(response.context);
+      }
       if (response.rememberedOutcomes) {
         setRememberedOutcomes(response.rememberedOutcomes.filter((outcome) => !ignoredOutcomeIds.includes(outcome.id)));
       }
@@ -174,7 +185,7 @@ export default function AgriSense() {
 
   function runStage(stage: ViewStage) {
     selectStage(stage);
-    if (stage === "trace") return;
+    if (stage === "trace" || stage === "context") return;
     const message = stage === "intake"
       ? "continue intake"
       : `continue from ${stageLabels[stage]}`;
@@ -315,6 +326,7 @@ export default function AgriSense() {
             missingFields={result?.missingFields ?? []}
             result={result}
             activePlan={activePlan}
+            context={contextBundle ?? result?.context}
           />
         </main>
 
@@ -339,6 +351,7 @@ function WorkflowStageSidebar({
 }) {
   const available = new Set<ViewStage>(["intake", "trace", "full"]);
   if (result?.farmProfile) available.add("weather");
+  if (result?.context) available.add("context");
   if (result?.weather) available.add("evidence");
   if (result?.retrievedEvidence?.length) available.add("crop_ranking");
   if (result?.cropRankings?.length) {
@@ -513,14 +526,17 @@ function StageContent({
   missingFields,
   result,
   activePlan,
+  context,
 }: {
   activeStage: ViewStage;
   profile?: IntakeProfile;
   missingFields: string[];
   result: AgriSenseMessageResult | null;
   activePlan?: AgriSenseMessageResult["seasonPlan"];
+  context?: ContextBundle | null;
 }) {
   if (activeStage === "intake") return <ProfilePanel profile={profile} missingFields={missingFields} />;
+  if (activeStage === "context") return <ContextPanel context={context ?? result?.context ?? null} />;
   if (activeStage === "weather") return <WeatherPanel result={result} />;
   if (activeStage === "evidence") return <EvidencePanel result={result} />;
   if (activeStage === "crop_ranking") return <CropRankings rankings={result?.cropRankings ?? []} />;
@@ -541,6 +557,127 @@ function StageContent({
         </>
       )}
     </>
+  );
+}
+
+function ContextPanel({ context }: { context: ContextBundle | null }) {
+  if (!context) {
+    return <EmptyStage title="Context" text="Context hydration appears after a session, user, farm, or memory lookup is available." />;
+  }
+
+  const profile = context.profileSnapshot ?? context.profile;
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Fetched Context</h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Cache, profile, prior analyses, mem0 recall, and tenant/hub KB used before agent work.
+          </p>
+        </div>
+        <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold uppercase text-brand-500">
+          {context.cache.status}
+        </span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Metric label="Memory user" value={shortId(context.identity.memoryUserId)} />
+        <Metric label="TTL" value={`${Math.round(context.cache.ttlMs / 1000)}s`} />
+        <Metric label="Outcomes" value={context.memory.outcomes.length} />
+        <Metric label="KB hits" value={context.kbHits.length} />
+      </div>
+
+      {profile && (
+        <div className="mt-4 rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+          <p className="text-xs font-semibold text-gray-900 dark:text-white">Profile Snapshot</p>
+          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
+            <Metric label="Location" value={profile.locationText ?? "n/a"} />
+            <Metric label="Soil" value={profile.soilType ?? "n/a"} />
+            <Metric label="Water" value={profile.waterAvailability ?? "n/a"} />
+            <Metric label="Size" value={profile.sizeAcres ? `${profile.sizeAcres} acres` : "n/a"} />
+            <Metric label="Budget" value={profile.budgetBdt ? formatMoney(profile.budgetBdt) : "n/a"} />
+            <Metric label="Season" value={profile.targetSeason ?? "n/a"} />
+          </div>
+        </div>
+      )}
+
+      {context.priorAnalyses.length > 0 && (
+        <div className="mt-4">
+          <p className="text-xs font-semibold text-gray-900 dark:text-white">Prior Analyses</p>
+          <div className="mt-2 grid gap-2 md:grid-cols-2">
+            {context.priorAnalyses.slice(0, 4).map((item) => (
+              <div key={item.id} className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-xs font-semibold text-gray-900 dark:text-white">{item.title}</p>
+                  <span className="text-[11px] capitalize text-gray-500 dark:text-gray-400">{item.kind.replace("_", " ")}</span>
+                </div>
+                <p className="mt-2 line-clamp-3 text-xs leading-5 text-gray-500 dark:text-gray-400">{item.summary}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <ContextList
+          title="mem0 Recall"
+          empty="No mem0 memories returned for this context."
+          items={context.memory.mem0.map((item) => ({
+            id: item.id,
+            title: item.title,
+            body: item.content,
+            meta: item.score ? `score ${item.score.toFixed(2)}` : "mem0",
+          }))}
+        />
+        <ContextList
+          title="Knowledge Base"
+          empty="No tenant/hub KB hits returned yet."
+          items={context.kbHits.map((hit, index) => ({
+            id: hit.docKey ?? `kb-${index}`,
+            title: hit.source ?? hit.docKey ?? "KB source",
+            body: hit.text,
+            meta: hit.citation,
+          }))}
+        />
+      </div>
+
+      {context.warnings.length > 0 && (
+        <div className="mt-4 rounded-lg border border-warning-500/30 bg-warning-50 p-3 text-xs text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
+          {context.warnings.join(" ")}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ContextList({
+  title,
+  empty,
+  items,
+}: {
+  title: string;
+  empty: string;
+  items: Array<{ id: string; title: string; body: string; meta: string }>;
+}) {
+  return (
+    <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+      <p className="text-xs font-semibold text-gray-900 dark:text-white">{title}</p>
+      {items.length === 0 ? (
+        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{empty}</p>
+      ) : (
+        <div className="mt-2 space-y-2">
+          {items.slice(0, 4).map((item) => (
+            <div key={item.id} className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-white/[0.04]">
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate text-xs font-medium text-gray-900 dark:text-white">{item.title}</p>
+                <span className="truncate text-[11px] text-gray-400">{item.meta}</span>
+              </div>
+              <p className="mt-1 line-clamp-3 text-[11px] leading-4 text-gray-500 dark:text-gray-400">{item.body}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
