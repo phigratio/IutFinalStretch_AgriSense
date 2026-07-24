@@ -78,8 +78,12 @@
 - [ ] OpenAI key in `.env` as `OPENAI_API_KEY` (owner: B) — `gpt-4o` chat tested with curl?
       (same key feeds mem0's embedder)
 - [ ] mem0 stack up (owner: B) — `mem0-api` + `mem0-neo4j` running; `mem0Client` add/search round-trips?
-- [ ] bdapps Pro app provisioned: APP_ID ☐ · password in .env ☐ · venue public IP whitelisted ☐
-      (E1303 = re-check IP) · listener URLs set (ngrok) ☐ · first S1000 seen? ☐
+- [~] bdapps Pro app provisioning IN PROGRESS (24Jul, Labib): Allowed Host IP =
+      202.53.174.17 (current network — re-check on hotspot switch, E1303 = stale IP) ·
+      SMS shortcode **21213**, keyword **agrisms** (lowercase) · USSD service code **213**,
+      keyword **74756** (dial `*213*74756#`) · all traffic charging toggles = NO (only CaaS
+      direct debit ever charges) · listener URLs = example.com placeholders (swap to ngrok
+      if inbound SMS/USSD is demoed) · APP_ID ☐ · password in .env ☐ · first S1000 ☐
 - [ ] Repo created + 3 clones working
 - [ ] Test Robi SIM available for on-stage SMS? ☐
 - Venue wifi public IP: ☐ (recheck on network change) · Hotspot fallback tested: ☐
