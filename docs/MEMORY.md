@@ -39,18 +39,18 @@
   copying** · rules ban pre-built code, DQ risk outweighs any speedup · rejected: porting it.
 - D2 — **Custom agent loop** (plan→act→observe, zod tools, trace bus) over LangChain/framework
   · full control of trace + gap-filling + judges' "not a wrapper" Q&A · rejected: heavy framework.
-- D3 — ~~LLM = Gemini 2.5 Flash free tier~~ **SUPERSEDED by D14** (OpenAI credits landed).
-- D14 24Jul ~11:30 — **LLM = OpenAI: `gpt-5-mini` for the agent loop + summaries; embeddings
-  = `text-embedding-3-small` (1536-dim — matches the merged schema exactly, no migration);
-  mem0 docker defaults work unchanged** · each member claimed $50 credit → 3 keys, ~$150
-  total, plenty for 24h incl. rehearsals; kills the free-tier RPM risk · Gemini/Groq demoted
-  to failover adapters only. Escalate a hard prompt to `gpt-5.1` only if mini provably
-  fails it. Keys: one primary in backend `.env` (`OPENAI_API_KEY`), other two listed as
-  rotation/backup; never committed (repo rule 1.4).
+- D3 — **LLM = OpenAI `gpt-4o`** (funded team `OPENAI_API_KEY`) behind one adapter · function
+  calling + streaming + vision (covers T2-4) in one provider, simpler than a rotation/failover
+  chain · `gpt-4o-mini` env swap if rate-limited · rejected: Gemini/Groq free tiers (superseded
+  once a funded OpenAI key was available), Ollama local (too slow on our laptops).
 - D4 — **Weather = Open-Meteo** (keyless, 16-day, geocoding) with SQLite cache · free + reliable
   + real API for rubric · rejected: OpenWeatherMap (key + quota friction).
-- D5 — **Embeddings local via Transformers.js MiniLM; vectors in SQLite; hybrid retrieve** ·
-  zero cost/rate-limits, venue-wifi-proof RAG · rejected: hosted vector DBs, API embeddings.
+- D5 — **RAG / vectors / memory = mem0** (already set up: `mem0-api` + Neo4j graph + pgvector;
+  embeds with OpenAI `text-embedding-3-small`, 1536-dim, matching the `vector(1536)` schema).
+  App integrates via `src/rag/mem0Client.ts` (`add`/`search`); ingest KB ahead of demo so
+  retrieval is offline-safe · one memory/RAG layer for KB + conversation, graph + semantic recall
+  for free · rejected: app-side embedding calls, local Transformers.js MiniLM (384-dim,
+  mismatched), custom hybrid retriever, hosted vector DBs.
 - D6 — **SQLite (better-sqlite3) single file** for ALL state incl. traces & KB · zero infra at
   venue, cross-session memory for free · rejected: Postgres+Prisma (migration friction).
 - D7 — **All math in deterministic TS engines; LLM never computes numbers** · accuracy rubric
@@ -75,11 +75,9 @@
 
 ## 4. Environment & credentials status (update as they land)
 
-- [x] ~~⚠ mem0 stack needs `OPENAI_API_KEY`~~ **RESOLVED 11:30 (D14):** OpenAI credits ×3
-      claimed — set `OPENAI_API_KEY` in backend `.env` + docker env; mem0 defaults
-      (`gpt-5-mini` + `text-embedding-3-small` 1536) stay as-is. Each member: verify your key
-      with one real completion call; note per-key rate tier.
-- [ ] Gemini/Groq failover keys (optional now, nice for resilience)
+- [ ] OpenAI key in `.env` as `OPENAI_API_KEY` (owner: B) — `gpt-4o` chat tested with curl?
+      (same key feeds mem0's embedder)
+- [ ] mem0 stack up (owner: B) — `mem0-api` + `mem0-neo4j` running; `mem0Client` add/search round-trips?
 - [ ] bdapps Pro app provisioned: APP_ID ☐ · password in .env ☐ · venue public IP whitelisted ☐
       (E1303 = re-check IP) · listener URLs set (ngrok) ☐ · first S1000 seen? ☐
 - [ ] Repo created + 3 clones working
@@ -106,14 +104,9 @@
   (chat→weather→trace E2E on the phone). Then Phase 2 → CP2 22:00 (full Tier-0).
 
 **BLOCKED / RISKS WATCHLIST**
-- ⚠ **Agent loop has no owner** — it's the 20-pt rubric row; assign at next standup.
-- Docker Postgres/Neo4j/mem0 must all run on the demo laptop — check RAM + startup time early.
-- bdapps approval latency / IP whitelist — escalate to sponsor mentors if stuck by 13:00.
-- Venue wifi client isolation may block phone↔laptop — hotspot is the primary demo network.
-- ~~Gemini free-tier RPM~~ resolved by D14 (OpenAI credits); fresh OpenAI accounts sit on low
-  rate tiers — verify each key's tier, rotate the 3 keys if TPM squeezes during rehearsals.
-- Credits ≠ committed budget discipline: log usage once mid-hack (platform usage page);
-  $150 is ample for gpt-5-mini but not for careless gpt-5.1-everywhere.
+- bdapps approval latency / IP whitelist — started at P0 deliberately; escalate to mentors if stuck by 13:00.
+- OpenAI rate limits / spend during rehearsals — mitigation: terse prompts, cached turns,
+  `gpt-4o-mini` swap via `OPENAI_CHAT_MODEL`, watch the billing dashboard.
 
 ## 6. Checkpoint results (fill at CP time — honest pass/fail + what was cut)
 
@@ -129,7 +122,9 @@
 - ~~mem0: funded OpenAI key available, or reconfigure to Gemini?~~ → resolved, D14 (OpenAI ×3).
 - ~~Team name?~~ → repo is `IutFinalStretch_AgriSense`; verify underscore naming with organizers.
 - Does the venue share a static public IP for bdapps whitelisting, or NAT that changes? (C asks organizers)
-- Is a funded Anthropic/OpenAI key available from any member? (would slot into adapter as D3 fallback-2)
+- ~~Is a funded Anthropic/OpenAI key available?~~ **Resolved:** funded OpenAI key held by the
+  team → sole LLM provider (D3): `gpt-4o` for agent chat; RAG/memory/embeddings via mem0 (D5),
+  which uses the same OpenAI key for `text-embedding-3-small` under the hood.
 - bdapps TAP doc (dev.bdapps.com/API_Documentation/bdapps_tap_api.html) — confirm CaaS flow
   matches DGD v1.1.3 shapes (C, during P3-C2).
 

@@ -44,7 +44,7 @@ least one of these; if a feature demonstrates none of them, it is out of scope.
 | T0-4 | Season plan | Dated calendar from land prep → harvest for chosen crop: sowing window, fertilizer split timings, irrigation, weed/pest checkpoints, harvest window. Rendered as a timeline in UI. |
 | T0-5 | Financial projection | Itemized costs + yield, revenue, net profit, ROI, break-even. Pure-function engine: change any input, outputs recompute correctly live. Unit-tested. |
 | T0-6 | Explained reasoning | Every recommendation names farm inputs + retrieved data behind it (A5 format). |
-| T0-7 | Knowledge base + RAG | Public agronomic sources (BARC fertilizer guide, DAE/BRRI/BARI crop guides, FAO crop-water, crop calendars) ingested into a local vector KB during the event; advice grounded in retrieved chunks with citations. |
+| T0-7 | Knowledge base + RAG | Public agronomic sources (BARC fertilizer guide, DAE/BRRI/BARI crop guides, FAO crop-water, crop calendars) ingested into **mem0** during the event (mem0 handles chunk embedding + vector/graph store); advice grounded in mem0-retrieved chunks with citations. |
 | T0-8 | Visible agent trace | Side panel shows every tool call: name, parameters, raw response, latency. A judge can match any number in the plan to a raw API/KB response. Persisted per session. |
 
 ### Payment — officially Tier 2, but **treated as required** (own 10-point rubric row)
@@ -70,7 +70,7 @@ least one of these; if a feature demonstrates none of them, it is out of scope.
 | T2-1 | Marketplace / supplier comparison | Seeded supplier catalog (declared mock), ranked by price/distance/rating; feeds the CaaS checkout — this is what makes P-1 feel native. |
 | T2-2 | Market price intelligence | Seeded from public DAM bulletins (dated, declared); sell-now/store/wait heuristic with reasoning. |
 | T2-3 | Bengali interaction | Language toggle; LLM replies in Bangla; SMS uses encoding 16. |
-| T2-4 | Leaf photo disease detection | Gemini vision (free tier) with constrained prompt + KB grounding. Flagged; cut first. |
+| T2-4 | Leaf photo disease detection | OpenAI `gpt-4o` vision with constrained prompt + KB grounding. Flagged; cut first. |
 
 ## 5. Non-goals (explicit, from "What Not to Do")
 
@@ -101,7 +101,8 @@ least one of these; if a feature demonstrates none of them, it is out of scope.
 | bdapps SMS / CaaS | **Real sandbox** calls (developer.bdapps.com); `MOCK_BDAPPS=1` fallback exists for offline dev and is declared |
 | Market prices | **Seeded** from public DAM bulletins with dates — declared as seeded snapshot |
 | Supplier catalog | **Mock/seeded** — declared |
-| LLM | Gemini free tier (primary) / Groq (fallback) — provider named in README |
+| LLM | **OpenAI** `gpt-4o` (agent chat) — paid key held by the team, named in README |
+| RAG / memory / vectors | **mem0** (already set up: mem0-api + Neo4j graph + pgvector; embeds with OpenAI `text-embedding-3-small` under the hood) |
 
 ## 8. Submission checklist (hard requirements)
 
@@ -113,11 +114,14 @@ least one of these; if a feature demonstrates none of them, it is out of scope.
 
 ## 9. Constraints & assumptions
 
-- **No paid APIs.** Weather = Open-Meteo (free, keyless). LLM = Gemini AI Studio free tier
-  (each teammate creates a key → 3× daily quota, adapter rotates), fallback Groq free tier.
-  Embeddings = local Transformers.js (no key, offline-capable). See ARCHITECTURE.md §6.
-- **Venue internet is a risk.** Weather responses cached in SQLite; KB fully local; mobile
-  hotspot as declared backup; bdapps mock flag for dev only.
+- **APIs.** Weather = Open-Meteo (free, keyless). LLM = **OpenAI** `gpt-4o` for agent chat on the
+  team's funded `OPENAI_API_KEY` — single provider, no rotation/failover. **RAG, memory, and all
+  vector work go through mem0** (self-hosted mem0-api + Neo4j + pgvector; mem0 embeds via OpenAI
+  internally). See ARCHITECTURE.md §6.
+- **Venue internet is a risk.** OpenAI (chat) and mem0's embedder need network, so: weather
+  responses cached; KB ingested into mem0 **ahead of the demo** so retrieval hits stored
+  vectors/graph (only unseen text needs a live embed); recent LLM turns cached; mobile hotspot as
+  declared backup; bdapps mock flag for dev only.
 - **bdapps IP whitelist (E1303) is the #1 integration gotcha** — provision the app and whitelist
   the venue's public IP in hour 2, re-check whenever calls start failing.
 - All application code written inside the 24h window — see RULES.md §1 (compliance, non-negotiable).
