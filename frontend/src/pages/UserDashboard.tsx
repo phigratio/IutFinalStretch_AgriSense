@@ -29,6 +29,26 @@ const bn = (n?: number): string => (n == null ? "—" : Math.round(n).toLocaleSt
 const pct = (s: number): number => (s > 1 ? Math.round(s) : Math.round(s * 100));
 const day = (d?: string): string => (d ? d.slice(0, 10) : "");
 
+// Bengali calendar (Bangladesh revised) month for a Gregorian date.
+const BN_MONTH_STARTS: [number, number, string][] = [
+  [1, 14, "মাঘ"], [2, 13, "ফাল্গুন"], [3, 15, "চৈত্র"], [4, 14, "বৈশাখ"],
+  [5, 15, "জ্যৈষ্ঠ"], [6, 15, "আষাঢ়"], [7, 16, "শ্রাবণ"], [8, 16, "ভাদ্র"],
+  [9, 16, "আশ্বিন"], [10, 16, "কার্তিক"], [11, 15, "অগ্রহায়ণ"], [12, 15, "পৌষ"],
+];
+function bnMonthName(date: Date): string {
+  const m = date.getMonth() + 1, d = date.getDate();
+  let name = "পৌষ"; // Jan 1–13 belongs to পৌষ (started Dec 15)
+  for (const [bm, bd, nm] of BN_MONTH_STARTS) if (m > bm || (m === bm && d >= bd)) name = nm;
+  return name;
+}
+const EN_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const EN_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const monthKey = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+/** Bengali month + English month for a date, e.g. "বৈশাখ · April". */
+function monthLabel(date: Date): string {
+  return `${bnMonthName(new Date(date.getFullYear(), date.getMonth(), 15))} · ${EN_MONTHS[date.getMonth()]}`;
+}
+
 type Tab = "home" | "weather" | "crops" | "plan" | "money" | "why";
 const TABS: { id: Tab; label: string }[] = [
   { id: "home", label: "🏠 হোম" },
@@ -246,30 +266,99 @@ function CropsTab({ crops }: { crops: CropRecommendation[] }) {
 }
 
 function PlanTab({ plan }: { plan: SeasonPlanResult }) {
+  // Build the month span (bpন → harvest) and group tasks by Gregorian month.
+  const months = useMemo(() => {
+    const startISO = plan.tasks[0]?.startDate ?? plan.sowDate;
+    const endISO = plan.harvestEndDate ?? plan.tasks[plan.tasks.length - 1]?.endDate ?? startISO;
+    const s = new Date(startISO); s.setDate(1);
+    const e = new Date(endISO);
+    const list: { key: string; date: Date }[] = [];
+    const cur = new Date(s);
+    while (cur <= e && list.length < 18) { list.push({ key: monthKey(cur), date: new Date(cur) }); cur.setMonth(cur.getMonth() + 1); }
+    if (list.length === 0) list.push({ key: monthKey(s), date: s });
+    return list;
+  }, [plan]);
+
+  const tasksByMonth = useMemo(() => {
+    const m = new Map<string, typeof plan.tasks>();
+    for (const t of plan.tasks) {
+      const k = (t.startDate ?? "").slice(0, 7);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(t);
+    }
+    return m;
+  }, [plan]);
+
+  const firstWithTasks = months.find((mm) => (tasksByMonth.get(mm.key)?.length ?? 0) > 0)?.key ?? months[0].key;
+  const [selected, setSelected] = useState<string>(firstWithTasks);
+  const activeTasks = tasksByMonth.get(selected) ?? [];
+  const activeDate = months.find((mm) => mm.key === selected)?.date ?? months[0].date;
+
   return (
     <section className="portal-workbench">
-      <div className="portal-section-heading"><div><h2>মৌসুম পরিকল্পনা — {cropBn(plan.crop)}</h2><p>বপন {day(plan.sowDate)} · ফসল কাটা {day(plan.harvestStartDate)} – {day(plan.harvestEndDate)}</p></div></div>
-      <ol className="space-y-3">
-        {plan.tasks.map((t, i) => (
-          <li key={i} className="rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
-            <div className="flex items-start gap-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700 dark:bg-brand-500/20 dark:text-brand-300">{i + 1}</span>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-gray-800 dark:text-gray-100">{t.title}</span>
-                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-white/[0.06] dark:text-gray-400">{day(t.startDate)}{t.endDate && t.endDate !== t.startDate ? ` – ${day(t.endDate)}` : ""}</span>
-                </div>
-                {t.description ? <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{t.description}</p> : null}
-                <div className="mt-1 flex flex-wrap gap-x-4 text-xs text-gray-500 dark:text-gray-400">
-                  {t.quantity != null ? <span>পরিমাণ: {bn(t.quantity)} {t.unit ?? ""}</span> : null}
-                  {t.totalCostBdt != null ? <span>খরচ: {taka(t.totalCostBdt)}</span> : null}
-                  {t.organicAlternative ? <span>জৈব বিকল্প: {t.organicAlternative}</span> : null}
+      <div className="portal-section-heading">
+        <div>
+          <h2>মৌসুম পরিকল্পনা — {cropBn(plan.crop)}</h2>
+          <p>বপন {bnMonthName(new Date(plan.sowDate))} ({day(plan.sowDate)}) → ফসল কাটা {bnMonthName(new Date(plan.harvestStartDate))} ({day(plan.harvestStartDate)})</p>
+        </div>
+      </div>
+
+      {/* Interactive month strip — Bengali + English */}
+      <div className="flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="মাস">
+        {months.map((mm) => {
+          const count = tasksByMonth.get(mm.key)?.length ?? 0;
+          const on = mm.key === selected;
+          return (
+            <button
+              key={mm.key}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => setSelected(mm.key)}
+              className={`min-w-[92px] shrink-0 rounded-xl border px-3 py-2 text-center transition ${
+                on ? "border-brand-500 bg-brand-50 dark:border-brand-500 dark:bg-brand-500/10"
+                   : "border-gray-200 bg-white hover:border-brand-300 dark:border-gray-800 dark:bg-white/[0.03]"
+              }`}
+            >
+              <div className="text-sm font-bold text-gray-800 dark:text-gray-100">{bnMonthName(new Date(mm.date.getFullYear(), mm.date.getMonth(), 15))}</div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400">{EN_SHORT[mm.date.getMonth()]} {mm.date.getFullYear()}</div>
+              {count > 0 ? <div className="mt-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-500 px-1 text-[11px] font-bold text-white">{bn(count)}</div>
+                        : <div className="mt-1 text-[11px] text-gray-300 dark:text-gray-600">—</div>}
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="mb-3 mt-1 text-sm font-semibold text-brand-600 dark:text-brand-300">{monthLabel(activeDate)}</p>
+
+      {activeTasks.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">এই মাসে নির্দিষ্ট কোনো কাজ নেই।</div>
+      ) : (
+        <ol className="space-y-3">
+          {activeTasks.map((t, i) => (
+            <li key={i} className="rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
+              <div className="flex items-start gap-3">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700 dark:bg-brand-500/20 dark:text-brand-300">{bn(i + 1)}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-gray-800 dark:text-gray-100">{t.title}</span>
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-white/[0.06] dark:text-gray-400">
+                      {bnMonthName(new Date(t.startDate))} · {day(t.startDate)}{t.endDate && t.endDate !== t.startDate ? ` – ${day(t.endDate)}` : ""}
+                    </span>
+                  </div>
+                  {t.description ? <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{t.description}</p> : null}
+                  <div className="mt-1 flex flex-wrap gap-x-4 text-xs text-gray-500 dark:text-gray-400">
+                    {t.quantity != null ? <span>পরিমাণ: {bn(t.quantity)} {t.unit ?? ""}</span> : null}
+                    {t.totalCostBdt != null ? <span>খরচ: {taka(t.totalCostBdt)}</span> : null}
+                    {t.organicAlternative ? <span>জৈব বিকল্প: {t.organicAlternative}</span> : null}
+                  </div>
                 </div>
               </div>
-            </div>
-          </li>
-        ))}
-      </ol>
+            </li>
+          ))}
+        </ol>
+      )}
+      <p className="mt-3 text-xs text-gray-400">মাসে চাপ দিয়ে সেই সময়ের কাজ দেখুন। তারিখ বাংলা ও ইংরেজি — দুইভাবেই দেখানো হয়েছে।</p>
     </section>
   );
 }
