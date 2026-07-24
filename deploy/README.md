@@ -1,75 +1,136 @@
 # VPS Deployment
 
-This stack is deployable with Docker Compose on a VPS. In production mode, only
-ports `80` and `443` are public. Grafana is served under `/grafana`, the backend
-is served from `/`, and Prometheus/Loki/Tempo stay private on the Docker network.
+This repo supports two production layouts:
 
-## First Deploy
+- `docker-compose.prod.yml`: Caddy owns public ports `80/443`.
+- `docker-compose.vps-nginx.yml`: host Nginx already owns `80/443` and proxies to Docker loopback ports.
 
-1. Point your DNS `A` record to the VPS IP.
-2. Install Docker and Docker Compose on the VPS.
-3. Copy `.env.production.example` to `.env`.
-4. Set `PUBLIC_HOST`, `ACME_EMAIL`, and a strong `GRAFANA_ADMIN_PASSWORD`.
-5. Set `AUTH_TOKEN_SECRET`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, and `POSTGRES_USER`.
-6. Optional: set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` for Google OAuth.
-7. Start the stack:
+For the current VPS, use the host-Nginx layout. Do not run the Caddy production overlay there.
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-```
+## Current VPS Layout
 
-The backend image runs `prisma migrate deploy` before starting Express, so the
-PostgreSQL auth schema is applied automatically on deploy.
+Server facts verified during deployment prep:
 
-## Public URLs
+- SSH user: `astareoadmin`
+- App directory: `/srv/muqtadir/iut_ict_fest`
+- Host Nginx already listens on `80/443`
+- Free on both the VPS and local machine:
+  - backend: `127.0.0.1:8093`
+  - Grafana: `127.0.0.1:8094`
+  - frontend: `127.0.0.1:8095`
 
-- Backend: `https://YOUR_DOMAIN/health`
-- API: `https://YOUR_DOMAIN/api/users`
-- Auth signup: `POST https://YOUR_DOMAIN/auth/signup`
-- Auth login: `POST https://YOUR_DOMAIN/auth/login`
-- Google OAuth: `https://YOUR_DOMAIN/auth/google`
-- Grafana: `https://YOUR_DOMAIN/grafana/`
+The VPS overlay publishes only those loopback ports. Postgres, mem0, Neo4j, Temporal, Prometheus, Loki, Tempo, and OTel Collector remain private inside Docker.
 
-## Optional Public Telemetry Ingest
+## Manual VPS Deploy
 
-If apps outside the Docker network need to send telemetry to this VPS, also load
-the public telemetry override:
+1. Copy `.env.vps.example` to `.env` on the VPS:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.telemetry-public.yml up -d --build
+cd /srv/muqtadir/iut_ict_fest
+cp .env.vps.example .env
+chmod 600 .env
 ```
 
-This publishes:
+2. Fill the real values in `.env`, especially:
 
-- OTLP gRPC: `YOUR_DOMAIN:4317`
-- OTLP HTTP: `https://YOUR_DOMAIN:4318` if you terminate TLS separately, or `http://YOUR_DOMAIN:4318` directly from the collector
+```bash
+PUBLIC_HOST=your-domain.example
+OPENAI_API_KEY=sk-...
+POSTGRES_PASSWORD=...
+AUTH_TOKEN_SECRET=...
+MEM0_API_KEY=...
+MEM0_JWT_SECRET=...
+MEM0_NEO4J_PASSWORD=...
+TEMPORAL_POSTGRES_PASSWORD=...
+GRAFANA_ADMIN_PASSWORD=...
+```
 
-For most deployments, keep `4317` and `4318` closed publicly and send telemetry
-from apps on the same Docker network.
+3. Start the stack:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.vps-nginx.yml up -d --build --remove-orphans
+```
+
+The backend image runs Prisma migrations before starting Express.
+
+## Host Nginx
+
+Use `deploy/nginx/iut_ict_fest.conf.example` as the host Nginx template.
+
+Routing:
+
+- `/` -> `http://127.0.0.1:8095`
+- `/api/`, `/auth/`, `/health` -> `http://127.0.0.1:8093`
+- `/grafana/` -> `http://127.0.0.1:8094/grafana/`
+
+After installing the Nginx config:
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+## GitHub Actions Deploy
+
+Workflow: `.github/workflows/ci-cd.yml`
+
+CI runs on pushes and PRs. Deployment runs when:
+
+- manually triggered with `workflow_dispatch`, or
+- pushed to `auth-google-oauth-production`
+
+Create a GitHub Environment named `production` and set these secrets:
+
+```text
+VPS_HOST
+VPS_USER
+VPS_SSH_PRIVATE_KEY
+POSTGRES_PASSWORD
+AUTH_TOKEN_SECRET
+OPENAI_API_KEY
+MEM0_API_KEY
+MEM0_JWT_SECRET
+MEM0_NEO4J_PASSWORD
+TEMPORAL_POSTGRES_PASSWORD
+GRAFANA_ADMIN_PASSWORD
+GOOGLE_CLIENT_ID
+GOOGLE_CLIENT_SECRET
+BDAPPS_APP_ID
+BDAPPS_PASSWORD
+```
+
+Set these environment variables:
+
+```text
+PUBLIC_HOST
+VPS_APP_DIR=/srv/muqtadir/iut_ict_fest
+VPS_DEPLOY_BRANCH=rag-mem0
+VPS_APP_PORT=8093
+VPS_FRONTEND_PORT=8095
+VPS_GRAFANA_PORT=8094
+POSTGRES_DB=iut_ict_fest
+POSTGRES_USER=iut_ict_fest
+GRAFANA_ADMIN_USER=admin
+BDAPPS_BASE_URL=https://developer.bdapps.com
+```
+
+The workflow renders `.env` from GitHub secrets on every deploy, copies it to the VPS, checks out the deploy branch, validates Compose config, rebuilds containers, and verifies `http://127.0.0.1:8093/health`.
 
 ## Health Checks
 
+From the VPS:
+
 ```bash
-curl -I https://YOUR_DOMAIN/health
-curl -I https://YOUR_DOMAIN/grafana/api/health
-curl -X POST https://YOUR_DOMAIN/auth/signup \
-  -H 'content-type: application/json' \
-  -d '{"name":"Admin","email":"admin@example.com","password":"change-me-now"}'
-docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+curl -fsS http://127.0.0.1:8093/health
+curl -fsS http://127.0.0.1:8095/
+curl -fsS http://127.0.0.1:8094/grafana/api/health
+docker compose -f docker-compose.yml -f docker-compose.vps-nginx.yml ps
 ```
 
-Prometheus targets should show `up` inside Grafana or by execing from the VPS.
-
-## Database Schema
-
-Authentication is managed by Prisma in `prisma/schema.prisma`.
-
-- `app_users` stores password and OAuth users.
-- `auth_identities` stores OAuth identities and has a foreign key to
-  `app_users(id)` with `ON DELETE CASCADE`.
-
-Manual migration command if needed:
+From outside, after DNS and Nginx are configured:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app npm run db:migrate:deploy
+curl -I https://YOUR_DOMAIN/health
+curl -I https://YOUR_DOMAIN/
+curl -I https://YOUR_DOMAIN/grafana/api/health
 ```

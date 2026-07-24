@@ -12,6 +12,7 @@ src/generated/
 .env
 .env.*
 !.env.example
+!.env.vps.example
 
 # Test & coverage output
 coverage/
