@@ -15,7 +15,7 @@ import { listUsers, type User } from "../../api/users.js";
  * so both surfaces render the same widgets from a single source of truth.
  */
 export default function AnalyticsDashboard({
-  title = "Dashboard · ICT Fest Admin",
+  title = "Dashboard · AgriSense Admin",
   description = "Admin dashboard with live user analytics",
 }: {
   title?: string;

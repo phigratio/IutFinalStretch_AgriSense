@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import PageMeta from "../components/common/PageMeta.js";
-import GridShape from "../components/common/GridShape.js";
 import LanguageToggle from "../components/common/LanguageToggle.js";
 import { useAuth } from "../context/AuthContext.js";
 
@@ -46,12 +45,12 @@ export default function SignIn() {
 
   return (
     <>
-      <PageMeta title="Sign In · ICT Fest Admin" description="Sign in to the admin panel" />
-      <div className="grid min-h-screen lg:grid-cols-2">
+      <PageMeta title="Sign In · AgriSense Admin" description="Sign in to the admin panel" />
+      <div className="flex min-h-screen items-center justify-center">
         <div className="absolute right-4 top-4 z-20">
           <LanguageToggle />
         </div>
-        <div className="flex items-center justify-center px-4 py-12">
+        <div className="flex w-full items-center justify-center px-4 py-12">
           <div className="w-full max-w-md">
             <h1 className="mb-2 text-2xl font-bold text-gray-800 dark:text-white/90">
               {mode === "login" ? "Sign In" : "Create account"}
@@ -130,19 +129,6 @@ export default function SignIn() {
               >
                 {mode === "login" ? "Sign up" : "Sign in"}
               </button>
-            </p>
-          </div>
-        </div>
-
-        <div className="relative hidden items-center justify-center overflow-hidden bg-brand-950 lg:flex">
-          <GridShape />
-          <div className="relative z-10 text-center">
-            <span className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 text-2xl font-bold text-white">
-              IF
-            </span>
-            <h2 className="text-2xl font-semibold text-white">ICT Fest Admin</h2>
-            <p className="mt-2 max-w-xs text-sm text-white/60">
-              Manage your event, users, and analytics from one place.
             </p>
           </div>
         </div>

@@ -181,7 +181,9 @@ export async function searchKB(
     .slice(0, limit);
 
   return merged.map((h) => ({
-    text: h.text,
+    // Strip any HTML-comment metadata header so callers see clean prose, even for
+    // chunks ingested before chunkDoc learned to remove it.
+    text: h.text.replace(/<!--[\s\S]*?-->/g, "").trim(),
     score: h.score,
     docKey: h.metadata.docKey,
     scope: h.metadata.scope,

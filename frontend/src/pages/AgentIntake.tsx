@@ -30,6 +30,30 @@ const starterMessages = [
   "Dhaka te 1.5 acre jomi, bele mati, river water, budget 40000, monsoon",
 ];
 
+// Intentionally partial inputs — feed them one at a time to demonstrate the
+// agent's feedback loop: each turn fills some fields and re-asks for the rest.
+const demoStages = [
+  "I have 2 acres in Gazipur",
+  "the soil is sandy loam and it's rainfed",
+  "my budget is 45000 taka for the Aman season",
+];
+
+// The six fields the intake loop must collect before it can plan.
+const REQUIRED_FIELDS: { label: string; get: (p?: IntakeProfile) => unknown }[] = [
+  { label: "Location", get: (p) => p?.locationText },
+  { label: "Farm size", get: (p) => p?.sizeAcres },
+  { label: "Soil", get: (p) => p?.soilType },
+  { label: "Water", get: (p) => p?.waterAvailability },
+  { label: "Budget", get: (p) => p?.budgetBdt },
+  { label: "Season", get: (p) => p?.targetSeason },
+];
+
+interface LoopTurn {
+  message: string;
+  result: AgentIntakeResult;
+  filled: string[];
+}
+
 export default function AgentIntake() {
   const { user } = useAuth();
   const latestContext = useMemo(readLatestPlanContext, []);
@@ -40,6 +64,7 @@ export default function AgentIntake() {
   const [language, setLanguage] = useState<Language>(latestContext.farmProfile?.preferredLanguage ?? "en");
   const [result, setResult] = useState<AgentIntakeResult | null>(null);
   const [history, setHistory] = useState<IntakeHistoryItem[]>([]);
+  const [turns, setTurns] = useState<LoopTurn[]>([]);
   const [showRaw, setShowRaw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,24 +77,28 @@ export default function AgentIntake() {
   const activeMissingFields = result?.missingFields ?? missingFieldsForProfile(activeProfile);
   const intakeComplete = result?.intakeComplete ?? activeMissingFields.length === 0;
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!message.trim()) return;
+  async function runTurn(text: string) {
+    const msg = text.trim();
+    if (!msg || loading) return;
+    const before = result?.profile;
     setLoading(true);
     setError(null);
     try {
       const response = await runAgentIntake({
-        message,
+        message: msg,
         sessionId: sessionId || undefined,
         farmerId: farmerId || undefined,
         farmId: farmId || undefined,
         userId: user?.id,
         preferredLanguage: language,
       });
+      // Which required fields were newly filled by this turn (empty before, set now).
+      const filled = REQUIRED_FIELDS.filter((f) => !f.get(before) && f.get(response.profile)).map((f) => f.label);
       setResult(response);
       setSessionId(response.sessionId);
       setFarmerId(response.farmerId);
       setFarmId(response.farmId);
+      setTurns((prev) => [...prev, { message: msg, result: response, filled }]);
       saveHistory(response);
       setHistory(readHistory());
     } catch (err) {
@@ -77,6 +106,22 @@ export default function AgentIntake() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    void runTurn(message);
+  }
+
+  // Start a fresh loop demo — new session, cleared turns.
+  function resetLoop() {
+    setTurns([]);
+    setResult(null);
+    setSessionId("");
+    setFarmerId("");
+    setFarmId("");
+    setError(null);
+    setMessage(demoStages[0]);
   }
 
   function useResult(item: IntakeHistoryItem) {
@@ -99,7 +144,7 @@ export default function AgentIntake() {
 
   return (
     <>
-      <PageMeta title="Agent Intake · ICT Fest Admin" description="Reusable farm intake workspace" />
+      <PageMeta title="Agent Intake · AgriSense Admin" description="Reusable farm intake workspace" />
       <PageBreadcrumb pageTitle="Agent Intake" />
 
       {error && <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-500">{error}</div>}
@@ -165,11 +210,38 @@ export default function AgentIntake() {
                 ))}
               </div>
 
-              <button disabled={loading} className="inline-flex h-11 items-center gap-2 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60">
-                <ArrowUpIcon width={18} height={18} />
-                {loading ? "Running intake..." : sessionId ? "Continue intake" : "Start intake"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button disabled={loading} className="inline-flex h-11 items-center gap-2 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60">
+                  <ArrowUpIcon width={18} height={18} />
+                  {loading ? "Running intake..." : sessionId ? "Continue intake" : "Start intake"}
+                </button>
+                {turns.length > 0 && (
+                  <button type="button" onClick={resetLoop} disabled={loading} className="inline-flex h-11 items-center rounded-lg border border-gray-200 px-4 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.04]">
+                    Reset loop
+                  </button>
+                )}
+              </div>
             </form>
+
+            {/* One-click demo: feed intentionally partial inputs to show the loop iterate. */}
+            <div className="mt-5 rounded-lg border border-dashed border-brand-300 bg-brand-50/50 p-4 dark:border-brand-500/30 dark:bg-brand-500/[0.06]">
+              <p className="text-sm font-semibold text-brand-700 dark:text-brand-300">🔁 Demonstrate the feedback loop</p>
+              <p className="mt-0.5 text-xs text-brand-700/80 dark:text-brand-300/80">Send these partial messages in order — watch the agent fill fields and re-ask for the rest until complete.</p>
+              <div className="mt-3 flex flex-col gap-2">
+                {demoStages.map((stage, i) => (
+                  <button
+                    key={stage}
+                    type="button"
+                    onClick={() => { setMessage(stage); void runTurn(stage); }}
+                    disabled={loading}
+                    className="flex items-center gap-2 rounded-lg border border-brand-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 hover:border-brand-400 disabled:opacity-60 dark:border-brand-500/30 dark:bg-white/[0.03] dark:text-gray-200"
+                  >
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-500 text-[11px] font-bold text-white">{i + 1}</span>
+                    {stage}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
@@ -200,6 +272,8 @@ export default function AgentIntake() {
         </section>
 
         <section className="space-y-4">
+          <LoopPanel turns={turns} profile={activeProfile} intakeComplete={intakeComplete} loading={loading} />
+
           <ProfileCard profile={activeProfile} missingFields={activeMissingFields} intakeComplete={intakeComplete} />
 
           {result && (
@@ -249,6 +323,100 @@ export default function AgentIntake() {
         </section>
       </div>
     </>
+  );
+}
+
+const hasVal = (v: unknown): boolean => v !== undefined && v !== null && v !== "";
+
+/** The demo centerpiece: shows the intake feedback loop iterating until every field is filled. */
+function LoopPanel({ turns, profile, intakeComplete, loading }: { turns: LoopTurn[]; profile?: IntakeProfile; intakeComplete: boolean; loading: boolean }) {
+  const filledCount = REQUIRED_FIELDS.filter((f) => hasVal(f.get(profile))).length;
+  const total = REQUIRED_FIELDS.length;
+  const pct = Math.round((filledCount / total) * 100);
+  const started = turns.length > 0;
+
+  const bannerClass = !started
+    ? "border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-800 dark:bg-white/[0.04] dark:text-gray-300"
+    : intakeComplete
+      ? "border-success-200 bg-success-50 text-success-700 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-300"
+      : "border-warning-200 bg-warning-50 text-warning-700 dark:border-warning-500/30 dark:bg-warning-500/10 dark:text-warning-300";
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-gray-900 dark:text-white">Agentic Intake Loop</h2>
+        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-white/[0.06] dark:text-gray-300">
+          {turns.length} turn{turns.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      <div className={`mt-3 rounded-lg border px-4 py-3 text-sm font-medium ${bannerClass}`} role="status" aria-live="polite">
+        {loading
+          ? "🤖 Agent is reading your message…"
+          : !started
+            ? "Send a message to start the intake loop."
+            : intakeComplete
+              ? "✅ Intake complete — all fields collected. Ready for weather & crop planning."
+              : `🔄 Loop continues — the agent still needs ${total - filledCount} field${total - filledCount === 1 ? "" : "s"}, so it asks again.`}
+      </div>
+
+      {/* Required-field progress — fills up as the loop runs. */}
+      <div className="mt-4">
+        <div className="mb-1 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+          <span>Required fields collected</span>
+          <span className="font-semibold text-gray-700 dark:text-gray-200">{filledCount}/{total}</span>
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/[0.08]">
+          <div className={`h-full rounded-full transition-all duration-500 ${intakeComplete ? "bg-success-500" : "bg-brand-500"}`} style={{ width: `${pct}%` }} />
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {REQUIRED_FIELDS.map((f) => {
+            const ok = hasVal(f.get(profile));
+            return (
+              <div
+                key={f.label}
+                className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-medium ${
+                  ok
+                    ? "border-success-200 bg-success-50 text-success-700 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-300"
+                    : "border-gray-200 bg-gray-50 text-gray-400 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-500"
+                }`}
+              >
+                <span>{ok ? "✓" : "○"}</span>
+                {f.label}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Turn-by-turn timeline. */}
+      {started && (
+        <ol className="mt-5 space-y-3">
+          {turns.map((turn, index) => (
+            <li key={index} className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Turn {index + 1}</span>
+                <span className={turn.result.intakeComplete ? successPillClass : warningPillClass}>
+                  {turn.result.intakeComplete ? "complete" : `${turn.result.missingFields.length} missing`}
+                </span>
+              </div>
+              <p className="ml-auto w-fit max-w-[90%] rounded-lg bg-brand-500 px-3 py-1.5 text-sm text-white">{turn.message}</p>
+              <p className="mt-2 max-w-[90%] rounded-lg bg-gray-100 px-3 py-1.5 text-sm text-gray-800 dark:bg-white/[0.06] dark:text-gray-100">{turn.result.reply}</p>
+              {(turn.filled.length > 0 || (!turn.result.intakeComplete && turn.result.missingFields.length > 0)) && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                  {turn.filled.map((f) => (
+                    <span key={f} className="rounded-full bg-success-50 px-2 py-0.5 font-medium text-success-700 dark:bg-success-500/15 dark:text-success-300">+ {f}</span>
+                  ))}
+                  {!turn.result.intakeComplete && turn.result.missingFields.map((f) => (
+                    <span key={f} className="rounded-full bg-warning-50 px-2 py-0.5 font-medium text-warning-700 dark:bg-warning-500/15 dark:text-warning-300">still asking: {f}</span>
+                  ))}
+                </div>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }
 

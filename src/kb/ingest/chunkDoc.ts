@@ -39,7 +39,10 @@ function splitSentences(text: string): string[] {
 export function chunkText(text: string, opts: ChunkOptions = {}): DocChunk[] {
   const targetTokens = opts.targetTokens ?? 500;
   const overlapTokens = opts.overlapTokens ?? 50;
-  const sentences = splitSentences(text);
+  // Strip HTML comment blocks (e.g. the leading `<!-- docKey: ... -->` metadata
+  // header) so retrieval snippets show clean prose, not source-file bookkeeping.
+  const cleaned = text.replace(/<!--[\s\S]*?-->/g, " ");
+  const sentences = splitSentences(cleaned);
   if (sentences.length === 0) return [];
 
   const chunks: DocChunk[] = [];

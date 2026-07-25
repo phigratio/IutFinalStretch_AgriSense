@@ -19,7 +19,7 @@ export default function TenantRequests() {
   }
 
   return <>
-    <PageMeta title="Onboarding requests · ICT Fest Admin" description="Approve or reject tenant access" />
+    <PageMeta title="Onboarding requests · AgriSense Admin" description="Approve or reject tenant access" />
     <PageBreadcrumb pageTitle="Onboarding requests" />
     {error ? <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600">{error}</div> : null}
     <section className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">

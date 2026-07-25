@@ -354,7 +354,7 @@ export default function AgriSense() {
 
   async function submitMessage(
     messageText = input,
-    workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" || activeStage === "scheduler" || activeStage === "scenario" ? "full" : activeStage,
+    workflowStage: WorkflowStage = "full",
     acceptedOutcomeIds?: string[],
     overrides: { sessionId?: string; farmerId?: string; farmId?: string } = {},
   ) {
@@ -596,10 +596,9 @@ export default function AgriSense() {
   }
 
   function useOutcome(outcome: MemoryOutcome) {
-    const workflowStage: WorkflowStage = activeStage === "trace" || activeStage === "context" || activeStage === "scheduler" || activeStage === "scenario" ? "full" : activeStage;
     void submitMessage(
       `Use remembered context: ${outcome.title}`,
-      workflowStage,
+      "full",
       [outcome.id],
     );
   }
@@ -739,7 +738,7 @@ export default function AgriSense() {
   return (
     <>
       <PageMeta
-        title={`${stageMeta.title} · ICT Fest`}
+        title={`${stageMeta.title} · AgriSense`}
         description={stageMeta.subtitle}
       />
 

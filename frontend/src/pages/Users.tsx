@@ -5,7 +5,7 @@ import UsersTable from "../components/tables/UsersTable.js";
 export default function Users() {
   return (
     <>
-      <PageMeta title="Users · ICT Fest Admin" description="Manage users" />
+      <PageMeta title="Users · AgriSense Admin" description="Manage users" />
       <PageBreadcrumb pageTitle="Users" />
       <UsersTable />
     </>
