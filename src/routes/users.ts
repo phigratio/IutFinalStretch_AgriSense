@@ -11,6 +11,7 @@ export interface AdminUser {
   name: string;
   emailVerified: boolean;
   provider: "password" | "oauth";
+  role: "user" | "tenant" | "admin";
   createdAt: string;
 }
 
@@ -21,6 +22,7 @@ export function toAdminUser(user: AuthUser): AdminUser {
     name: user.name,
     emailVerified: user.emailVerified,
     provider: user.passwordHash ? "password" : "oauth",
+    role: user.role,
     createdAt: user.createdAt,
   };
 }
