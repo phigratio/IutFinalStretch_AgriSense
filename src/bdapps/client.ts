@@ -106,11 +106,16 @@ export class BdappsClient {
     try {
       return JSON.parse(text) as T;
     } catch {
-      throw new BdappsError(
-        `BDApps returned non-JSON (HTTP ${httpStatus}) from ${path}: ${text.slice(0, 200)}`,
-        "E_PARSE",
-        text,
-      );
+      // BDApps returns a raw HTML error page (not TAP JSON) when a route isn't
+      // provisioned/activated for the app — notably the CaaS list/pi and
+      // balance/query routes (HTTP 404). Surface a clean message instead of
+      // dumping the HTML; keep the raw body on the error for debugging.
+      const isHtml = /^\s*<(?:!doctype|html)/i.test(text);
+      const message =
+        httpStatus === 404
+          ? `BDApps route ${path} is not available (HTTP 404) — this CaaS route is not provisioned/activated for this app on BDApps.`
+          : `BDApps returned a non-JSON response (HTTP ${httpStatus}) from ${path}${isHtml ? "" : `: ${text.slice(0, 160)}`}`;
+      throw new BdappsError(message, "E_PARSE", text);
     }
   }
 
