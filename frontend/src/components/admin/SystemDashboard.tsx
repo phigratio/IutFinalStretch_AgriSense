@@ -96,7 +96,7 @@ export default function SystemDashboard() {
                   <span className="font-medium">{u.name}</span>,
                   <span className="text-gray-500 dark:text-gray-400">{u.email}</span>,
                   <Badge tone={u.role === "admin" ? "red" : u.role === "tenant" ? "amber" : "gray"}>{u.role}</Badge>,
-                  u.provider === "oauth" ? "Google/BDApps" : "Password",
+                  u.provider === "oauth" ? "BDApps" : "Password",
                   <Badge tone={u.emailVerified ? "green" : "gray"}>{u.emailVerified ? "verified" : "no"}</Badge>,
                   <span className="text-xs text-gray-500 dark:text-gray-400">{formatDate(u.createdAt)}</span>,
                 ]} />

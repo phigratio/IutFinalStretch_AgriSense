@@ -27,10 +27,9 @@ export interface CreatePasswordUserInput {
 }
 
 export interface UpsertOAuthUserInput {
-  // "bdapps" added for phone-OTP identity (see BDAPPS-INTEGRATION-PLAN §7).
-  // Purely a type widening — both store impls already persist any provider
-  // string via AuthIdentity; no runtime change to the Google path.
-  provider: "google" | "bdapps";
+  // Phone-OTP identity via BDApps (see BDAPPS-INTEGRATION-PLAN §7). Both store
+  // impls persist the provider string via AuthIdentity.
+  provider: "bdapps";
   providerUserId: string;
   email: string;
   name: string;

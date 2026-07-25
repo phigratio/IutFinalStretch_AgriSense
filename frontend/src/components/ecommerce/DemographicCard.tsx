@@ -14,9 +14,9 @@ export default function SignInMethods({ stats }: Props) {
       icon: "🔑",
     },
     {
-      name: "Google OAuth",
+      name: "BDApps (phone)",
       count: stats?.oauthUsers ?? 0,
-      icon: "🌐",
+      icon: "📱",
     },
   ];
 

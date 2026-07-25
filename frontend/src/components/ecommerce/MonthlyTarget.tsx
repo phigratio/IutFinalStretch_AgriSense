@@ -59,7 +59,7 @@ export default function VerifiedAccounts({ stats }: Props) {
       <p className="mx-auto mt-2 max-w-xs text-center text-sm text-gray-500 dark:text-gray-400">
         {total === 0
           ? "No users registered yet."
-          : `${verified} of ${total} account${total === 1 ? "" : "s"} verified. Google sign-ins are verified automatically.`}
+          : `${verified} of ${total} account${total === 1 ? "" : "s"} verified.`}
       </p>
 
       <div className="mt-6 flex items-center justify-around border-t border-gray-200 pt-5 dark:border-gray-800">

@@ -59,7 +59,7 @@ export default function RecentUsers({ users, loading }: Props) {
                     {u.email}
                   </td>
                   <td className="py-3.5 pr-4 text-gray-500 dark:text-gray-400">
-                    {u.provider === "oauth" ? "Google" : "Password"}
+                    {u.provider === "oauth" ? "BDApps" : "Password"}
                   </td>
                   <td className="py-3.5">
                     <span

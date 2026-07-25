@@ -1,7 +1,7 @@
 /**
  * BDApps phone identity — OTP verification that (a) proves the farmer owns the
  * phone, (b) establishes/links the SHARED AppUser identity (same AuthStore +
- * token as email/Google — NOT a separate login silo), and (c) captures the
+ * token as email/password — NOT a separate login silo), and (c) captures the
  * BDApps reach channel when a masked subscriberId is available.
  *
  * Model (see BDAPPS-INTEGRATION-PLAN §1a/§7): this is verification-to-enable-
@@ -92,7 +92,7 @@ export class BdappsAuthService {
   }
 
   /**
-   * Web path: an ALREADY-logged-in user (email/Google) verifies their phone to
+   * Web path: an ALREADY-logged-in user (email/password) verifies their phone to
    * enable BDApps features. Activates the channel on THEIR existing user — no
    * new user, no new token — so it never forks a second account (R3). Returns
    * whether the channel went active.

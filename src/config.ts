@@ -4,11 +4,6 @@ export const config = {
   authTokenSecret: process.env.AUTH_TOKEN_SECRET ?? "dev-only-change-this-auth-secret",
   authTokenTtlSeconds: Number(process.env.AUTH_TOKEN_TTL_SECONDS) || 60 * 60,
   cookieSecure: process.env.COOKIE_SECURE === "true",
-  googleClientId: process.env.GOOGLE_CLIENT_ID,
-  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  googleCallbackUrl:
-    process.env.GOOGLE_CALLBACK_URL ?? "http://localhost:3000/auth/google/callback",
-  frontendAuthSuccessUrl: process.env.FRONTEND_AUTH_SUCCESS_URL,
   mem0ApiUrl: process.env.MEM0_API_URL ?? "http://mem0-api:8000",
   mem0ApiKey: process.env.MEM0_API_KEY,
   mem0PersistenceEnabled: process.env.MEM0_PERSISTENCE_ENABLED === "true",

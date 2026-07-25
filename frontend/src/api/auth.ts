@@ -37,8 +37,3 @@ export function signup(
 export function me(): Promise<AuthUser> {
   return apiFetch<AuthUser>("/auth/me");
 }
-
-/** Full-page redirect into the backend's Google OAuth flow. */
-export function googleLoginUrl(): string {
-  return "/auth/google";
-}

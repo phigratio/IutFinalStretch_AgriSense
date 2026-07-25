@@ -1,15 +1,12 @@
 import { Router } from "express";
 import { AuthService } from "../auth/service.js";
 import { getDefaultAuthStore, type AuthStore } from "../auth/store.js";
-import { GoogleOAuthService, getOAuthStateFromCookie } from "../auth/googleOAuth.js";
 import { BdappsAuthService } from "../auth/bdappsAuth.js";
 import { authenticate, type AuthenticatedRequest } from "../middleware/authenticate.js";
-import { config } from "../config.js";
 
 export function createAuthRouter(store: AuthStore = getDefaultAuthStore()): Router {
   const router = Router();
   const authService = new AuthService(store);
-  const googleOAuthService = new GoogleOAuthService(store);
   const bdappsAuthService = new BdappsAuthService(store);
 
   router.post("/signup", async (req, res) => {
@@ -30,7 +27,7 @@ export function createAuthRouter(store: AuthStore = getDefaultAuthStore()): Rout
   });
 
   // BDApps phone identity (verification / channel activation; doubles as
-  // mobile sign-in). Additive to email/Google — same shared AppUser + token.
+  // mobile sign-in). Additive to email/password — same shared AppUser + token.
   router.post("/bdapps/otp/request", async (req, res) => {
     res.json(await bdappsAuthService.requestOtp(req.body?.mobile));
   });
@@ -57,28 +54,6 @@ export function createAuthRouter(store: AuthStore = getDefaultAuthStore()): Rout
         mobile: req.body?.mobile,
       }),
     );
-  });
-
-  router.get("/google", (_req, res) => {
-    googleOAuthService.createAuthorizationRedirect(res);
-  });
-
-  router.get("/google/callback", async (req, res) => {
-    const accessToken = await googleOAuthService.handleCallback({
-      code: req.query.code,
-      state: req.query.state,
-      cookieState: getOAuthStateFromCookie(req.get("cookie")),
-    });
-    res.clearCookie("google_oauth_state");
-
-    if (config.frontendAuthSuccessUrl) {
-      const url = new URL(config.frontendAuthSuccessUrl);
-      url.searchParams.set("token", accessToken);
-      res.redirect(url.toString());
-      return;
-    }
-
-    res.json({ accessToken, tokenType: "Bearer" });
   });
 
   return router;

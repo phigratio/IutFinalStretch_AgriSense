@@ -77,24 +77,4 @@ describe("Auth API", () => {
     expect(res.status).toBe(401);
     expect(res.body.error).toMatch(/bearer/i);
   });
-
-  it("handles Google OAuth startup based on configured credentials", async () => {
-    const res = await request(app).get("/auth/google");
-
-    expect([302, 503]).toContain(res.status);
-    if (res.status === 302) {
-      expect(res.headers.location).toContain("accounts.google.com");
-    } else {
-      expect(res.body.error).toMatch(/not configured/i);
-    }
-  });
-
-  it("rejects Google OAuth callbacks without a valid state", async () => {
-    const res = await request(app)
-      .get("/auth/google/callback")
-      .query({ code: "code", state: "state-a" })
-      .set("cookie", "google_oauth_state=state-b");
-
-    expect([400, 503]).toContain(res.status);
-  });
 });

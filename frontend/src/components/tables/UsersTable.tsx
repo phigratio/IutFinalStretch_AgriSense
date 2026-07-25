@@ -183,7 +183,7 @@ export default function UsersTable() {
                             : "bg-gray-100 text-gray-600 dark:bg-white/[0.06] dark:text-gray-300"
                         }`}
                       >
-                        {u.provider === "oauth" ? "Google" : "Password"}
+                        {u.provider === "oauth" ? "BDApps" : "Password"}
                       </span>
                     </td>
                     <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400">

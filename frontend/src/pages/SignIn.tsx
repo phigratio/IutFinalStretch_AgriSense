@@ -4,7 +4,6 @@ import PageMeta from "../components/common/PageMeta.js";
 import GridShape from "../components/common/GridShape.js";
 import LanguageToggle from "../components/common/LanguageToggle.js";
 import { useAuth } from "../context/AuthContext.js";
-import { googleLoginUrl } from "../api/auth.js";
 
 export default function SignIn() {
   const { user, loading, login, signup } = useAuth();
@@ -62,25 +61,6 @@ export default function SignIn() {
                 ? "Enter your email and password to access the admin panel."
                 : "Register the first admin account for the panel."}
             </p>
-
-            <a
-              href={googleLoginUrl()}
-              className="mb-5 flex h-11 w-full items-center justify-center gap-3 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-800 dark:text-gray-200 dark:hover:bg-white/[0.03]"
-            >
-              <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
-                <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.7 30.1.5 24 .5 14.6.5 6.5 5.8 2.6 13.6l7.8 6c1.9-5.6 7.2-9.6 13.6-9.6Z" />
-                <path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.6 5.9c4.4-4.1 6.7-10.780 6.7-17.3Z" />
-                <path fill="#FBBC05" d="M10.4 28.4a14.5 14.5 0 0 1 0-8.8l-7.8-6a23.5 23.5 0 0 0 0 20.8l7.8-6Z" />
-                <path fill="#34A853" d="M24 47.5c6.1 0 11.3-2 15.4-5.5l-7.6-5.9c-2.1 1.4-4.8 2.3-7.8 2.3-6.4 0-11.7-4-13.6-9.6l-7.8 6C6.5 42.2 14.6 47.5 24 47.5Z" />
-              </svg>
-              Continue with Google
-            </a>
-
-            <div className="mb-5 flex items-center gap-3">
-              <span className="h-px flex-1 bg-gray-200 dark:bg-gray-800" />
-              <span className="text-xs text-gray-400">or</span>
-              <span className="h-px flex-1 bg-gray-200 dark:bg-gray-800" />
-            </div>
 
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               {mode === "signup" && (
