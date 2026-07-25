@@ -5,7 +5,7 @@ import GridShape from "../components/common/GridShape.js";
 export default function NotFound() {
   return (
     <>
-      <PageMeta title="404 · ICT Fest Admin" description="Page not found" />
+      <PageMeta title="404 · AgriSense Admin" description="Page not found" />
       <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gray-50 px-4 text-center dark:bg-gray-900">
         <GridShape />
         <h1 className="text-title-md font-bold text-brand-500 sm:text-7xl">404</h1>

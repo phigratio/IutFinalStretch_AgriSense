@@ -739,7 +739,7 @@ export default function AgriSense() {
   return (
     <>
       <PageMeta
-        title={`${stageMeta.title} · ICT Fest`}
+        title={`${stageMeta.title} · AgriSense`}
         description={stageMeta.subtitle}
       />
 

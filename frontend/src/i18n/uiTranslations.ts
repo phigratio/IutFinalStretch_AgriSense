@@ -50,7 +50,7 @@ export const uiTranslations: UiTranslation[] = [
   { en: "Already registered?", bn: "আগেই নিবন্ধন করেছেন?" },
   { en: "Sign up", bn: "সাইন আপ" },
   { en: "Sign in", bn: "সাইন ইন" },
-  { en: "ICT Fest Admin", bn: "ICT Fest অ্যাডমিন" },
+  { en: "AgriSense Admin", bn: "AgriSense অ্যাডমিন" },
   { en: "Manage your event, users, and analytics from one place.", bn: "এক জায়গা থেকে ইভেন্ট, ব্যবহারকারী ও অ্যানালিটিক্স পরিচালনা করুন।" },
   { en: "Pest & Disease Risk", bn: "পোকা ও রোগের ঝুঁকি" },
   { en: "Predict likely pest and disease pressure from crop, growth stage, and live weather.", bn: "ফসল, বৃদ্ধির ধাপ ও লাইভ আবহাওয়া থেকে সম্ভাব্য পোকা-রোগের চাপ অনুমান করুন।" },
@@ -285,7 +285,7 @@ export const uiTranslations: UiTranslation[] = [
   { en: "Finance Trace", bn: "ফাইন্যান্স ট্রেস" },
   { en: "No finance trace yet.", bn: "এখনও কোনো ফাইন্যান্স ট্রেস নেই।" },
   { en: "Finance Dashboard", bn: "ফাইন্যান্স ড্যাশবোর্ড" },
-  { en: "Finance Dashboard · ICT Fest Admin", bn: "ফাইন্যান্স ড্যাশবোর্ড · ICT Fest অ্যাডমিন" },
+  { en: "Finance Dashboard · AgriSense Admin", bn: "ফাইন্যান্স ড্যাশবোর্ড · AgriSense অ্যাডমিন" },
   { en: "Financial math, yearly trend, and farm ledger dashboard", bn: "আর্থিক হিসাব, বার্ষিক প্রবণতা ও খামার লেজার ড্যাশবোর্ড" },
   { en: "Farm finance", bn: "খামার ফাইন্যান্স" },
   { en: "Financial performance dashboard", bn: "আর্থিক পারফরম্যান্স ড্যাশবোর্ড" },
@@ -353,7 +353,7 @@ export const uiTranslations: UiTranslation[] = [
   { en: "AgriSense · farmer information to the right people", bn: "AgriSense · কৃষকের তথ্য, সঠিক মানুষের কাছে" },
 
   // --- Expanded coverage so the BN toggle localizes the full UI (visible strings
-  // only; browser-tab "· ICT Fest Admin" titles live in <head>, not #root). ---
+  // only; browser-tab "· AgriSense Admin" titles live in <head>, not #root). ---
   // Metrics & short labels
   { en: "Water", bn: "পানি" },
   { en: "Soil", bn: "মাটি" },

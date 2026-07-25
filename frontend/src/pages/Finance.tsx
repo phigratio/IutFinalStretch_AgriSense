@@ -157,7 +157,7 @@ export default function Finance() {
 
   return (
     <>
-      <PageMeta title="Finance Dashboard · ICT Fest Admin" description="Financial math, yearly trend, and farm ledger dashboard" />
+      <PageMeta title="Finance Dashboard · AgriSense Admin" description="Financial math, yearly trend, and farm ledger dashboard" />
       <PageBreadcrumb pageTitle="Finance Dashboard" />
 
       <section className="mb-4 rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">

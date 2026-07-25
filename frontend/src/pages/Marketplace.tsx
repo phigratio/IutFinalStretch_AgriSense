@@ -112,7 +112,7 @@ export default function Marketplace() {
   return (
     <>
       <PageMeta
-        title="Marketplace Intelligence · ICT Fest"
+        title="Marketplace Intelligence · AgriSense"
         description="Supplier comparison and market price recommendation agent"
       />
 

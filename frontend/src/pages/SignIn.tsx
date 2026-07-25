@@ -47,7 +47,7 @@ export default function SignIn() {
 
   return (
     <>
-      <PageMeta title="Sign In · ICT Fest Admin" description="Sign in to the admin panel" />
+      <PageMeta title="Sign In · AgriSense Admin" description="Sign in to the admin panel" />
       <div className="grid min-h-screen lg:grid-cols-2">
         <div className="absolute right-4 top-4 z-20">
           <LanguageToggle />
@@ -160,7 +160,7 @@ export default function SignIn() {
             <span className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 text-2xl font-bold text-white">
               IF
             </span>
-            <h2 className="text-2xl font-semibold text-white">ICT Fest Admin</h2>
+            <h2 className="text-2xl font-semibold text-white">AgriSense Admin</h2>
             <p className="mt-2 max-w-xs text-sm text-white/60">
               Manage your event, users, and analytics from one place.
             </p>

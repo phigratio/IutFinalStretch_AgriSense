@@ -56,7 +56,7 @@ export default function Bdapps() {
 
   return (
     <>
-      <PageMeta title="BDApps · ICT Fest Admin" description="BDApps SMS, USSD, OTP, subscription, and listener console" />
+      <PageMeta title="BDApps · AgriSense Admin" description="BDApps SMS, USSD, OTP, subscription, and listener console" />
       <PageBreadcrumb pageTitle="BDApps" />
 
       {error && <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-500">{error}</div>}

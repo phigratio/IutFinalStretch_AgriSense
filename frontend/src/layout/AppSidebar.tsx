@@ -124,11 +124,11 @@ export default function AppSidebar() {
         className={`mb-8 flex items-center ${showText ? "gap-3 px-1" : "justify-center"}`}
       >
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-500 text-lg font-bold text-white">
-          IF
+          AS
         </span>
         {showText && (
           <span className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            ICT&nbsp;Fest
+            AgriSense
           </span>
         )}
       </div>

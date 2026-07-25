@@ -103,7 +103,7 @@ export default function Temporal() {
 
   return (
     <>
-      <PageMeta title="Proactive Advice · ICT Fest Admin" description="Weather-triggered AgriSense plan adjustment console" />
+      <PageMeta title="Proactive Advice · AgriSense Admin" description="Weather-triggered AgriSense plan adjustment console" />
       <PageBreadcrumb pageTitle="Proactive Advice" />
 
       {error && <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-500">{error}</div>}

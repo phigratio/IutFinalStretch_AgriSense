@@ -53,7 +53,7 @@ export default function Payments() {
 
   return (
     <>
-      <PageMeta title="BDApps Payments · ICT Fest Admin" description="BDApps CaaS checkout, balance deduction, and receipt flow" />
+      <PageMeta title="BDApps Payments · AgriSense Admin" description="BDApps CaaS checkout, balance deduction, and receipt flow" />
       <PageBreadcrumb pageTitle="BDApps Payments" />
 
       {error && <Alert tone="error">{error}</Alert>}

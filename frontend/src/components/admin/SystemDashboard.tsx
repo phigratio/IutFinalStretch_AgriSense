@@ -31,7 +31,7 @@ export default function SystemDashboard() {
 
   return (
     <>
-      <PageMeta title="System Overview · ICT Fest Admin" description="Platform-wide analytics across every module" />
+      <PageMeta title="System Overview · AgriSense Admin" description="Platform-wide analytics across every module" />
 
       <div className="mb-5">
         <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">System Overview</h1>
