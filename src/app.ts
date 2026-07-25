@@ -32,7 +32,7 @@ import { observabilityMiddleware } from "./middleware/observability.js";
 export function createApp(): Application {
   const app = express();
 
-  app.use(express.json());
+  app.use(express.json({ limit: "1mb" }));
   app.use((req, res, next) => {
     const startedAt = Date.now();
     res.on("finish", () => {
