@@ -19,6 +19,7 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o}
+      HF_TOKEN: ${HF_TOKEN:-}
       SPEECHMATIC_API_KEY: ${SPEECHMATIC_API_KEY:-}
       SPEECHMATIC_URL: ${SPEECHMATIC_URL:-https://asr.api.speechmatics.com/v2}
       OPENAI_INTAKE_MODEL: ${OPENAI_INTAKE_MODEL:-gpt-4.1-mini}
@@ -219,6 +220,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-iut_ict_fest}:${POSTGRES_PASSWORD:-iut_ict_fest}@postgres:5432/${POSTGRES_DB:-iut_ict_fest}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o}
+      HF_TOKEN: ${HF_TOKEN:-}
       SPEECHMATIC_API_KEY: ${SPEECHMATIC_API_KEY:-}
       SPEECHMATIC_URL: ${SPEECHMATIC_URL:-https://asr.api.speechmatics.com/v2}
       OPENAI_STT_MODEL: ${OPENAI_STT_MODEL:-whisper-1}
