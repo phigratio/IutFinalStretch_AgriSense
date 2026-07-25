@@ -94,7 +94,15 @@ export default function Bdapps() {
             <label className="block">
               <span className={labelClass}>Action</span>
               <select value={action} onChange={(e) => setAction(e.target.value as Action)} className={inputClass}>
-                {actions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                {actions.map((item) => (
+                  <option
+                    key={item.value}
+                    value={item.value}
+                    className="bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100"
+                  >
+                    {item.label}
+                  </option>
+                ))}
               </select>
             </label>
             {action !== "broadcast" && <TextField label="Mobile" value={mobile} onChange={setMobile} />}
