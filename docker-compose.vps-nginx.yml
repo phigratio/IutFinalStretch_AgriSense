@@ -8,6 +8,12 @@
 #   temporal: http://127.0.0.1:8084
 #   prometheus: http://127.0.0.1:8087
 #   tempo: http://127.0.0.1:8088
+#   mem0-api: http://127.0.0.1:8889
+#   loki: http://127.0.0.1:3100
+#   otel grpc/http/prom: 127.0.0.1:4317 / 4318 / 8890
+#   neo4j http/https/bolt: 127.0.0.1:7474 / 7473 / 7687
+#   app postgres: 127.0.0.1:55432
+#   temporal postgres: 127.0.0.1:55433
 #
 # Do not combine this file with docker-compose.prod.yml; prod.yml starts Caddy.
 services:
@@ -23,6 +29,7 @@ services:
       COOKIE_SECURE: "true"
       OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env}
       OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o}
+      HF_TOKEN: ${HF_TOKEN:-}
       OPENAI_INTAKE_MODEL: ${OPENAI_INTAKE_MODEL:-gpt-4.1-mini}
       OPENAI_STT_MODEL: ${OPENAI_STT_MODEL:-whisper-1}
       SPEECHMATIC_API_KEY: ${SPEECHMATIC_API_KEY:-}
@@ -49,7 +56,8 @@ services:
 
   postgres:
     restart: unless-stopped
-    ports: !override []
+    ports: !override
+      - "${VPS_POSTGRES_BIND:-0.0.0.0}:${VPS_POSTGRES_PORT:-55432}:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
@@ -57,7 +65,8 @@ services:
 
   mem0-api:
     restart: unless-stopped
-    ports: !override []
+    ports: !override
+      - "${VPS_MEM0_API_BIND:-0.0.0.0}:${VPS_MEM0_API_PORT:-8889}:8000"
     environment:
       AUTH_DISABLED: ${MEM0_AUTH_DISABLED:-false}
       JWT_SECRET: ${MEM0_JWT_SECRET:?Set MEM0_JWT_SECRET in .env}
@@ -66,13 +75,20 @@ services:
 
   mem0-neo4j:
     restart: unless-stopped
+    ports: !override
+      - "${VPS_MEM0_NEO4J_HTTP_BIND:-0.0.0.0}:${VPS_MEM0_NEO4J_HTTP_PORT:-7474}:7474"
+      - "${VPS_MEM0_NEO4J_HTTPS_BIND:-0.0.0.0}:${VPS_MEM0_NEO4J_HTTPS_PORT:-7473}:7473"
+      - "${VPS_MEM0_NEO4J_BOLT_BIND:-0.0.0.0}:${VPS_MEM0_NEO4J_BOLT_PORT:-7687}:7687"
 
   temporal-postgres:
     restart: unless-stopped
+    ports: !override
+      - "${VPS_TEMPORAL_POSTGRES_BIND:-0.0.0.0}:${VPS_TEMPORAL_POSTGRES_PORT:-55433}:5432"
 
   temporal:
     restart: unless-stopped
-    ports: !override []
+    ports: !override
+      - "${VPS_TEMPORAL_GRPC_BIND:-0.0.0.0}:${VPS_TEMPORAL_GRPC_PORT:-7233}:7233"
 
   temporal-ui:
     restart: unless-stopped
@@ -89,6 +105,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env}
       OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o}
+      HF_TOKEN: ${HF_TOKEN:-}
       OPENAI_STT_MODEL: ${OPENAI_STT_MODEL:-whisper-1}
       SPEECHMATIC_API_KEY: ${SPEECHMATIC_API_KEY:-}
       SPEECHMATIC_URL: ${SPEECHMATIC_URL:-https://asr.api.speechmatics.com/v2}
@@ -123,7 +140,8 @@ services:
 
   loki:
     restart: unless-stopped
-    ports: !override []
+    ports: !override
+      - "${VPS_LOKI_BIND:-0.0.0.0}:${VPS_LOKI_PORT:-3100}:3100"
 
   tempo:
     restart: unless-stopped
@@ -132,4 +150,7 @@ services:
 
   otel-collector:
     restart: unless-stopped
-    ports: !override []
+    ports: !override
+      - "${VPS_OTEL_GRPC_BIND:-0.0.0.0}:${VPS_OTEL_GRPC_PORT:-4317}:4317"
+      - "${VPS_OTEL_HTTP_BIND:-0.0.0.0}:${VPS_OTEL_HTTP_PORT:-4318}:4318"
+      - "${VPS_OTEL_PROM_BIND:-0.0.0.0}:${VPS_OTEL_PROM_PORT:-8890}:8889"
