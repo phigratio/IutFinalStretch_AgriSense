@@ -5,11 +5,28 @@ import { getDefaultAuthStore } from "../auth/store.js";
 
 const app = createApp();
 
-/** Signs up an admin and returns their bearer token + id. */
+/** Signs up a user, promotes them to admin, and returns a fresh admin-role token. */
 async function signInAdmin() {
   const res = await request(app).post("/auth/signup").send({
     name: "Admin User",
     email: "admin@ictfest.dev",
+    password: "strong-pass-1",
+  });
+  const id = res.body.user.id as string;
+  // Signup only ever mints role "user"; promote, then re-login so the JWT carries admin.
+  await getDefaultAuthStore().setUserRole(id, "admin");
+  const login = await request(app).post("/auth/login").send({
+    email: "admin@ictfest.dev",
+    password: "strong-pass-1",
+  });
+  return { token: login.body.accessToken as string, id };
+}
+
+/** Signs up an ordinary (role "user") account and returns their bearer token. */
+async function signInUser() {
+  const res = await request(app).post("/auth/signup").send({
+    name: "Plain User",
+    email: "user@ictfest.dev",
     password: "strong-pass-1",
   });
   return { token: res.body.accessToken as string, id: res.body.user.id as string };
@@ -31,6 +48,15 @@ describe("Admin Users API", () => {
       .get("/api/users")
       .set("Authorization", "Bearer not-a-real-token");
     expect(res.status).toBe(401);
+  });
+
+  it("forbids a non-admin (role user) from the admin users API", async () => {
+    const { token } = await signInUser();
+    const list = await request(app).get("/api/users").set("Authorization", `Bearer ${token}`);
+    expect(list.status).toBe(403);
+
+    const del = await request(app).delete("/api/users/any-id").set("Authorization", `Bearer ${token}`);
+    expect(del.status).toBe(403);
   });
 
   it("lists real auth users for an authenticated admin", async () => {

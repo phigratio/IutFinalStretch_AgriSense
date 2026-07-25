@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getDefaultAuthStore, DuplicateEmailError, type AuthStore, type AuthUser } from "../auth/store.js";
 import { hashPassword } from "../auth/password.js";
-import { authenticate, type AuthenticatedRequest } from "../middleware/authenticate.js";
+import { authenticate, requireRole, type AuthenticatedRequest } from "../middleware/authenticate.js";
 import { HttpError } from "../middleware/errorHandler.js";
 
 /** Admin-panel view of a user — never exposes the password hash. */
@@ -32,8 +32,9 @@ const minPasswordLength = 8;
 export function createUsersRouter(store: AuthStore = getDefaultAuthStore()): Router {
   const router = Router();
 
-  // Every admin endpoint below requires a valid bearer token.
-  router.use(authenticate);
+  // Every endpoint below is admin-only: valid bearer token AND the admin role.
+  // Without the role gate any signed-up user could list/create/DELETE accounts.
+  router.use(authenticate, requireRole("admin"));
 
   router.get("/", async (_req, res) => {
     res.json((await store.listUsers()).map(toAdminUser));

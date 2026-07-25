@@ -3,7 +3,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { config } from "../config.js";
 import { getDefaultAuthStore, type AuthStore } from "../auth/store.js";
-import { authenticate } from "../middleware/authenticate.js";
+import { authenticate, requireRole } from "../middleware/authenticate.js";
 
 export interface AdminStats {
   totalUsers: number;
@@ -163,12 +163,12 @@ export async function buildSystemStats(prisma: PrismaClient): Promise<SystemStat
 export function createStatsRouter(store: AuthStore = getDefaultAuthStore()): Router {
   const router = Router();
 
-  router.get("/", authenticate, async (_req, res) => {
+  router.get("/", authenticate, requireRole("admin"), async (_req, res) => {
     res.json(buildStats(await store.listUsers()));
   });
 
   // Whole-system admin analytics (tables + charts).
-  router.get("/system", authenticate, async (_req, res, next) => {
+  router.get("/system", authenticate, requireRole("admin"), async (_req, res, next) => {
     try {
       res.json(await buildSystemStats(getStatsPrisma()));
     } catch (error) {
