@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
+import type { Client } from "@temporalio/client";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { config } from "../config.js";
 import { createTemporalClient, temporalTaskQueue } from "../temporal/client.js";
@@ -9,12 +10,31 @@ import { AGRISENSE_SCHEDULES } from "../temporal/types.js";
 
 export const temporalRouter = Router();
 
+/**
+ * Connect to Temporal, or null when the cluster is unreachable. Read endpoints
+ * degrade to an "offline" state so the admin page renders instead of 500ing when
+ * Temporal isn't running (it's an optional dependency for the proactive-alert cron).
+ */
+async function tryTemporalClient(): Promise<Client | null> {
+  try {
+    return await createTemporalClient();
+  } catch (error) {
+    console.warn(`Temporal unavailable: ${(error as Error).message}`);
+    return null;
+  }
+}
+
 temporalRouter.get("/schedules", async (_req, res, next) => {
   try {
-    const client = await createTemporalClient();
+    const client = await tryTemporalClient();
+    if (!client) {
+      res.json({ taskQueue: temporalTaskQueue(), schedules: [], temporalAvailable: false });
+      return;
+    }
     res.json({
       taskQueue: temporalTaskQueue(),
       schedules: await describeAgriSenseSchedules(client),
+      temporalAvailable: true,
     });
   } catch (error) {
     next(error);
@@ -23,8 +43,12 @@ temporalRouter.get("/schedules", async (_req, res, next) => {
 
 temporalRouter.post("/schedules/ensure", async (_req, res, next) => {
   try {
-    const client = await createTemporalClient();
-    res.json(await ensureAgriSenseSchedules(client));
+    const client = await tryTemporalClient();
+    if (!client) {
+      res.json({ created: [], existing: [], temporalAvailable: false });
+      return;
+    }
+    res.json({ ...(await ensureAgriSenseSchedules(client)), temporalAvailable: true });
   } catch (error) {
     next(error);
   }
@@ -103,7 +127,11 @@ temporalRouter.post("/workflows/:workflowType/run", async (req, res, next) => {
       return;
     }
 
-    const client = await createTemporalClient();
+    const client = await tryTemporalClient();
+    if (!client) {
+      res.status(503).json({ error: "Temporal scheduler is offline", temporalAvailable: false });
+      return;
+    }
     const handle = await client.workflow.start(definition.workflowType, {
       taskQueue: temporalTaskQueue(),
       workflowId: `${definition.workflowType}-manual-${randomUUID()}`,
@@ -122,7 +150,11 @@ temporalRouter.post("/workflows/:workflowType/run", async (req, res, next) => {
 
 temporalRouter.get("/workflows/:workflowId/result", async (req, res, next) => {
   try {
-    const client = await createTemporalClient();
+    const client = await tryTemporalClient();
+    if (!client) {
+      res.status(503).json({ error: "Temporal scheduler is offline", temporalAvailable: false });
+      return;
+    }
     const handle = client.workflow.getHandle(req.params.workflowId);
     res.json(await handle.result());
   } catch (error) {

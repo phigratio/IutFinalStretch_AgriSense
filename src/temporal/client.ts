@@ -14,7 +14,12 @@ export function temporalTaskQueue(): string {
 }
 
 export async function createTemporalClient(): Promise<Client> {
-  const connection = await Connection.connect({ address: temporalAddress() });
+  // Bounded connect so a down/unreachable Temporal server fails fast instead of
+  // hanging the HTTP request; callers degrade gracefully on the thrown error.
+  const connection = await Connection.connect({
+    address: temporalAddress(),
+    connectTimeout: "5s",
+  });
   return new Client({
     connection,
     namespace: temporalNamespace(),

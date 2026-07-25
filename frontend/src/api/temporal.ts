@@ -12,11 +12,14 @@ export interface TemporalSchedule {
 export interface TemporalSchedulesResult {
   taskQueue: string;
   schedules: TemporalSchedule[];
+  /** false when the Temporal cluster is unreachable (schedules will be empty). */
+  temporalAvailable?: boolean;
 }
 
 export interface TemporalEnsureResult {
   created: string[];
   existing: string[];
+  temporalAvailable?: boolean;
 }
 
 export interface TemporalRunResult {
