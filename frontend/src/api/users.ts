@@ -7,6 +7,7 @@ export interface User {
   name: string;
   emailVerified: boolean;
   provider: "password" | "oauth";
+  role: "user" | "tenant" | "admin";
   createdAt: string;
 }
 
