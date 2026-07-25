@@ -25,6 +25,7 @@ import NotFound from "./pages/NotFound.js";
 import KnowledgeBase from "./pages/KnowledgeBase.js";
 import Onboarding from "./pages/Onboarding.js";
 import DashboardLanding from "./components/common/DashboardLanding.js";
+import OnboardingGate from "./components/common/OnboardingGate.js";
 import TenantDashboard from "./pages/TenantDashboard.js";
 import TenantRequests from "./pages/TenantRequests.js";
 import "./index.css";
@@ -48,8 +49,10 @@ createRoot(rootEl).render(
                 <Route index path="/" element={<DashboardLanding />} />
                 {/* Standalone (no admin chrome) — the farmer's onboarding landing. */}
                 <Route path="/onboarding" element={<Onboarding />} />
-                {/* Feature pages — shared by admin + farmer (user). Same UI for both. */}
+                {/* Feature pages — shared by admin + farmer (user). Same UI for both.
+                    A "user" must finish onboarding first (OnboardingGate); admins pass through. */}
                 <Route element={<RoleRoute allow={["admin", "user"]} redirectTo="/" />}>
+                  <Route element={<OnboardingGate />}>
                   <Route element={<AppLayout />}>
                     {/* Old farmer dashboard is gone — send it to the AgriSense workbench. */}
                     <Route path="/user/dashboard" element={<Navigate to="/agrisense" replace />} />
@@ -64,6 +67,7 @@ createRoot(rootEl).render(
                     <Route path="/bdapps" element={<Bdapps />} />
                     <Route path="/calendar" element={<Calendar />} />
                     <Route path="/profile" element={<Profile />} />
+                  </Route>
                   </Route>
                 </Route>
                 <Route element={<RoleRoute allow={["tenant"]} redirectTo="/" />}>
