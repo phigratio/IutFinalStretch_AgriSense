@@ -10,7 +10,9 @@ interface LanguageContextValue {
 
 const STORAGE_KEY = "agrisense.uiLanguage";
 const LanguageContext = createContext<LanguageContextValue | undefined>(undefined);
-const textOriginals = new WeakMap<Text, string>();
+// Per node: the untranslated source we last saw, and the exact string we wrote.
+// `written` lets us tell our own translation apart from a fresh value React set.
+const textOriginals = new WeakMap<Text, { original: string; written: string }>();
 const attrNames = ["placeholder", "aria-label", "title", "alt"] as const;
 
 const byEnglish = new Map(uiTranslations.map((item) => [normalize(item.en), item]));
@@ -43,9 +45,13 @@ function shouldSkipNode(node: Node): boolean {
 function localizeTextNode(node: Text, language: UiLanguage) {
   if (shouldSkipNode(node)) return;
   const current = node.textContent ?? "";
-  const original = textOriginals.get(node) ?? current;
+  const state = textOriginals.get(node);
+  // If the node still holds what we last wrote, this is a language switch —
+  // re-translate from the stored source. Otherwise React replaced the text, so
+  // treat the current value as the new source (don't revert React's update).
+  const original = state && current === state.written ? state.original : current;
   const translated = translateValue(original, language);
-  if (!textOriginals.has(node) && translated !== current) textOriginals.set(node, original);
+  textOriginals.set(node, { original, written: translated });
   if (translated !== current) node.textContent = translated;
 }
 
